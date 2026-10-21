@@ -14,7 +14,7 @@ The repository contains the evidence-first tracker intelligence foundation and a
 |---|---|---|
 | Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
 | Android DNS policy core | Initial implementation | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
-| Android IPv4 UDP DNS packet codec | Initial implementation | Validates IPv4/UDP packet lengths and checksums and can build a DNS REFUSED reply; not connected to a VPN service |
+| Android IPv4 UDP DNS packet pipeline | Initial implementation | Evaluates DNS policy, builds valid REFUSED reply packets for blocked domains, and returns allowed queries for forwarding; not connected to a VPN service |
 | Android local network filtering | Not implemented | Requires a real VpnService, upstream forwarding, UDP/TCP handling, lifecycle integration, and device/emulator tests |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
@@ -47,7 +47,7 @@ The repository contains the evidence-first tracker intelligence foundation and a
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-core/` — isolated Kotlin/JVM DNS policy evaluator and IPv4 UDP DNS packet codec, tests, and Gradle configuration.
+- `android-core/` — isolated Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — currently empty, valid database.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
