@@ -9,19 +9,22 @@ This is an isolated Kotlin/JVM policy library, not an Android application or VPN
 - Treats unknown EDNS option payloads as opaque, as required for forward compatibility; it does not interpret or rewrite them.
 - Normalizes configured domain rules and matches exact domains or true subdomain suffixes.
 - Returns an explicit allow, block, or malformed result.
+- Decodes IPv4 UDP packets addressed to port 53, validating IP/UDP lengths and checksums.
+- Builds IPv4 UDP replies with reversed endpoints and recalculated checksums.
+- Builds DNS REFUSED replies for valid supported queries while preserving the question and omitting additional records.
 
-EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
+The packet codec is a pure JVM component. It does not read from a TUN interface, forward allowed DNS queries, start an Android service, or enforce traffic policy. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
 
 ## Current limits
 
-- This component does not capture device traffic, open sockets, forward DNS queries, synthesize DNS responses, create a VPN tunnel, or block packets.
+- Neither component captures device traffic, opens sockets, forwards allowed DNS queries, creates a VPN tunnel, or blocks packets. The packet codec can synthesize a DNS REFUSED response, but no service currently sends it to a device.
 - It does not load or update the production tracker database.
 - It does not identify which app made a query.
 - It rejects compressed question names, multiple questions, answer/authority records, more than one additional record, non-OPT additional records, non-IN question classes, non-ASCII hostnames, and EDNS versions other than 0.
 - It does not filter DNS-over-HTTPS, DNS-over-TLS, or DNS-over-QUIC.
 - It has not been tested on a physical Android device.
 
-Supporting EDNS removes one major parser limitation, but this is not enough to safely integrate a packet tunnel. A transport still needs bounded packet framing, UDP/TCP DNS forwarding behavior, valid block responses, cancellation and network-change handling, and device/emulator tests.
+The next integration stage still needs a real Android VpnService, a TUN read/write loop, protected upstream resolver sockets, forwarding of allowed queries, UDP and TCP DNS behavior, IPv6 strategy, cancellation and network-change handling, and emulator/device tests. RFC 7766 requires general-purpose DNS implementations to support both UDP and TCP, so TCP DNS must not be silently treated as covered by this UDP codec.
 
 ## Run tests
 
