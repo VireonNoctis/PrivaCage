@@ -43,6 +43,7 @@ This repository is at the foundation stage. The first implementation establishes
 - docs/architecture.md — system boundaries and data flow.
 - docs/threat-model.md — assets, threats, and non-goals.
 - docs/privacy-opportunity-backlog.md — candidate features grounded in real capabilities.
+- docs/research-notes/privacy-concerns.md — sourced privacy concerns and platform constraints.
 - CONTRIBUTING.md — evidence and review requirements.
 - shared/tracker-db/schema.md — tracker database contract.
 - shared/tracker-db/signatures.json — currently empty, valid database.
