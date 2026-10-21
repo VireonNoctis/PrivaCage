@@ -47,7 +47,7 @@ class UdpDnsForwarder(
 
             socket.soTimeout = timeoutMillis
             socket.connect(resolver)
-            socket.send(DatagramPacket(query, query.size))
+            socket.send(DatagramPacket(query, query.size, resolver))
 
             val buffer = ByteArray(MAX_UDP_DNS_PAYLOAD)
             val incoming = DatagramPacket(buffer, buffer.size)
