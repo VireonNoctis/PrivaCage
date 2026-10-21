@@ -74,6 +74,13 @@ class ValidateSignaturesTests(unittest.TestCase):
             handle.flush()
             self.assertEqual(validator.main(["--file", handle.name]), 0)
 
+    def test_alternate_analytics_endpoint_remains_review_only(self):
+        database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        entry = next(item for item in document["entries"] if item["id"] == "analytics-google-collection")
+        self.assertEqual(entry["confidence"], "medium")
+        self.assertEqual(entry["status"], "review")
+
 
 if __name__ == "__main__":
     unittest.main()

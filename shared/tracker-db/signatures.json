@@ -1,5 +1,48 @@
 {
   "schema_version": 1,
   "updated_at": "2026-10-21",
-  "entries": []
+  "entries": [
+    {
+      "id": "google-analytics-collection",
+      "name": "Google Analytics collection endpoint",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "google-analytics.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-21",
+      "evidence": [
+        {
+          "url": "https://developers.google.com/analytics/devguides/collection/protocol/ga4/reference",
+          "description": "Google documents HTTPS event collection at www.google-analytics.com/mp/collect and region1.google-analytics.com/mp/collect."
+        },
+        {
+          "url": "https://developers.google.com/analytics/devguides/collection/ga4/troubleshoot?community_post=true",
+          "description": "Google's troubleshooting guide identifies google-analytics.com/g/collect requests as Analytics collection traffic."
+        }
+      ]
+    },
+    {
+      "id": "analytics-google-collection",
+      "name": "Google Analytics alternate collection endpoint",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "analytics.google.com"
+        ]
+      },
+      "confidence": "medium",
+      "status": "review",
+      "last_verified": "2026-10-21",
+      "evidence": [
+        {
+          "url": "https://developers.google.com/analytics/devguides/collection/ga4/troubleshoot?community_post=true",
+          "description": "Google lists analytics.google.com/g/collect as an Analytics request endpoint. The hostname is kept in review status because a domain match alone does not establish which application initiated a request or what data it sent."
+        }
+      ]
+    }
+  ]
 }

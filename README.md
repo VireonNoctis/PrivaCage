@@ -8,11 +8,11 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android adapter now has a successful CI debug-APK build on the prior tested commit; the latest TCP-fallback changes are still awaiting their Android build workflow. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android debug APK and DNS core tests passed GitHub Actions on the current app/core implementation. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
-| Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
+| Tracker intelligence format | Initial implementation | Two official-source analytics endpoint indicators; small and non-comprehensive |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
@@ -39,11 +39,12 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/threat-model.md` — assets, threats, and non-goals.
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
+- `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, and Android build workflow.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
-- `shared/tracker-db/signatures.json` — currently empty, valid database.
+- `shared/tracker-db/signatures.json` — small, evidence-backed starter dataset; not yet loaded by the app.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
 - `tests/test_validate_signatures.py` — regression tests.
 
@@ -62,7 +63,7 @@ The Android app requires JDK 17, Android SDK platform 36, and Gradle 8.14 or com
 
 The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
-An empty tracker database is valid. It is safer to ship zero verified entries than to pretend an invented or weakly sourced list is reliable.
+The tracker validator checks structure and URL syntax, not whether evidence is true or still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
 
 ## Platform reality
 
