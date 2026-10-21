@@ -27,6 +27,9 @@ This is a working threat model, not a security audit. Update it as executable co
 
 - Evidence URLs, verification dates, stable IDs, review status, and human review.
 - Strict input validation, bounded parsing, fuzz tests for packet/APK parsers, and dependency minimization.
+- DNS upstream responses are checked for matching transaction ID and question, structurally valid resource records, valid compression-pointer bounds, declared RDATA lengths, and unexpected trailing bytes.
+- Truncated upstream UDP DNS replies are retried over a protected TCP socket; a missing/failed protection callback causes an explicit failure rather than an unprotected connection.
+- An upstream DNS failure drops the affected query without intentionally stopping the whole VPN service or inventing a response.
 - Signed releases and authenticated update metadata before automatic updates.
 - Local-only storage by default, limited event fields, retention controls, and explicit export.
 - Separate observed facts from static indicators and inferences.

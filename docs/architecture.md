@@ -22,17 +22,19 @@ Events should distinguish observed facts, static indicators, inferences, enforce
 
 ## Android DNS slice
 
-The Kotlin/JVM core includes a DNS policy evaluator, IPv4 UDP packet codec, packet processor, one-query UDP forwarder, and packet-to-packet coordinator. The initial Android app now provides a user-configured `VpnService` adapter around that core:
+The Kotlin/JVM core includes a DNS policy evaluator, IPv4 UDP packet codec, packet processor, validated UDP forwarder, protected TCP fallback for truncated upstream responses, and packet-to-packet coordinator. The initial Android app provides a user-configured `VpnService` adapter around that core:
 
 - The user explicitly approves VPN access and enters a numeric IPv4 resolver plus one or more domain rules.
 - The service creates a TUN interface with a virtual DNS endpoint and routes only that endpoint into the interface.
 - A blocking packet loop sends supported IPv4 UDP DNS queries through the policy engine and writes blocked REFUSED replies or successfully forwarded responses back to the TUN.
-- The upstream UDP socket is passed to `VpnService.protect` to avoid routing the resolver connection back into the VPN.
+- Upstream UDP and TCP sockets are passed to `VpnService.protect` before connecting, preventing resolver traffic from looping back into the VPN.
+- A valid UDP response with the DNS TC flag triggers a TCP retry. Response identity, question, resource-record boundaries, compression pointers, and declared lengths are checked before the answer is returned.
+- An upstream timeout or transport failure drops that query while keeping the tunnel active; a fabricated DNS answer is never substituted.
 - Settings are stored locally. DNS query names are not logged.
 
-This is an early implementation, not release-verified. The app does not load the shared tracker database; its rule list consists only of domains entered by the user. It currently supports IPv4 UDP DNS only. It does not handle DNS-over-TCP or TCP fallback for truncated UDP responses, IPv6 DNS, DoH, DoT, DoQ, app attribution, or HTTPS payload inspection. Queries are processed sequentially, and no emulator or physical-device test has yet verified routing, lifecycle behavior, or resolver interoperability. These limitations must remain visible until tested and implemented.
+This is an early implementation, not release-verified. The app does not load the shared tracker database; its rule list consists only of domains entered by the user. The client-facing tunnel accepts IPv4 UDP DNS only; it does not accept DNS-over-TCP connections from apps, handle IPv6 DNS, DoH, DoT, DoQ, app attribution, or HTTPS payload inspection. A full TCP response too large to fit in a UDP response is rejected. Queries are processed sequentially, and no emulator or physical-device test has yet verified routing, lifecycle behavior, or resolver interoperability. These limitations must remain visible until tested and implemented.
 
-The next Android work should focus on a reproducible build, unit/integration tests, and emulator/device validation of VPN authorization, route behavior, packet read/write, revocation, network transitions, resolver failure, and stopping the service. Then add TCP DNS handling and a deliberate IPv6 strategy before expanding the feature claim. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
+The next Android work should focus on emulator/device validation of VPN authorization, route behavior, packet read/write, revocation, network transitions, resolver failure, and stopping the service. Then implement a downstream TCP DNS endpoint and a deliberate IPv6 strategy before expanding the feature claim. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
 
 Do not add permission interception, fake-data injection, or arbitrary sensor monitoring until a supported API or explicitly gated rooted extension actually implements it.
 

@@ -8,13 +8,13 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android adapter is early and has not yet been verified on an emulator or physical device.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android adapter now has a successful CI debug-APK build on the prior tested commit; the latest TCP-fallback changes are still awaiting their Android build workflow. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
 | Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
-| Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, and forwards allowed queries through a protected UDP socket |
+| Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
 | Tracker list in app | Not yet integrated | User-entered domains are active; the shared tracker database is not loaded by the app |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
@@ -41,7 +41,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, and Android build workflow.
-- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, UDP forwarder, packet-to-packet engine, tests, and Gradle configuration.
+- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — currently empty, valid database.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
@@ -66,7 +66,7 @@ An empty tracker database is valid. It is safer to ship zero verified entries th
 
 ## Platform reality
 
-- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. This adapter only processes IPv4 UDP DNS sent to its virtual DNS endpoint. It does not handle DNS-over-TCP, IPv6 DNS, DoH/DoT/DoQ, HTTPS payloads, every system service, or all OEM/baseband traffic. Only one ordinary VPN service can be active at a time.
+- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
 - Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
 - IP addresses: a remote endpoint ordinarily sees the public source IP of the network path reaching it. A VPN or proxy changes which intermediary sees that address; it shifts trust rather than making a connection inherently anonymous.
