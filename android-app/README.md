@@ -9,8 +9,9 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - Explicit `VpnService.prepare()` consent.
 - A `VpnService` with a virtual DNS address and a route only to that address.
 - A blocking TUN read/write loop that processes supported IPv4 UDP DNS packets and returns responses.
-- A protected upstream UDP socket using `VpnService.protect(DatagramSocket)`.
+- Protected upstream UDP and TCP sockets using `VpnService.protect`; upstream TCP is retried when a valid UDP response sets the DNS TC flag.
 - A foreground notification and explicit handling of tunnel I/O/processing errors.
+- A failed upstream query is dropped without intentionally shutting down the whole VPN tunnel.
 
 ## Build
 
@@ -24,10 +25,11 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 ## Limits
 
 - Only user-entered domains are blocked; no verified tracker list is bundled or loaded.
-- Only IPv4 UDP DNS is supported. TCP DNS, IPv6 DNS, DoH, DoT, and DoQ are not filtered.
-- Upstream DNS uses ordinary UDP to the user-selected resolver, not encrypted DNS.
-- Truncated UDP responses are not retried over TCP; large answers may fail.
+- The client-facing tunnel supports IPv4 UDP DNS only. It does not accept DNS-over-TCP connections from device apps.
+- Upstream DNS uses ordinary UDP/TCP to the user-selected resolver, not encrypted DNS.
+- If a complete TCP response is too large to fit into the client-facing UDP packet, the query fails rather than producing a fabricated answer.
 - Queries are processed sequentially; a slow resolver delays later requests.
 - The service does not attribute queries to apps or inspect HTTPS contents.
-- This code has not been built in this environment or tested on an emulator/device. CI and device validation are required before calling it release-ready.
+- IPv6 DNS, DoH, DoT, and DoQ are not filtered.
+- This code has not been tested on an emulator or physical device. CI and device validation are required before calling it release-ready.
 - Platform/device policy can prevent VPN or foreground-service startup. Failures stop the service; DNS query names are not logged.

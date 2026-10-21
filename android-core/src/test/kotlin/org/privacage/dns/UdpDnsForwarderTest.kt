@@ -1,10 +1,14 @@
 package org.privacage.dns
 
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -52,6 +56,73 @@ class UdpDnsForwarderTest {
     }
 
     @Test
+    fun retriesTruncatedUdpResponseOverProtectedTcp() {
+        val query = dnsQuery("news.example.org")
+        val truncatedResponse = dnsResponse(query).apply {
+            this[2] = (this[2].toInt() or 0x02).toByte()
+        }
+        val completeResponse = dnsResponse(query)
+        val udpServer = DatagramSocket(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+        udpServer.soTimeout = 3000
+        val tcpServer = ServerSocket()
+        tcpServer.reuseAddress = true
+        tcpServer.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), udpServer.localPort))
+        tcpServer.soTimeout = 3000
+        val tcpProtected = AtomicBoolean(false)
+        val serverFailure = AtomicReference<Throwable?>(null)
+
+        val serverThread = Thread {
+            try {
+                val udpBuffer = ByteArray(2048)
+                val udpRequest = DatagramPacket(udpBuffer, udpBuffer.size)
+                udpServer.receive(udpRequest)
+                udpServer.send(
+                    DatagramPacket(truncatedResponse, truncatedResponse.size, udpRequest.socketAddress)
+                )
+
+                tcpServer.accept().use { connection ->
+                    connection.soTimeout = 3000
+                    val input = DataInputStream(connection.getInputStream())
+                    val queryLength = input.readUnsignedShort()
+                    val tcpQuery = ByteArray(queryLength)
+                    input.readFully(tcpQuery)
+                    assertContentEquals(query, tcpQuery)
+
+                    val output = DataOutputStream(connection.getOutputStream())
+                    output.writeShort(completeResponse.size)
+                    output.write(completeResponse)
+                    output.flush()
+                }
+            } catch (failure: Throwable) {
+                serverFailure.set(failure)
+            }
+        }
+        serverThread.start()
+
+        try {
+            val forwarder = UdpDnsForwarder(
+                resolver = InetSocketAddress(InetAddress.getLoopbackAddress(), udpServer.localPort),
+                socketProtector = UdpSocketProtector { true },
+                policyEngine = DnsPolicyEngine(emptySet()),
+                timeoutMillis = 2000,
+                tcpSocketProtector = TcpSocketProtector {
+                    tcpProtected.set(true)
+                    true
+                }
+            )
+            assertContentEquals(completeResponse, forwarder.forward(query))
+            assertTrue(tcpProtected.get(), "TCP fallback socket must be protected before connect")
+            serverThread.join(3000)
+            assertTrue(!serverThread.isAlive, "DNS test server thread did not finish")
+            serverFailure.get()?.let { throw AssertionError("DNS test server failed", it) }
+        } finally {
+            udpServer.close()
+            tcpServer.close()
+            serverThread.join(3000)
+        }
+    }
+
+    @Test
     fun refusesToForwardBlockedQuery() {
         val forwarder = UdpDnsForwarder(
             resolver = InetSocketAddress(InetAddress.getLoopbackAddress(), 9),
@@ -90,12 +161,12 @@ class UdpDnsForwarderTest {
         val response = dnsResponse(query)
         response[7] = 1 // ANCOUNT = 1
         val truncatedRecord = byteArrayOf(
-            0xc0.toByte(), 0x0c, // owner name points at QNAME
-            0, 1,                 // TYPE = A
-            0, 1,                 // CLASS = IN
-            0, 0, 0, 60,           // TTL
-            0, 4,                 // RDLENGTH = 4
-            192.toByte(), 0        // only two RDATA bytes supplied
+            0xc0.toByte(), 0x0c,
+            0, 1,
+            0, 1,
+            0, 0, 0, 60,
+            0, 4,
+            192.toByte(), 0
         )
         val failure = forwardWithResponse(query, response + truncatedRecord)
         assertEquals("DNS resource record data is truncated", failure.message)

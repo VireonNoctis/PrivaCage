@@ -1,26 +1,35 @@
 package org.privacage.dns
 
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
+import java.net.Socket
 
 /** Callback used by Android integration to call VpnService.protect(socket). */
 fun interface UdpSocketProtector {
     fun protect(socket: DatagramSocket): Boolean
 }
 
+/** TCP counterpart to [UdpSocketProtector], used only for DNS truncation fallback. */
+fun interface TcpSocketProtector {
+    fun protect(socket: Socket): Boolean
+}
+
 /**
- * One-query UDP DNS forwarder with bounded wait time and response structure checks.
+ * UDP DNS forwarder with bounded waits, response structure checks, and TCP fallback for TC replies.
  *
- * The caller supplies a socket protector so the upstream socket can bypass the local VPN
- * interface. The class does not create a VPN or handle TCP DNS fallback.
+ * A caller-supplied protector must be provided for TCP fallback; without it, a truncated UDP
+ * response fails explicitly rather than opening a socket that could loop back through a VPN.
  */
 class UdpDnsForwarder(
     private val resolver: InetSocketAddress,
     private val socketProtector: UdpSocketProtector,
     private val policyEngine: DnsPolicyEngine,
-    private val timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS
+    private val timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
+    private val tcpSocketProtector: TcpSocketProtector? = null
 ) {
 
     init {
@@ -40,7 +49,7 @@ class UdpDnsForwarder(
         if (query.size > MAX_UDP_DNS_PAYLOAD) throw IOException("DNS query exceeds UDP payload limit")
         val expectedQuestion = readSupportedQuery(query)
 
-        DatagramSocket().use { socket ->
+        val udpResponse = DatagramSocket().use { socket ->
             if (!socketProtector.protect(socket)) {
                 throw IOException("Failed to protect upstream DNS socket from VPN routing")
             }
@@ -52,9 +61,46 @@ class UdpDnsForwarder(
             val buffer = ByteArray(MAX_UDP_DNS_PAYLOAD)
             val incoming = DatagramPacket(buffer, buffer.size)
             socket.receive(incoming)
+            buffer.copyOf(incoming.length)
+        }
 
-            val response = buffer.copyOf(incoming.length)
-            validateResponse(query, expectedQuestion, response)
+        return if (validateResponse(query, expectedQuestion, udpResponse)) {
+            forwardOverTcp(query, expectedQuestion)
+        } else {
+            udpResponse
+        }
+    }
+
+    private fun forwardOverTcp(query: ByteArray, expectedQuestion: DnsQuestionView): ByteArray {
+        val protector = tcpSocketProtector
+            ?: throw IOException("Upstream DNS response is truncated and TCP fallback is not configured")
+
+        Socket().use { socket ->
+            if (!protector.protect(socket)) {
+                throw IOException("Failed to protect upstream TCP DNS socket from VPN routing")
+            }
+
+            socket.connect(resolver, timeoutMillis)
+            socket.soTimeout = timeoutMillis
+            val output = DataOutputStream(socket.getOutputStream())
+            output.writeShort(query.size)
+            output.write(query)
+            output.flush()
+
+            val input = DataInputStream(socket.getInputStream())
+            val responseLength = input.readUnsignedShort()
+            if (responseLength < DNS_HEADER_SIZE) {
+                throw IOException("TCP DNS response is shorter than the DNS header")
+            }
+            if (responseLength > MAX_UDP_DNS_PAYLOAD) {
+                throw IOException("TCP DNS response is too large to return to the UDP client")
+            }
+
+            val response = ByteArray(responseLength)
+            input.readFully(response)
+            if (validateResponse(query, expectedQuestion, response)) {
+                throw IOException("TCP DNS response is still marked truncated")
+            }
             return response
         }
     }
@@ -69,11 +115,12 @@ class UdpDnsForwarder(
         }
     }
 
+    /** Returns true when the response's TC flag requires TCP fallback. */
     private fun validateResponse(
         query: ByteArray,
         expectedQuestion: DnsQuestionView,
         response: ByteArray
-    ) {
+    ): Boolean {
         if (response.size < DNS_HEADER_SIZE) throw IOException("DNS response header is truncated")
         if (u16(response, 0) != u16(query, 0)) throw IOException("DNS response ID does not match query")
         val flags = u16(response, 2)
@@ -99,10 +146,12 @@ class UdpDnsForwarder(
         if (offset != response.size) {
             throw IOException("DNS response contains trailing bytes after its resource records")
         }
+        return (flags and FLAG_TC) != 0
     }
 
     private fun readResponseQuestion(message: ByteArray): ParsedResponseQuestion {
         val parsedName = readDnsName(message, DNS_HEADER_SIZE, requirePrintableAscii = true)
+        if (parsedName.name.isEmpty()) throw IOException("DNS response question name is empty")
         val offset = parsedName.nextOffset
         if (offset + DNS_QUESTION_TAIL_SIZE > message.size) {
             throw IOException("DNS response question is incomplete")
@@ -152,13 +201,12 @@ class UdpDnsForwarder(
         var offset = start
         var nextOffset = -1
         var expandedLength = 1
-        val visitedOffsets = BooleanArray(message.size)
+        val visitedOffsets = HashSet<Int>()
         val labels = ArrayList<String>()
 
         while (true) {
             if (offset !in message.indices) throw IOException("DNS name is truncated")
-            if (visitedOffsets[offset]) throw IOException("DNS compression pointer loop detected")
-            visitedOffsets[offset] = true
+            if (!visitedOffsets.add(offset)) throw IOException("DNS compression pointer loop detected")
 
             val length = message[offset].toInt() and 0xff
             when {
@@ -224,6 +272,7 @@ class UdpDnsForwarder(
         private const val MAX_DNS_NAME_LENGTH = 255
         private const val CLASS_IN = 1
         private const val FLAG_QR = 0x8000
+        private const val FLAG_TC = 0x0200
         private const val FLAG_RD = 0x0100
         private const val OPCODE_MASK = 0x7800
         private const val COMPRESSION_MASK = 0xc0

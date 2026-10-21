@@ -14,6 +14,7 @@ import org.privacage.dns.DnsPacketProcessor
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsTunnelEngine
 import org.privacage.dns.DnsTunnelResult
+import org.privacage.dns.TcpSocketProtector
 import org.privacage.dns.UdpDnsForwarder
 import org.privacage.dns.UdpSocketProtector
 import java.io.FileInputStream
@@ -22,6 +23,7 @@ import java.io.IOException
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
 
 class PrivacyDnsVpnService : VpnService() {
     @Volatile private var running = false
@@ -46,7 +48,8 @@ class PrivacyDnsVpnService : VpnService() {
             val forwarder = UdpDnsForwarder(
                 resolver,
                 UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
-                policy
+                policy,
+                tcpSocketProtector = TcpSocketProtector { socket: Socket -> protect(socket) }
             )
             val engine = DnsTunnelEngine(DnsPacketProcessor(policy), forwarder)
             val descriptor = Builder()
@@ -98,7 +101,17 @@ class PrivacyDnsVpnService : VpnService() {
                 if (count < 0) break
                 if (count == 0) continue
 
-                when (val result = engine.processIpv4Packet(buffer.copyOf(count))) {
+                val result = try {
+                    engine.processIpv4Packet(buffer.copyOf(count))
+                } catch (exception: IOException) {
+                    if (running) {
+                        // An upstream timeout should drop one DNS request, not tear down the VPN.
+                        Log.w(TAG, "Upstream DNS request failed; dropping this query while keeping the tunnel active.", exception)
+                    }
+                    continue
+                }
+
+                when (result) {
                     is DnsTunnelResult.Response -> {
                         output.write(result.packet)
                         output.flush()
@@ -113,8 +126,8 @@ class PrivacyDnsVpnService : VpnService() {
             }
         } catch (exception: IOException) {
             if (running) {
-                failureMessage = "DNS filtering stopped after a tunnel or upstream I/O error."
-                Log.e(TAG, "DNS packet loop stopped after an I/O failure", exception)
+                failureMessage = "DNS filtering stopped after a tunnel I/O error."
+                Log.e(TAG, "DNS packet loop stopped after a tunnel I/O failure", exception)
             }
         } catch (exception: RuntimeException) {
             failureMessage = "DNS filtering stopped after an internal packet-processing error."
