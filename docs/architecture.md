@@ -20,11 +20,19 @@ If a platform does not expose an event, show that monitoring is unavailable or l
 
 Events should distinguish observed facts, static indicators, inferences, enforcement results, and unknowns. Every event should include a timestamp, platform/source, event type, relevant app identity where the OS supplies it, decision/result where applicable, and evidence provenance. Do not store packet payloads by default.
 
-## Android first slice
+## Android DNS slice
 
-The current Kotlin/JVM components include a DNS policy evaluator, IPv4 UDP packet codec, packet processor, one-query UDP forwarder, and a packet-to-packet coordinator. For a supplied IPv4 UDP DNS packet, the coordinator can return a REFUSED reply for a blocked domain or forward an allowed query to a configured resolver and wrap the response in a packet. The forwarder uses a caller-supplied socket-protection callback and validates response ID/question identity. No Android service currently wires that callback to VpnService.protect, reads the TUN interface, or writes replies to a device.
+The Kotlin/JVM core includes a DNS policy evaluator, IPv4 UDP packet codec, packet processor, one-query UDP forwarder, and packet-to-packet coordinator. The initial Android app now provides a user-configured `VpnService` adapter around that core:
 
-Before calling the Android feature functional, it must establish a user-approved VpnService TUN interface and real packet loop; enforce user-selected domain rules; forward allowed queries to a configured resolver; support UDP and TCP DNS, define IPv6 behavior, preserve packet IDs, ports, checksums, and response routing; handle cancellation, VPN revocation, network changes, captive portals, and failure recovery; and test on emulator/device. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
+- The user explicitly approves VPN access and enters a numeric IPv4 resolver plus one or more domain rules.
+- The service creates a TUN interface with a virtual DNS endpoint and routes only that endpoint into the interface.
+- A blocking packet loop sends supported IPv4 UDP DNS queries through the policy engine and writes blocked REFUSED replies or successfully forwarded responses back to the TUN.
+- The upstream UDP socket is passed to `VpnService.protect` to avoid routing the resolver connection back into the VPN.
+- Settings are stored locally. DNS query names are not logged.
+
+This is an early implementation, not release-verified. The app does not load the shared tracker database; its rule list consists only of domains entered by the user. It currently supports IPv4 UDP DNS only. It does not handle DNS-over-TCP or TCP fallback for truncated UDP responses, IPv6 DNS, DoH, DoT, DoQ, app attribution, or HTTPS payload inspection. Queries are processed sequentially, and no emulator or physical-device test has yet verified routing, lifecycle behavior, or resolver interoperability. These limitations must remain visible until tested and implemented.
+
+The next Android work should focus on a reproducible build, unit/integration tests, and emulator/device validation of VPN authorization, route behavior, packet read/write, revocation, network transitions, resolver failure, and stopping the service. Then add TCP DNS handling and a deliberate IPv6 strategy before expanding the feature claim. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
 
 Do not add permission interception, fake-data injection, or arbitrary sensor monitoring until a supported API or explicitly gated rooted extension actually implements it.
 
