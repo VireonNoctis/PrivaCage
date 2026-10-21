@@ -78,15 +78,50 @@ class UdpDnsForwarderTest {
     @Test
     fun rejectsResponseWithMismatchedQuestion() {
         val query = dnsQuery("news.example.org")
+        val wrongQuestion = dnsResponse(query)
+        wrongQuestion[13] = 'm'.code.toByte()
+        val failure = forwardWithResponse(query, wrongQuestion)
+        assertEquals("DNS response question does not match query", failure.message)
+    }
+
+    @Test
+    fun rejectsResponseWithTruncatedResourceRecordData() {
+        val query = dnsQuery("news.example.org")
+        val response = dnsResponse(query)
+        response[7] = 1 // ANCOUNT = 1
+        val truncatedRecord = byteArrayOf(
+            0xc0.toByte(), 0x0c, // owner name points at QNAME
+            0, 1,                 // TYPE = A
+            0, 1,                 // CLASS = IN
+            0, 0, 0, 60,           // TTL
+            0, 4,                 // RDLENGTH = 4
+            192.toByte(), 0        // only two RDATA bytes supplied
+        )
+        val failure = forwardWithResponse(query, response + truncatedRecord)
+        assertEquals("DNS resource record data is truncated", failure.message)
+    }
+
+    @Test
+    fun rejectsTrailingBytesAfterDeclaredResourceRecords() {
+        val query = dnsQuery("news.example.org")
+        val response = dnsResponse(query) + byteArrayOf(0x55)
+        val failure = forwardWithResponse(query, response)
+        assertEquals("DNS response contains trailing bytes after its resource records", failure.message)
+    }
+
+    private fun forwardWithResponse(query: ByteArray, response: ByteArray): IOException {
         val server = DatagramSocket(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
         server.soTimeout = 3000
+        val serverFailure = AtomicReference<Throwable?>(null)
         val serverThread = Thread {
-            val buffer = ByteArray(2048)
-            val incoming = DatagramPacket(buffer, buffer.size)
-            server.receive(incoming)
-            val wrongQuestion = dnsResponse(query)
-            wrongQuestion[13] = 'm'.code.toByte()
-            server.send(DatagramPacket(wrongQuestion, wrongQuestion.size, incoming.socketAddress))
+            try {
+                val buffer = ByteArray(2048)
+                val incoming = DatagramPacket(buffer, buffer.size)
+                server.receive(incoming)
+                server.send(DatagramPacket(response, response.size, incoming.socketAddress))
+            } catch (failure: Throwable) {
+                serverFailure.set(failure)
+            }
         }
         serverThread.start()
 
@@ -98,8 +133,10 @@ class UdpDnsForwarderTest {
                 timeoutMillis = 2000
             )
             val failure = assertFailsWith<IOException> { forwarder.forward(query) }
-            assertEquals("DNS response question does not match query", failure.message)
             serverThread.join(3000)
+            assertTrue(!serverThread.isAlive, "DNS test server thread did not finish")
+            serverFailure.get()?.let { throw AssertionError("DNS test server failed", it) }
+            return failure
         } finally {
             server.close()
             serverThread.join(3000)
