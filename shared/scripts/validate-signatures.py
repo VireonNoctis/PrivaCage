@@ -128,7 +128,7 @@ def validate_database(document: object) -> list[str]:
                 require(isinstance(description, str) and bool(description)
                         and description.strip() == description,
                         f"{source_context}.description must be non-empty trimmed text")
-    except (ValidationFailure, KeyError, TypeError) as exc:
+    except (ValidationFailure, KeyError, TypeError, ValueError) as exc:
         return [str(exc)]
     return []
 
