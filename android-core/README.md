@@ -13,19 +13,20 @@ This is an isolated Kotlin/JVM policy library, not an Android application or VPN
 - Builds IPv4 UDP replies with reversed endpoints and recalculated checksums.
 - Builds DNS REFUSED replies for valid supported queries while preserving the question and omitting additional records.
 - Connects the policy evaluator and packet codec in a processor: blocked queries become actual reply packets, malformed queries are dropped, and allowed queries are explicitly returned as requiring forwarding.
+- Provides a one-query UDP DNS forwarder that enforces the same policy, invokes a caller-supplied socket-protection callback, applies a bounded timeout, and checks the response ID and echoed question.
 
-The packet processor and codec are pure JVM components. They do not read from a TUN interface, forward allowed DNS queries, start an Android service, or enforce traffic policy. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
+The policy engine, packet processor, codec, and UDP forwarder are pure JVM components. The forwarder opens a real UDP socket when called, but no Android service currently supplies VpnService.protect or routes device queries into it. None of these components reads from a TUN interface or enforces traffic policy on a device. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
 
 ## Current limits
 
-- These components do not capture device traffic, open sockets, forward allowed DNS queries, create a VPN tunnel, or block packets at the device level. The processor can build a REFUSED reply packet, but no service currently writes it to a device.
+- The policy processor and codec do not capture device traffic or write packets to a device. The UDP forwarder can send allowed queries to a configured resolver, but only when explicitly called with a working socket-protection callback. No Android service currently wires these components together.
 - It does not load or update the production tracker database.
 - It does not identify which app made a query.
 - It rejects compressed question names, multiple questions, answer/authority records, more than one additional record, non-OPT additional records, non-IN question classes, non-ASCII hostnames, and EDNS versions other than 0.
 - It does not filter DNS-over-HTTPS, DNS-over-TLS, or DNS-over-QUIC.
 - It has not been tested on a physical Android device.
 
-The next integration stage still needs a real Android VpnService, a TUN read/write loop, protected upstream resolver sockets, forwarding of allowed queries, UDP and TCP DNS behavior, IPv6 strategy, cancellation and network-change handling, and emulator/device tests. RFC 7766 requires general-purpose DNS implementations to support both UDP and TCP, so TCP DNS must not be silently treated as covered by this UDP codec.
+The next integration stage still needs a real Android VpnService, a TUN read/write loop, a VpnService.protect-backed socket callback, UDP/TCP DNS handling (including TCP fallback), IPv6 strategy, cancellation and network-change handling, and emulator/device tests. The current forwarder is UDP-only and validates response identity/question, not every answer-record structure. RFC 7766 requires general-purpose DNS implementations to support both UDP and TCP, so TCP DNS must not be silently treated as covered by this UDP codec.
 
 ## Run tests
 
