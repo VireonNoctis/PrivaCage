@@ -22,9 +22,9 @@ Events should distinguish observed facts, static indicators, inferences, enforce
 
 ## Android first slice
 
-The first functional Android network feature should be a DNS-level filter implemented in a user-approved VpnService, not a claim of arbitrary API-call monitoring.
+The current Kotlin/JVM components are preparatory only: a DNS policy evaluator and an IPv4 UDP packet codec. The codec validates IPv4 and UDP lengths/checksums, rejects fragmented IPv4 packets, and can construct a DNS REFUSED reply. It does not open a TUN interface, forward allowed requests, or send replies.
 
-Before calling it functional, it must establish a TUN interface and real packet loop; parse and validate supported IP/UDP/TCP traffic; handle malformed DNS safely; enforce user-selected domain rules; route permitted requests to a configured resolver; preserve packet IDs, ports, checksums, and response routing; test IPv4/IPv6, VPN interruption, network changes, captive portals, and failure recovery; and explain encrypted-DNS limitations.
+Before calling the Android feature functional, it must establish a user-approved VpnService TUN interface and real packet loop; enforce user-selected domain rules; forward allowed queries to a configured resolver; support UDP and TCP DNS, define IPv6 behavior, preserve packet IDs, ports, checksums, and response routing; handle cancellation, VPN revocation, network changes, captive portals, and failure recovery; and test on emulator/device. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
 
 Do not add permission interception, fake-data injection, or arbitrary sensor monitoring until a supported API or explicitly gated rooted extension actually implements it.
 
