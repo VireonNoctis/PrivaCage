@@ -8,12 +8,13 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-This repository is at the foundation stage. The first implementation establishes evidence requirements and validation for tracker intelligence. It does not yet contain a functioning mobile app, VPN packet engine, live activity monitor, permission controller, or deletion-request sender.
+The repository contains the evidence-first tracker intelligence foundation and an isolated, tested-by-design Kotlin/JVM DNS policy component. It is not yet a functioning mobile app or device-wide network blocker.
 
 | Area | Status | Honest scope |
 |---|---|---|
 | Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
-| Android local network filtering | Planned | Requires a real VpnService tunnel, DNS parsing, rule enforcement, and device/emulator tests |
+| Android DNS policy core | Initial implementation | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions; does not capture or block device traffic |
+| Android local network filtering | Not implemented | Requires a real VpnService tunnel, DNS transport, response synthesis, lifecycle handling, and device/emulator tests |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
@@ -40,22 +41,28 @@ This repository is at the foundation stage. The first implementation establishes
 
 ## Repository map
 
-- docs/architecture.md — system boundaries and data flow.
-- docs/threat-model.md — assets, threats, and non-goals.
-- docs/privacy-opportunity-backlog.md — candidate features grounded in real capabilities.
-- docs/research-notes/privacy-concerns.md — sourced privacy concerns and platform constraints.
-- CONTRIBUTING.md — evidence and review requirements.
-- shared/tracker-db/schema.md — tracker database contract.
-- shared/tracker-db/signatures.json — currently empty, valid database.
-- shared/scripts/validate-signatures.py — standard-library validator.
-- tests/test_validate_signatures.py — regression tests.
+- `docs/architecture.md` — system boundaries and data flow.
+- `docs/threat-model.md` — assets, threats, and non-goals.
+- `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
+- `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
+- `CONTRIBUTING.md` — evidence and review requirements.
+- `android-core/` — isolated Kotlin/JVM DNS policy evaluator, tests, and Gradle configuration.
+- `shared/tracker-db/schema.md` — tracker database contract.
+- `shared/tracker-db/signatures.json` — currently empty, valid database.
+- `shared/scripts/validate-signatures.py` — standard-library validator.
+- `tests/test_validate_signatures.py` — regression tests.
 
 ## Run checks locally
 
-Requires Python 3.11 or newer. The validator and tests use only the Python standard library.
+Requires Python 3.11 or newer. The tracker validator and tests use only the Python standard library.
 
     python shared/scripts/validate-signatures.py
     python -m unittest discover -s tests -v
+
+The Android DNS core separately requires JDK 17 and Gradle:
+
+    cd android-core
+    gradle test
 
 An empty tracker database is valid. It is safer to ship zero verified entries than to pretend an invented or weakly sourced list is reliable.
 
