@@ -37,6 +37,20 @@ class DnsPolicyEngineTest {
     }
 
     @Test
+    fun acceptsWellFormedEdnsOptRecord() {
+        val result = DnsPolicyEngine(setOf("tracker.example")).evaluate(queryWithEdns("tracker.example"))
+        val blocked = assertIs<DnsDecision.Block>(result)
+        assertEquals("tracker.example", blocked.question.name)
+    }
+
+    @Test
+    fun acceptsEdnsOptWithNoOptions() {
+        assertIs<DnsDecision.Allow>(
+            DnsPolicyEngine(emptySet()).evaluate(queryWithEdns("news.example.org", optionData = byteArrayOf()))
+        )
+    }
+
+    @Test
     fun rejectsTruncatedHeader() {
         val result = DnsPolicyEngine(setOf("tracker.example")).evaluate(ByteArray(4))
         assertIs<DnsDecision.Malformed>(result)
@@ -55,6 +69,32 @@ class DnsPolicyEngineTest {
         message[12] = 0xc0.toByte()
         message[13] = 0x0c
         assertIs<DnsDecision.Malformed>(DnsPolicyEngine(setOf("tracker.example")).evaluate(message))
+    }
+
+    @Test
+    fun rejectsEdnsOptionWithTruncatedData() {
+        val malformedOption = byteArrayOf(0, 1, 0, 4, 1, 2)
+        val result = DnsPolicyEngine(emptySet()).evaluate(
+            queryWithEdns("news.example.org", optionData = malformedOption)
+        )
+        assertIs<DnsDecision.Malformed>(result)
+    }
+
+    @Test
+    fun rejectsUnsupportedEdnsVersion() {
+        val message = queryWithEdns("news.example.org")
+        val optStart = questionEnd(message)
+        message[optStart + 1 + 5] = 1
+        assertIs<DnsDecision.Malformed>(DnsPolicyEngine(emptySet()).evaluate(message))
+    }
+
+    @Test
+    fun rejectsNonOptAdditionalRecord() {
+        val message = queryWithEdns("news.example.org")
+        val optStart = questionEnd(message)
+        message[optStart + 1] = 0
+        message[optStart + 2] = 1
+        assertIs<DnsDecision.Malformed>(DnsPolicyEngine(emptySet()).evaluate(message))
     }
 
     @Test
@@ -90,5 +130,31 @@ class DnsPolicyEngineTest {
             0x00, 0x01
         )
         return header + qname.toByteArray() + questionTail
+    }
+
+    private fun queryWithEdns(
+        name: String,
+        optionData: ByteArray = byteArrayOf(0xfd.toByte(), 0xe9.toByte(), 0, 2, 1, 2)
+    ): ByteArray {
+        val base = query(name)
+        base[10] = 0
+        base[11] = 1
+        val optRecord = byteArrayOf(
+            0,                         // root owner name
+            0, 41,                      // TYPE = OPT
+            0x04, 0xd0.toByte(),        // advertised UDP payload size = 1232
+            0, 0, 0x80.toByte(), 0,      // extended RCODE, version, flags (DO bit)
+            ((optionData.size shr 8) and 0xff).toByte(),
+            (optionData.size and 0xff).toByte()
+        ) + optionData
+        return base + optRecord
+    }
+
+    private fun questionEnd(message: ByteArray): Int {
+        var offset = 12
+        while (message[offset].toInt() != 0) {
+            offset += (message[offset].toInt() and 0xff) + 1
+        }
+        return offset + 1 + 4
     }
 }
