@@ -54,8 +54,13 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         if ((flags and FLAG_RESERVED_Z) != 0) throw DnsFormatException("Reserved DNS header bit is set")
 
         if (u16(message, 4) != 1) throw DnsFormatException("Exactly one DNS question is required")
-        if (u16(message, 6) != 0 || u16(message, 8) != 0 || u16(message, 10) != 0) {
-            throw DnsFormatException("A query must not contain answer, authority, or additional records")
+        if (u16(message, 6) != 0 || u16(message, 8) != 0) {
+            throw DnsFormatException("A query must not contain answer or authority records")
+        }
+
+        val additionalCount = u16(message, 10)
+        if (additionalCount > 1) {
+            throw DnsFormatException("Only one additional OPT record is supported")
         }
 
         var offset = DNS_HEADER_SIZE
@@ -90,8 +95,13 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         val qtype = u16(message, offset)
         val qclass = u16(message, offset + 2)
         if (qclass != CLASS_IN) throw DnsFormatException("Only IN-class DNS questions are supported")
-        if (offset + 4 != message.size) {
-            throw DnsFormatException("Trailing records or bytes are not supported by this policy core")
+        offset += 4
+
+        when (additionalCount) {
+            0 -> if (offset != message.size) {
+                throw DnsFormatException("Trailing records or bytes are not supported by this policy core")
+            }
+            1 -> parseOptRecord(message, offset)
         }
 
         return DnsQuestionView(
@@ -102,6 +112,52 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         )
     }
 
+    /**
+     * Validates the single EDNS(0) OPT pseudo-record without interpreting option payloads.
+     * Unknown option codes are intentionally opaque; their declared lengths must still be valid.
+     */
+    private fun parseOptRecord(message: ByteArray, start: Int) {
+        if (start >= message.size) throw DnsFormatException("EDNS OPT record is truncated")
+        if ((message[start].toInt() and 0xff) != 0) {
+            throw DnsFormatException("EDNS OPT owner name must be the root")
+        }
+
+        val fixedStart = start + 1
+        if (fixedStart + OPT_FIXED_SIZE > message.size) {
+            throw DnsFormatException("EDNS OPT fixed fields are truncated")
+        }
+        if (u16(message, fixedStart) != TYPE_OPT) {
+            throw DnsFormatException("The additional record must be an EDNS OPT record")
+        }
+
+        // CLASS is the sender's advertised UDP payload size. The policy engine does not
+        // choose a transport size, so it validates the record structure but does not use it.
+        val version = message[fixedStart + 5].toInt() and 0xff
+        if (version != EDNS_VERSION_0) {
+            throw DnsFormatException("Unsupported EDNS version: $version")
+        }
+
+        val dataLength = u16(message, fixedStart + 8)
+        val dataStart = fixedStart + OPT_FIXED_SIZE
+        val dataEnd = dataStart + dataLength
+        if (dataEnd != message.size) {
+            throw DnsFormatException("EDNS OPT RDATA length does not match the message")
+        }
+
+        var optionOffset = dataStart
+        while (optionOffset < dataEnd) {
+            if (optionOffset + OPT_OPTION_HEADER_SIZE > dataEnd) {
+                throw DnsFormatException("EDNS option header is truncated")
+            }
+            val optionLength = u16(message, optionOffset + 2)
+            optionOffset += OPT_OPTION_HEADER_SIZE
+            if (optionOffset + optionLength > dataEnd) {
+                throw DnsFormatException("EDNS option data is truncated")
+            }
+            optionOffset += optionLength
+        }
+    }
+
     private fun u16(bytes: ByteArray, offset: Int): Int =
         ((bytes[offset].toInt() and 0xff) shl 8) or (bytes[offset + 1].toInt() and 0xff)
 
@@ -109,11 +165,15 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
 
     companion object {
         private const val DNS_HEADER_SIZE = 12
+        private const val OPT_FIXED_SIZE = 10
+        private const val OPT_OPTION_HEADER_SIZE = 4
         private const val FLAG_QR = 0x8000
         private const val FLAG_RD = 0x0100
         private const val FLAG_RESERVED_Z = 0x0040
         private const val OPCODE_MASK = 0x7800
         private const val CLASS_IN = 1
+        private const val TYPE_OPT = 41
+        private const val EDNS_VERSION_0 = 0
     }
 }
 
