@@ -33,6 +33,7 @@ class PrivacyDnsVpnService : VpnService() {
             return START_NOT_STICKY
         }
         if (running) return START_NOT_STICKY
+
         try {
             val prefs = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
             val resolverText = prefs.getString(KEY_RESOLVER_IP, "").orEmpty()
@@ -58,8 +59,8 @@ class PrivacyDnsVpnService : VpnService() {
                 .establish() ?: throw IOException("Android refused to establish the VPN interface")
 
             tunnel = descriptor
-            startVpnForeground()
             running = true
+            startVpnForeground()
             Thread({ pumpPackets(descriptor, engine) }, "PrivaCage-DNS-TUN").apply {
                 isDaemon = true
                 start()
@@ -69,7 +70,7 @@ class PrivacyDnsVpnService : VpnService() {
             running = false
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            postFailureNotification()
+            postFailureNotification("DNS filtering could not start. Check configuration and Android VPN permissions.")
             stopSelf(startId)
         }
         return START_NOT_STICKY
@@ -89,36 +90,40 @@ class PrivacyDnsVpnService : VpnService() {
         val input = FileInputStream(descriptor.fileDescriptor)
         val output = FileOutputStream(descriptor.fileDescriptor)
         val buffer = ByteArray(MAX_IP_PACKET_SIZE)
-        var failed = false
+        var failureMessage: String? = null
+
         try {
             while (running) {
                 val count = input.read(buffer)
                 if (count < 0) break
                 if (count == 0) continue
+
                 when (val result = engine.processIpv4Packet(buffer.copyOf(count))) {
                     is DnsTunnelResult.Response -> {
                         output.write(result.packet)
                         output.flush()
                     }
-                    is DnsTunnelResult.Drop -> Log.w(TAG, "Dropped malformed/unsupported DNS packet: " + result.reason)
+                    is DnsTunnelResult.Drop -> {
+                        Log.w(TAG, "Dropped malformed/unsupported DNS packet: " + result.reason)
+                    }
                     is DnsTunnelResult.NotDns -> {
-                        // Only the virtual DNS endpoint is routed into this TUN.
+                        // The VPN route is limited to the virtual DNS endpoint.
                     }
                 }
             }
         } catch (exception: IOException) {
             if (running) {
-                failed = true
+                failureMessage = "DNS filtering stopped after a tunnel or upstream I/O error."
                 Log.e(TAG, "DNS packet loop stopped after an I/O failure", exception)
             }
         } catch (exception: RuntimeException) {
-            failed = true
+            failureMessage = "DNS filtering stopped after an internal packet-processing error."
             Log.e(TAG, "DNS packet loop stopped after a processing failure", exception)
         } finally {
             running = false
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            if (failed) postFailureNotification()
+            if (failureMessage != null) postFailureNotification(failureMessage)
             stopSelf()
         }
     }
@@ -127,7 +132,8 @@ class PrivacyDnsVpnService : VpnService() {
         createNotificationChannel()
         val notification = buildNotification(
             "DNS filtering active",
-            "Filtering configured domains using the resolver you selected."
+            "Filtering configured domains using the resolver you selected.",
+            ongoing = true
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
@@ -136,15 +142,15 @@ class PrivacyDnsVpnService : VpnService() {
         }
     }
 
-    private fun postFailureNotification() {
+    private fun postFailureNotification(message: String) {
         createNotificationChannel()
         getSystemService(NotificationManager::class.java).notify(
             NOTIFICATION_ID,
-            buildNotification("DNS filtering stopped", "An I/O or processing error stopped the tunnel.")
+            buildNotification("DNS filtering stopped", message, ongoing = false)
         )
     }
 
-    private fun buildNotification(title: String, message: String): Notification {
+    private fun buildNotification(title: String, message: String, ongoing: Boolean): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -154,7 +160,7 @@ class PrivacyDnsVpnService : VpnService() {
             .setContentTitle(title)
             .setContentText(message)
             .setContentIntent(pendingIntent)
-            .setOngoing(running)
+            .setOngoing(ongoing)
             .build()
     }
 
