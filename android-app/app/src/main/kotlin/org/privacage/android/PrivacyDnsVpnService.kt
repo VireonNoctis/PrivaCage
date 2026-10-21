@@ -1,0 +1,208 @@
+package org.privacage.android
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.VpnService
+import android.os.Build
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import org.privacage.dns.DnsPacketProcessor
+import org.privacage.dns.DnsPolicyEngine
+import org.privacage.dns.DnsTunnelEngine
+import org.privacage.dns.DnsTunnelResult
+import org.privacage.dns.UdpDnsForwarder
+import org.privacage.dns.UdpSocketProtector
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+
+class PrivacyDnsVpnService : VpnService() {
+    @Volatile private var running = false
+    @Volatile private var tunnel: ParcelFileDescriptor? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action != ACTION_START) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (running) return START_NOT_STICKY
+        try {
+            val prefs = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+            val resolverText = prefs.getString(KEY_RESOLVER_IP, "").orEmpty()
+            val domains = prefs.getStringSet(KEY_BLOCKED_DOMAINS, emptySet()).orEmpty()
+            require(isIpv4Address(resolverText)) { "A numeric IPv4 resolver must be configured" }
+            require(domains.isNotEmpty()) { "At least one blocked domain must be configured" }
+
+            val policy = DnsPolicyEngine(domains)
+            val resolver = InetSocketAddress(InetAddress.getByName(resolverText), DNS_PORT)
+            val forwarder = UdpDnsForwarder(
+                resolver,
+                UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
+                policy
+            )
+            val engine = DnsTunnelEngine(DnsPacketProcessor(policy), forwarder)
+            val descriptor = Builder()
+                .setSession("PrivaCage DNS filtering")
+                .setMtu(1500)
+                .addAddress(VPN_INTERFACE_ADDRESS, 32)
+                .addDnsServer(VIRTUAL_DNS_ADDRESS)
+                .addRoute(VIRTUAL_DNS_ADDRESS, 32)
+                .setBlocking(true)
+                .establish() ?: throw IOException("Android refused to establish the VPN interface")
+
+            tunnel = descriptor
+            startVpnForeground()
+            running = true
+            Thread({ pumpPackets(descriptor, engine) }, "PrivaCage-DNS-TUN").apply {
+                isDaemon = true
+                start()
+            }
+        } catch (exception: Exception) {
+            Log.e(TAG, "DNS VPN could not start", exception)
+            running = false
+            closeTunnel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            postFailureNotification()
+            stopSelf(startId)
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onRevoke() {
+        stopVpn()
+        super.onRevoke()
+    }
+
+    override fun onDestroy() {
+        stopVpn()
+        super.onDestroy()
+    }
+
+    private fun pumpPackets(descriptor: ParcelFileDescriptor, engine: DnsTunnelEngine) {
+        val input = FileInputStream(descriptor.fileDescriptor)
+        val output = FileOutputStream(descriptor.fileDescriptor)
+        val buffer = ByteArray(MAX_IP_PACKET_SIZE)
+        var failed = false
+        try {
+            while (running) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                when (val result = engine.processIpv4Packet(buffer.copyOf(count))) {
+                    is DnsTunnelResult.Response -> {
+                        output.write(result.packet)
+                        output.flush()
+                    }
+                    is DnsTunnelResult.Drop -> Log.w(TAG, "Dropped malformed/unsupported DNS packet: " + result.reason)
+                    is DnsTunnelResult.NotDns -> {
+                        // Only the virtual DNS endpoint is routed into this TUN.
+                    }
+                }
+            }
+        } catch (exception: IOException) {
+            if (running) {
+                failed = true
+                Log.e(TAG, "DNS packet loop stopped after an I/O failure", exception)
+            }
+        } catch (exception: RuntimeException) {
+            failed = true
+            Log.e(TAG, "DNS packet loop stopped after a processing failure", exception)
+        } finally {
+            running = false
+            closeTunnel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            if (failed) postFailureNotification()
+            stopSelf()
+        }
+    }
+
+    private fun startVpnForeground() {
+        createNotificationChannel()
+        val notification = buildNotification(
+            "DNS filtering active",
+            "Filtering configured domains using the resolver you selected."
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun postFailureNotification() {
+        createNotificationChannel()
+        getSystemService(NotificationManager::class.java).notify(
+            NOTIFICATION_ID,
+            buildNotification("DNS filtering stopped", "An I/O or processing error stopped the tunnel.")
+        )
+    }
+
+    private fun buildNotification(title: String, message: String): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setContentIntent(pendingIntent)
+            .setOngoing(running)
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "PrivaCage DNS filtering", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+    }
+
+    private fun stopVpn() {
+        running = false
+        closeTunnel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+    }
+
+    @Synchronized
+    private fun closeTunnel() {
+        val active = tunnel
+        tunnel = null
+        try {
+            active?.close()
+        } catch (exception: IOException) {
+            Log.w(TAG, "Error while closing VPN descriptor", exception)
+        }
+    }
+
+    private fun isIpv4Address(value: String): Boolean {
+        val parts = value.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 && part.all(Char::isDigit) &&
+                (part.toIntOrNull()?.let { it in 0..255 } ?: false)
+        }
+    }
+
+    companion object {
+        const val PREFERENCES_NAME = "privacage_local_dns"
+        const val KEY_RESOLVER_IP = "resolver_ipv4"
+        const val KEY_BLOCKED_DOMAINS = "blocked_domains"
+        const val ACTION_START = "org.privacage.android.action.START_DNS_VPN"
+        private const val TAG = "PrivaCageDnsVpn"
+        private const val CHANNEL_ID = "privacage_dns_filtering"
+        private const val NOTIFICATION_ID = 4108
+        private const val DNS_PORT = 53
+        private const val MAX_IP_PACKET_SIZE = 65_535
+        private const val VPN_INTERFACE_ADDRESS = "10.111.0.1"
+        private const val VIRTUAL_DNS_ADDRESS = "10.111.0.2"
+    }
+}

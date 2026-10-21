@@ -8,14 +8,15 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation and an isolated, tested-by-design Kotlin/JVM DNS policy component. It is not yet a functioning mobile app or device-wide network blocker.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android adapter is early and has not yet been verified on an emulator or physical device.
 
 | Area | Status | Honest scope |
 |---|---|---|
 | Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
-| Android DNS policy core | Initial implementation | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
-| Android DNS packet engine | Initial implementation | Can process a supplied IPv4 UDP DNS packet, return a REFUSED packet for blocked domains, and forward allowed queries through a protected UDP socket; not connected to a VPN service |
-| Android local network filtering | Not implemented | Requires a real VpnService, upstream forwarding, UDP/TCP handling, lifecycle integration, and device/emulator tests |
+| Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
+| Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, and forwards allowed queries through a protected UDP socket |
+| Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
+| Tracker list in app | Not yet integrated | User-entered domains are active; the shared tracker database is not loaded by the app |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
@@ -32,14 +33,6 @@ The repository contains the evidence-first tracker intelligence foundation and a
 - Reproducible and testable: data formats and security-sensitive rules require validation.
 - No paid placement in recommendations or tracker intelligence.
 
-## First milestone
-
-1. Define a versioned tracker format with source provenance and review dates.
-2. Validate records before they enter the shared database.
-3. Run validation and tests in continuous integration.
-4. Require evidence in contributions; do not populate the database with guesses.
-5. Use the database later in APK analysis and network filtering without treating a signature match as proof of exfiltration.
-
 ## Repository map
 
 - `docs/architecture.md` — system boundaries and data flow.
@@ -47,29 +40,33 @@ The repository contains the evidence-first tracker intelligence foundation and a
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-core/` — isolated Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, UDP DNS forwarder, packet-to-packet engine, tests, and Gradle configuration.
+- `android-app/` — early Android app, VPN service adapter, local rule configuration, and Android build workflow.
+- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, UDP forwarder, packet-to-packet engine, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — currently empty, valid database.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
 - `tests/test_validate_signatures.py` — regression tests.
 
-## Run checks locally
+## Build and test
 
-Requires Python 3.11 or newer. The tracker validator and tests use only the Python standard library.
+Requires Python 3.11 or newer for the tracker database validator/tests:
 
     python shared/scripts/validate-signatures.py
     python -m unittest discover -s tests -v
 
-The Android DNS core separately requires JDK 17 and Gradle:
+The Android app requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible:
 
-    cd android-core
-    gradle test
+    cd android-app
+    gradle assembleDebug
+    gradle :android-core:test
+
+The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
 An empty tracker database is valid. It is safer to ship zero verified entries than to pretend an invented or weakly sourced list is reliable.
 
 ## Platform reality
 
-- Android: a user-approved VpnService can route traffic through a local tunnel and enforce supported network rules. It does not grant visibility into arbitrary app internals, HTTPS payloads, every system service, or all OEM/baseband traffic. Only one ordinary VPN service can be active at a time.
+- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. This adapter only processes IPv4 UDP DNS sent to its virtual DNS endpoint. It does not handle DNS-over-TCP, IPv6 DNS, DoH/DoT/DoQ, HTTPS payloads, every system service, or all OEM/baseband traffic. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
 - Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
 - IP addresses: a remote endpoint ordinarily sees the public source IP of the network path reaching it. A VPN or proxy changes which intermediary sees that address; it shifts trust rather than making a connection inherently anonymous.
