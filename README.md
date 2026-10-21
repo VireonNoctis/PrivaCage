@@ -14,7 +14,7 @@ The repository contains the evidence-first tracker intelligence foundation and a
 |---|---|---|
 | Tracker intelligence format | Initial implementation | Evidence-backed records and a validator; no tracker entries ship until verified |
 | Android DNS policy core | Initial implementation | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
-| Android DNS policy and UDP transport | Initial implementation | Evaluates queries, builds REFUSED packets for blocked domains, and can forward allowed queries through a protected UDP socket; not connected to a VPN service |
+| Android DNS packet engine | Initial implementation | Can process a supplied IPv4 UDP DNS packet, return a REFUSED packet for blocked domains, and forward allowed queries through a protected UDP socket; not connected to a VPN service |
 | Android local network filtering | Not implemented | Requires a real VpnService, upstream forwarding, UDP/TCP handling, lifecycle integration, and device/emulator tests |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
@@ -47,7 +47,7 @@ The repository contains the evidence-first tracker intelligence foundation and a
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-core/` — isolated Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, UDP DNS forwarder, tests, and Gradle configuration.
+- `android-core/` — isolated Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, UDP DNS forwarder, packet-to-packet engine, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — currently empty, valid database.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
