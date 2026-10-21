@@ -74,7 +74,7 @@ class Ipv4UdpDnsPacketCodecTest {
         assertEquals(53000, u16(response, 22))
 
         val dnsOffset = 28
-        assertEquals(0x8005, u16(response, dnsOffset + 2))
+        assertEquals(0x8105, u16(response, dnsOffset + 2))
         assertEquals(1, u16(response, dnsOffset + 4))
         assertEquals(0, u16(response, dnsOffset + 6))
         assertEquals(0, u16(response, dnsOffset + 8))
@@ -89,7 +89,7 @@ class Ipv4UdpDnsPacketCodecTest {
         requireNotNull(response)
         assertEquals(0, u16(response, 10))
         assertEquals(query.size - 11, response.size)
-        assertEquals(0x8005, u16(response, 2))
+        assertEquals(0x8105, u16(response, 2))
     }
 
     @Test
