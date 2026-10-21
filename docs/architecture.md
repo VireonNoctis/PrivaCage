@@ -22,7 +22,7 @@ Events should distinguish observed facts, static indicators, inferences, enforce
 
 ## Android first slice
 
-The current Kotlin/JVM components are preparatory only: a DNS policy evaluator and an IPv4 UDP packet codec. The codec validates IPv4 and UDP lengths/checksums, rejects fragmented IPv4 packets, and can construct a DNS REFUSED reply. It does not open a TUN interface, forward allowed requests, or send replies.
+The current Kotlin/JVM components are preparatory only: a DNS policy evaluator, an IPv4 UDP packet codec, and a processor connecting them. The processor can return an actual REFUSED reply packet for a blocked domain, explicitly mark an allowed query as requiring forwarding, and drop malformed DNS. It does not open a TUN interface, forward allowed requests, or write replies to a device.
 
 Before calling the Android feature functional, it must establish a user-approved VpnService TUN interface and real packet loop; enforce user-selected domain rules; forward allowed queries to a configured resolver; support UDP and TCP DNS, define IPv6 behavior, preserve packet IDs, ports, checksums, and response routing; handle cancellation, VPN revocation, network changes, captive portals, and failure recovery; and test on emulator/device. Encrypted DNS protocols and direct-to-IP connections remain outside ordinary DNS filtering.
 
