@@ -4,7 +4,6 @@ import java.io.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
-import java.net.SocketTimeoutException
 
 /** Callback used by Android integration to call VpnService.protect(socket). */
 fun interface UdpSocketProtector {
@@ -20,6 +19,7 @@ fun interface UdpSocketProtector {
 class UdpDnsForwarder(
     private val resolver: InetSocketAddress,
     private val socketProtector: UdpSocketProtector,
+    private val policyEngine: DnsPolicyEngine,
     private val timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS
 ) {
 
@@ -51,11 +51,7 @@ class UdpDnsForwarder(
 
             val buffer = ByteArray(MAX_UDP_DNS_PAYLOAD)
             val incoming = DatagramPacket(buffer, buffer.size)
-            try {
-                socket.receive(incoming)
-            } catch (e: SocketTimeoutException) {
-                throw e
-            }
+            socket.receive(incoming)
 
             val response = buffer.copyOf(incoming.length)
             validateResponse(query, expectedQuestion, response)
@@ -64,9 +60,11 @@ class UdpDnsForwarder(
     }
 
     private fun readSupportedQuery(message: ByteArray): DnsQuestionView {
-        return when (val decision = DnsPolicyEngine(emptySet()).evaluate(message)) {
+        return when (val decision = policyEngine.evaluate(message)) {
             is DnsDecision.Allow -> decision.question
-            is DnsDecision.Block -> decision.question
+            is DnsDecision.Block -> throw IOException(
+                "Refusing to forward blocked DNS query matching rule: ${decision.matchedRule}"
+            )
             is DnsDecision.Malformed -> throw IOException("Refusing to forward malformed DNS query: ${decision.reason}")
         }
     }
