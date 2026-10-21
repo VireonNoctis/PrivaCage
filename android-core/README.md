@@ -14,12 +14,13 @@ This is an isolated Kotlin/JVM policy library, not an Android application or VPN
 - Builds DNS REFUSED replies for valid supported queries while preserving the question and omitting additional records.
 - Connects the policy evaluator and packet codec in a processor: blocked queries become actual reply packets, malformed queries are dropped, and allowed queries are explicitly returned as requiring forwarding.
 - Provides a one-query UDP DNS forwarder that enforces the same policy, invokes a caller-supplied socket-protection callback, applies a bounded timeout, and checks the response ID and echoed question.
+- Coordinates these pieces in a packet-to-packet engine: blocked queries return a REFUSED packet, allowed queries are forwarded and returned as response packets, malformed queries are dropped, and upstream I/O errors propagate to the caller.
 
-The policy engine, packet processor, codec, and UDP forwarder are pure JVM components. The forwarder opens a real UDP socket when called, but no Android service currently supplies VpnService.protect or routes device queries into it. None of these components reads from a TUN interface or enforces traffic policy on a device. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
+The policy engine, packet processor, codec, UDP forwarder, and packet-to-packet engine are pure JVM components. The forwarder opens a real UDP socket when called, but no Android service currently supplies VpnService.protect or routes device queries into it. None of these components reads from a TUN interface or enforces traffic policy on a device. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2). The parser accepts only EDNS version 0 and rejects malformed option lengths.
 
 ## Current limits
 
-- The policy processor and codec do not capture device traffic or write packets to a device. The UDP forwarder can send allowed queries to a configured resolver, but only when explicitly called with a working socket-protection callback. No Android service currently wires these components together.
+- The packet-to-packet engine can process a supplied IPv4 UDP DNS packet and return a response packet, but it does not read from or write to a TUN descriptor. The UDP forwarder can send allowed queries to a configured resolver when called with a working socket-protection callback. No Android service currently wires these components together.
 - It does not load or update the production tracker database.
 - It does not identify which app made a query.
 - It rejects compressed question names, multiple questions, answer/authority records, more than one additional record, non-OPT additional records, non-IN question classes, non-ASCII hostnames, and EDNS versions other than 0.
