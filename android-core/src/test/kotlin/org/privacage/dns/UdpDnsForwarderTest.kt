@@ -8,6 +8,7 @@ import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -96,7 +97,8 @@ class UdpDnsForwarderTest {
                 policyEngine = DnsPolicyEngine(emptySet()),
                 timeoutMillis = 2000
             )
-            assertFailsWith<IOException> { forwarder.forward(query) }
+            val failure = assertFailsWith<IOException> { forwarder.forward(query) }
+            assertEquals("DNS response question does not match query", failure.message)
             serverThread.join(3000)
         } finally {
             server.close()
