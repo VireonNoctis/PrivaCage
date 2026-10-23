@@ -18,7 +18,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust decrypt a shared test vector. No account, remote sync, or live DNS encryption |
-| APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
+| APK manifest audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; findings are not proof of runtime use or malicious behavior |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
 | Windows network controls | Planned | Explicit firewall rules require appropriate privileges |
@@ -44,7 +44,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, and Android build workflow.
+- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, user-selected offline APK manifest audit, and Android build workflow.
+- `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
@@ -84,7 +85,7 @@ The tracker validator checks structure and URL syntax and can enforce an evidenc
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
 - Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
 - IP addresses: a remote endpoint ordinarily sees the public source IP of the network path reaching it. A VPN or proxy changes which intermediary sees that address; it shifts trust rather than making a connection inherently anonymous.
-- Static analysis: a permission, SDK, or domain string in an APK is evidence of declared capability or a possible indicator, not proof that the app used it or transmitted personal data.
+- Static APK manifest audit: PrivaCage can inspect a user-selected APK's declared permissions and exported components locally without installing it. A declared permission, exported component, SDK string, or domain is evidence of capability/surface, not proof of runtime behavior or data collection.
 - Legal requests: a sent request is not proof of deletion.
 
 ## Security reporting
