@@ -222,13 +222,13 @@ class MainActivity : Activity() {
         val trackerDetails = TextView(this).apply {
             text = buildString {
                 val records = trackerCatalog.orEmpty()
-                append("CATALOG SUMMARY\\n")
+                append("CATALOG SUMMARY\n")
                 append("Records: ").append(records.size)
                 append(" | Active: ").append(records.count { it.status == "active" })
                 append(" | Review-only: ").append(records.count { it.status == "review" })
                 append(" | Retired: ").append(records.count { it.status == "retired" })
-                append("\\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\\n\\n")
-                append(records.joinToString("\\n\\n") { record ->
+                append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
+                append(records.joinToString("\n\n") { record ->
                     buildString {
                     append(record.name)
                     append(" [")
