@@ -127,6 +127,9 @@ class ValidateSignaturesTests(unittest.TestCase):
             "amplitude-event-ingestion": ("api2.amplitude.com", "https://www.amplitude.com/docs/"),
             "segment-event-ingestion": ("api.segment.io", "https://segment.com/"),
             "mixpanel-event-ingestion": ("api.mixpanel.com", "https://developer.mixpanel.com/reference/"),
+            "adjust-attribution-links": ("app.adjust.com", "https://help.adjust.com/"),
+            "bugsnag-crash-reporting": ("notify.bugsnag.com", "https://docs.bugsnag.com/"),
+            "branch-mobile-linking": ("api2.branch.io", "https://help.branch.io/"),
         }
         for entry_id, (domain, evidence_prefix) in expected.items():
             with self.subTest(entry_id=entry_id):
