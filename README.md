@@ -101,4 +101,4 @@ Please do not publish details of an unpatched vulnerability involving user data 
 MIT. See LICENSE.
 
 
-| JPEG metadata removal | Initial implementation | Local JPEG parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; other APP markers are preserved for compatibility. Not a universal metadata scrubber. |
+| JPEG metadata removal | Initial implementation with output verification | Local JPEG parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; a second pass rejects the save flow if those supported segments remain. Other APP markers are preserved for compatibility, so this is not a universal metadata scrubber. |
