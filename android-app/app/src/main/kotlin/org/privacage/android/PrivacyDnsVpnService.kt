@@ -14,6 +14,7 @@ import org.privacage.dns.DnsPacketProcessor
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsTunnelEngine
 import org.privacage.dns.DnsTunnelResult
+import org.privacage.dns.DnsTunnelStatsSnapshot
 import org.privacage.dns.TcpSocketProtector
 import org.privacage.dns.UdpDnsForwarder
 import org.privacage.dns.UdpSocketProtector
@@ -63,6 +64,7 @@ class PrivacyDnsVpnService : VpnService() {
 
             tunnel = descriptor
             running = true
+            persistStats(engine.stats.snapshot())
             startVpnForeground()
             Thread({ pumpPackets(descriptor, engine) }, "PrivaCage-DNS-TUN").apply {
                 isDaemon = true
@@ -108,6 +110,7 @@ class PrivacyDnsVpnService : VpnService() {
                         // An upstream timeout should drop one DNS request, not tear down the VPN.
                         Log.w(TAG, "Upstream DNS request failed; dropping this query while keeping the tunnel active.", exception)
                     }
+                    persistStats(engine.stats.snapshot())
                     continue
                 }
 
@@ -123,6 +126,7 @@ class PrivacyDnsVpnService : VpnService() {
                         // The VPN route is limited to the virtual DNS endpoint.
                     }
                 }
+                persistStats(engine.stats.snapshot())
             }
         } catch (exception: IOException) {
             if (running) {
@@ -133,12 +137,22 @@ class PrivacyDnsVpnService : VpnService() {
             failureMessage = "DNS filtering stopped after an internal packet-processing error."
             Log.e(TAG, "DNS packet loop stopped after a processing failure", exception)
         } finally {
+            persistStats(engine.stats.snapshot())
             running = false
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
             if (failureMessage != null) postFailureNotification(failureMessage)
             stopSelf()
         }
+    }
+
+    private fun persistStats(snapshot: DnsTunnelStatsSnapshot) {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).edit()
+            .putLong(KEY_STATS_BLOCKED, snapshot.blockedQueries)
+            .putLong(KEY_STATS_FORWARDED, snapshot.forwardedQueries)
+            .putLong(KEY_STATS_UNSUPPORTED, snapshot.unsupportedOrMalformedPackets)
+            .putLong(KEY_STATS_UPSTREAM_FAILURES, snapshot.upstreamFailures)
+            .apply()
     }
 
     private fun startVpnForeground() {
@@ -215,6 +229,10 @@ class PrivacyDnsVpnService : VpnService() {
         const val PREFERENCES_NAME = "privacage_local_dns"
         const val KEY_RESOLVER_IP = "resolver_ipv4"
         const val KEY_BLOCKED_DOMAINS = "blocked_domains"
+        const val KEY_STATS_BLOCKED = "dns_stats_blocked"
+        const val KEY_STATS_FORWARDED = "dns_stats_forwarded"
+        const val KEY_STATS_UNSUPPORTED = "dns_stats_unsupported"
+        const val KEY_STATS_UPSTREAM_FAILURES = "dns_stats_upstream_failures"
         const val ACTION_START = "org.privacage.android.action.START_DNS_VPN"
         private const val TAG = "PrivaCageDnsVpn"
         private const val CHANNEL_ID = "privacage_dns_filtering"

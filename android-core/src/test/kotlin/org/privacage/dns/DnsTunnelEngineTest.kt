@@ -48,6 +48,7 @@ class DnsTunnelEngineTest {
 
             assertEquals("news.example.org", result.domain)
             assertEquals(DnsTunnelAction.FORWARDED, result.action)
+            assertEquals(1L, engine.stats.snapshot().forwardedQueries)
             assertContentEquals(expectedDnsResponse, result.packet.copyOfRange(28, result.packet.size))
             assertEquals(0, checksum(result.packet.copyOfRange(0, 20)))
             assertEquals(0, udpChecksum(result.packet, 20, u16(result.packet, 24)))
@@ -81,6 +82,7 @@ class DnsTunnelEngineTest {
             engine.processIpv4Packet(ipv4UdpPacket(dnsQuery("tracker.example")))
         )
         assertEquals(DnsTunnelAction.BLOCKED, result.action)
+        assertEquals(1L, engine.stats.snapshot().blockedQueries)
         assertEquals(0x8105, u16(result.packet, 30))
         assertTrue(!protectionCalled.get(), "Blocked DNS query must not reach the upstream forwarder")
     }
@@ -98,6 +100,25 @@ class DnsTunnelEngineTest {
         assertFailsWith<IOException> {
             engine.processIpv4Packet(ipv4UdpPacket(dnsQuery("news.example.org")))
         }
+        assertEquals(1L, engine.stats.snapshot().upstreamFailures)
+    }
+
+    @Test
+    fun malformedPacketIncrementsOnlyUnsupportedOrMalformedCounter() {
+        val policy = DnsPolicyEngine(emptySet())
+        val forwarder = UdpDnsForwarder(
+            resolver = InetSocketAddress(InetAddress.getLoopbackAddress(), 9),
+            socketProtector = UdpSocketProtector { true },
+            policyEngine = policy
+        )
+        val engine = DnsTunnelEngine(DnsPacketProcessor(policy), forwarder)
+
+        assertIs<DnsTunnelResult.Drop>(engine.processIpv4Packet(byteArrayOf(1, 2, 3)))
+        val snapshot = engine.stats.snapshot()
+        assertEquals(1L, snapshot.unsupportedOrMalformedPackets)
+        assertEquals(0L, snapshot.blockedQueries)
+        assertEquals(0L, snapshot.forwardedQueries)
+        assertEquals(0L, snapshot.upstreamFailures)
     }
 
     private fun dnsQuery(name: String): ByteArray {

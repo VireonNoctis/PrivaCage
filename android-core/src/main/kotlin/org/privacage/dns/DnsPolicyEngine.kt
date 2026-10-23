@@ -17,10 +17,7 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
             return DnsDecision.Malformed(e.message ?: "Malformed DNS query")
         }
 
-        val matchingRule = blockedDomains
-            .asSequence()
-            .filter { rule -> question.name == rule || question.name.endsWith(".$rule") }
-            .maxByOrNull { it.length }
+        val matchingRule = matchingRuleForNormalizedName(question.name)
 
         return if (matchingRule == null) {
             DnsDecision.Allow(question)
@@ -29,8 +26,22 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         }
     }
 
+    /**
+     * Previews the blocklist decision for a hostname without sending a DNS request.
+     * Uses the same suffix-boundary and most-specific-rule logic as live packet evaluation.
+     */
+    fun matchingRuleForDomain(domainName: String): String? =
+        matchingRuleForNormalizedName(normalizeRule(domainName))
+
+    private fun matchingRuleForNormalizedName(name: String): String? =
+        blockedDomains
+            .asSequence()
+            .filter { rule -> name == rule || name.endsWith(".$rule") }
+            .maxByOrNull { it.length }
+
     private fun normalizeRule(rule: String): String {
-        val normalized = rule.trim().trimEnd('.').lowercase()
+        val trimmed = rule.trim()
+        val normalized = (if (trimmed.endsWith('.')) trimmed.dropLast(1) else trimmed).lowercase()
         require(normalized.isNotEmpty()) { "Blocked domain must not be empty" }
         require(normalized.length <= 253) { "Blocked domain exceeds 253 characters" }
         val labels = normalized.split('.')

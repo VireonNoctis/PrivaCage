@@ -26,6 +26,8 @@ import java.nio.charset.StandardCharsets
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
     private lateinit var domainsInput: EditText
+    private lateinit var domainTestInput: EditText
+    private lateinit var statsText: TextView
     private lateinit var statusText: TextView
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -149,6 +151,20 @@ class MainActivity : Activity() {
                 .orEmpty().sorted().joinToString("\n"))
         }
         root.addView(domainsInput, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Preview a rule match (offline; no DNS request is sent)"
+            setPadding(0, dp(12), 0, 0)
+        })
+        domainTestInput = EditText(this).apply {
+            hint = "example.org"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        root.addView(domainTestInput, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Test domain against current editor rules"
+            setOnClickListener { previewDomainRule() }
+        }, matchWidth())
         root.addView(Button(this).apply {
             text = "Export encrypted settings backup"
             setOnClickListener { promptExportPassphrase() }
@@ -190,12 +206,31 @@ class MainActivity : Activity() {
                 statusText.text = "Stop requested. Confirm disconnection using Android's VPN indicator."
             }
         }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Privacy-preserving DNS counters"
+            setPadding(0, dp(16), 0, 0)
+        })
+        statsText = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        root.addView(statsText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Refresh DNS counters"
+            setOnClickListener { refreshDnsStats() }
+        }, matchWidth())
         statusText = TextView(this).apply {
             text = "Not connected (service state is not inferred by this screen)."
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(statusText, matchWidth())
+        refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::statsText.isInitialized) refreshDnsStats()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -217,6 +252,51 @@ class MainActivity : Activity() {
         pendingImportBackup?.fill(0)
         pendingImportBackup = null
         super.onDestroy()
+    }
+
+    private fun previewDomainRule() {
+        val candidate = domainTestInput.text.toString().trim()
+        if (candidate.isEmpty()) {
+            statusText.text = "Enter a hostname to preview. No network request will be sent."
+            return
+        }
+
+        val rules = domainsInput.text.toString().lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+        if (rules.isEmpty()) {
+            statusText.text = "There are no rules in the editor to test."
+            return
+        }
+
+        try {
+            val engine = DnsPolicyEngine(rules)
+            val matchedRule = engine.matchingRuleForDomain(candidate)
+            statusText.text = if (matchedRule == null) {
+                "No current editor rule matches '$candidate'. This is only a local rule preview; no DNS request was sent."
+            } else {
+                "Would be blocked by '$matchedRule'. This is only a local rule preview; no DNS request was sent."
+            }
+        } catch (exception: IllegalArgumentException) {
+            statusText.text = exception.message ?: "Enter a valid fully qualified hostname."
+        }
+    }
+
+    private fun refreshDnsStats() {
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        statsText.text = buildString {
+            append("Current/last VPN session totals (domain names are not recorded):\n")
+            append("Blocked replies prepared: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
+            append("\nUpstream replies prepared: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
+            append("\nUnsupported or malformed packets: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
+            append("\nUpstream failures/timeouts: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
+            append("\nCounters reflect DNS-core outcomes, not proof that Android delivered every reply.")
+        }
     }
 
     private fun promptExportPassphrase() {
