@@ -786,7 +786,7 @@ class MainActivity : Activity() {
     private fun refreshDnsStats() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
         statsText.text = buildString {
-            append("Current/last VPN session totals (domain names are not recorded):\n")
+            append("Current/last VPN session aggregate totals (separate from optional local event history):\n")
             append("Blocked replies prepared: ")
             append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
             append("\nUpstream replies prepared: ")
