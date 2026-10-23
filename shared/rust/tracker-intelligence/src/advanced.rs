@@ -421,9 +421,19 @@ mod advanced_tests {
     }
     #[test] fn freshness_dates_validate_leap_days(){assert!(date_ordinal("2024-02-29").is_some());assert!(date_ordinal("2025-02-29").is_none());assert!(date_ordinal("2026-13-01").is_none());}
     #[test] fn review_ledger_chains_and_detects_edits(){
-        let dir=std::env::temp_dir().join(format!("pcage-review-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&dir).unwrap();
-        let queue=dir.join("queue.json");let ledger=dir.join("reviews.jsonl");let candidate=Candidate{value:"review.example.com".into(),kind:IndicatorKind::Domain,first_seen_context:Some("fixture".into()),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()};fs::write(&queue,serde_json::to_vec(&vec![candidate]).unwrap()).unwrap();
-        let record=record_candidate_review(&queue,&IndicatorKind::Domain,"REVIEW.EXAMPLE.COM","accept","maintainer","confirmed by a primary reference","2026-10-23",&ledger).unwrap();assert!(record.previous_record_sha256.is_none());assert!(!record.record_sha256.is_empty());\n        let raw=fs::read_to_string(&ledger).unwrap().replace("confirmed by a primary reference","edited reason");fs::write(&ledger,raw).unwrap();assert!(verify_review_ledger(&ledger).is_err());fs::remove_dir_all(&dir).unwrap();
+        let dir=std::env::temp_dir().join(format!("pcage-review-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&dir).unwrap();
+        let queue=dir.join("queue.json");
+        let ledger=dir.join("reviews.jsonl");
+        let candidate=Candidate{value:"review.example.com".into(),kind:IndicatorKind::Domain,first_seen_context:Some("fixture".into()),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()};
+        fs::write(&queue,serde_json::to_vec(&vec![candidate]).unwrap()).unwrap();
+        let record=record_candidate_review(&queue,&IndicatorKind::Domain,"REVIEW.EXAMPLE.COM","accept","maintainer","confirmed by a primary reference","2026-10-23",&ledger).unwrap();
+        assert!(record.previous_record_sha256.is_none());
+        assert!(!record.record_sha256.is_empty());
+        let raw=fs::read_to_string(&ledger).unwrap().replace("confirmed by a primary reference","edited reason");
+        fs::write(&ledger,raw).unwrap();
+        assert!(verify_review_ledger(&ledger).is_err());
+        fs::remove_dir_all(&dir).unwrap();
     }
     #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
