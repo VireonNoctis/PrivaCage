@@ -5,6 +5,7 @@ on:
     paths:
       - "shared/tracker-db/**"
       - "shared/scripts/validate-signatures.py"
+      - "shared/scripts/tracker-review-report.py"
       - "shared/scripts/validate-android-backup.py"
       - "android-app/app/src/main/AndroidManifest.xml"
       - "tests/**"
@@ -36,3 +37,5 @@ jobs:
         run: python shared/scripts/validate-android-backup.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Publish tracker evidence freshness report
+        run: python shared/scripts/tracker-review-report.py --format markdown >> "$GITHUB_STEP_SUMMARY"
