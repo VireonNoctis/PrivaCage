@@ -4,6 +4,9 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 
 ## Implemented
 
+- JPEG metadata removal for a user-selected local image. The streaming parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; the cleaned file is saved only to a user-selected destination.
+- JPEG input is limited to 100 MiB, staged in private cache, and temporary files are deleted after use or cancellation.
+
 - User-selected APK manifest inspection through Android's package archive parser, staged into a private cache file with a 100 MiB cap, then deleted after inspection.
 - Static report with package/version/target-SDK metadata, a SHA-256 file identity, declared permissions with conservative explanations, components the parser reports as exported, and a bounded scan of DEX byte strings for catalog domain/SDK literals.
 - Permission findings are not described as proof of runtime use; the APK is not installed or executed and is not uploaded.
@@ -44,3 +47,5 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 - This code has not been tested on an emulator or physical device. CI and device validation are required before calling it release-ready.
 - Catalog parsing is strict and fails visibly in the UI if its schema is invalid; manual rules remain usable. The catalog is bundled at build time, not remotely updated.
 - Platform/device policy can prevent VPN or foreground-service startup. Failures stop the service; DNS query names are not logged.
+
+- JPEG scrubber limits: JPEG only; APP1, APP13, and COM markers are removed. Other APP markers remain, so vendor-specific metadata may survive. Files with trailing data after EOI are rejected.

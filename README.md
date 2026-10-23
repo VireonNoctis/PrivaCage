@@ -44,7 +44,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, user-selected offline APK manifest audit, and Android build workflow.
+- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK manifest audit and DEX indicator scan, JPEG metadata removal, and Android build workflow.
+- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — streaming JPEG marker parser that removes common EXIF/XMP, IPTC/Photoshop, and comment segments without re-encoding image pixels.
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
@@ -95,3 +96,6 @@ Please do not publish details of an unpatched vulnerability involving user data 
 ## License
 
 MIT. See LICENSE.
+
+
+| JPEG metadata removal | Initial implementation | Local JPEG parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; other APP markers are preserved for compatibility. Not a universal metadata scrubber. |

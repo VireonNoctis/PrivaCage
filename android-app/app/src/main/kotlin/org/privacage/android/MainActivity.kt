@@ -18,6 +18,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
+import org.privacage.metadata.JpegMetadataScrubber
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -35,6 +36,7 @@ class MainActivity : Activity() {
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
+    private var pendingScrubbedJpeg: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +59,10 @@ class MainActivity : Activity() {
             text = "Local DNS filtering. No account or required cloud service."
             setPadding(0, dp(8), 0, dp(20))
         })
+        root.addView(Button(this).apply {
+            text = "Remove photo metadata (JPEG)"
+            setOnClickListener { chooseJpegForScrubbing() }
+        }, matchWidth())
         root.addView(Button(this).apply {
             text = "Inspect APK manifest offline"
             setOnClickListener { chooseApkForAudit() }
@@ -259,6 +265,8 @@ class MainActivity : Activity() {
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
+            REQUEST_JPEG_SCRUB_INPUT -> scrubSelectedJpeg(resultCode, data?.data)
+            REQUEST_JPEG_SCRUB_OUTPUT -> saveScrubbedJpeg(resultCode, data?.data)
         }
     }
 
@@ -267,7 +275,138 @@ class MainActivity : Activity() {
         pendingEncryptedBackup = null
         pendingImportBackup?.fill(0)
         pendingImportBackup = null
+        pendingScrubbedJpeg?.delete()
+        pendingScrubbedJpeg = null
         super.onDestroy()
+    }
+
+    private fun chooseJpegForScrubbing() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/jpeg"
+        }
+        startActivityForResult(intent, REQUEST_JPEG_SCRUB_INPUT)
+    }
+
+    private fun scrubSelectedJpeg(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            statusText.text = "Photo metadata removal cancelled."
+            return
+        }
+        pendingScrubbedJpeg?.delete()
+        pendingScrubbedJpeg = null
+        statusText.text = "Removing common JPEG metadata locally. The image is not uploaded."
+        Thread({
+            var staged: File? = null
+            var cleaned: File? = null
+            try {
+                staged = stageSelectedJpeg(uri)
+                cleaned = File.createTempFile("privacage-cleaned-", ".jpg", cacheDir)
+                val result = JpegMetadataScrubber.scrub(staged, cleaned)
+                staged.delete()
+                staged = null
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        pendingScrubbedJpeg = cleaned
+                        cleaned = null
+                        statusText.text = "Removed " + result.metadataSegmentsRemoved +
+                            " metadata segments (" + result.metadataBytesRemoved +
+                            " bytes). Save the cleaned JPEG to a location you choose."
+                        val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "image/jpeg"
+                            putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.jpg")
+                        }
+                        startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
+                    }
+                }
+            } catch (exception: Exception) {
+                val message = exception.message ?: "The JPEG could not be safely scrubbed."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) statusText.text = "Photo metadata removal failed: " + message
+                }
+            } finally {
+                staged?.delete()
+                cleaned?.delete()
+            }
+        }, "PrivaCage-JPEG-scrub").start()
+    }
+
+    private fun stageSelectedJpeg(uri: Uri): File {
+        val staged = File.createTempFile("privacage-jpeg-input-", ".jpg", cacheDir)
+        val buffer = ByteArray(8_192)
+        var totalBytes = 0L
+        try {
+            val source = contentResolver.openInputStream(uri)
+                ?: throw IOException("The selected image could not be opened.")
+            source.use { input ->
+                FileOutputStream(staged).use { output ->
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        if (totalBytes > 100L * 1024 * 1024 - count) {
+                            throw IOException("JPEG exceeds the 100 MiB local processing limit.")
+                        }
+                        output.write(buffer, 0, count)
+                        totalBytes += count
+                    }
+                    output.flush()
+                }
+            }
+            if (totalBytes == 0L) throw IOException("The selected image is empty.")
+            return staged
+        } catch (exception: Exception) {
+            staged.delete()
+            throw exception
+        } finally {
+            buffer.fill(0)
+        }
+    }
+
+    private fun saveScrubbedJpeg(resultCode: Int, uri: Uri?) {
+        val cleaned = pendingScrubbedJpeg
+        pendingScrubbedJpeg = null
+        if (resultCode != RESULT_OK || uri == null) {
+            cleaned?.delete()
+            statusText.text = "Cleaned JPEG was not saved; the temporary copy was deleted."
+            return
+        }
+        if (cleaned == null || !cleaned.isFile) {
+            statusText.text = "Cleaned JPEG is no longer available; run metadata removal again."
+            return
+        }
+        statusText.text = "Saving the cleaned JPEG locally."
+        Thread({
+            val buffer = ByteArray(8_192)
+            try {
+                val destination = contentResolver.openOutputStream(uri, "w")
+                    ?: throw IOException("The chosen destination could not be opened.")
+                destination.use { output ->
+                    cleaned.inputStream().use { input ->
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count > 0) output.write(buffer, 0, count)
+                        }
+                    }
+                    output.flush()
+                }
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        statusText.text = "Cleaned JPEG saved. Pixel data was not recompressed; APP1, APP13, and comment segments were removed."
+                    }
+                }
+            } catch (exception: Exception) {
+                val message = exception.message ?: "The cleaned JPEG could not be saved."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) statusText.text = "Saving cleaned JPEG failed: " + message
+                }
+            } finally {
+                buffer.fill(0)
+                cleaned.delete()
+            }
+        }, "PrivaCage-JPEG-save").start()
     }
 
     private fun chooseApkForAudit() {
@@ -779,6 +918,8 @@ class MainActivity : Activity() {
         private const val REQUEST_EXPORT_FILE = 4108
         private const val REQUEST_IMPORT_FILE = 4109
         private const val REQUEST_APK_AUDIT = 4110
+        private const val REQUEST_JPEG_SCRUB_INPUT = 4111
+        private const val REQUEST_JPEG_SCRUB_OUTPUT = 4112
         private const val MAX_AUDIT_ITEMS_TO_DISPLAY = 80
         private const val PROFILE_FORMAT_VERSION = 1
     }

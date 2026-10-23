@@ -49,3 +49,6 @@ A green static check is evidence only for the invariant it tests. It does not re
 3. Any future catalog updater must authenticate update metadata and resist rollback; HTTPS and a schema-valid JSON file alone are insufficient protection against a compromised publisher account or repository.
 4. Any future sync protocol must establish peer/device identity, key lifecycle and revocation, replay/conflict handling, recovery semantics, and metadata exposure before claiming end-to-end encryption.
 5. Any new diagnostic must report failed or unobservable paths explicitly. A missing observation is not evidence that no tracking occurred.
+
+
+| JPEG metadata removal | The local parser strips APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without re-encoding pixel data. | Other APP segments remain, so this is not a guarantee that every metadata type is removed from every JPEG. Files with trailing data after EOI are rejected. |
