@@ -73,6 +73,11 @@ class ValidateSignaturesTests(unittest.TestCase):
         document["entries"][0]["last_verified"] = "2026-02-30"
         self.assertTrue(any("valid calendar date" in error for error in validator.validate_database(document)))
 
+    def test_malformed_sdk_pattern_is_rejected(self):
+        document = valid_document()
+        document["entries"][0]["indicators"]["sdk_patterns"] = ["contains spaces and no package syntax"]
+        self.assertTrue(any("dotted package/class pattern" in error for error in validator.validate_database(document)))
+
     def test_unknown_fields_are_rejected(self):
         document = valid_document()
         document["entries"][0]["trusted"] = True
