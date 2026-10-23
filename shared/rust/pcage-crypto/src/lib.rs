@@ -95,7 +95,7 @@ pub fn encrypt(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, CryptoErro
 
     let ciphertext = cipher
         .encrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: plaintext,
                 aad: &envelope[..HEADER_SIZE],
@@ -131,7 +131,7 @@ pub fn decrypt(envelope: &[u8], passphrase: &str) -> Result<Vec<u8>, CryptoError
 
     cipher
         .decrypt(
-            nonce,
+            &nonce,
             Payload {
                 msg: &envelope[HEADER_SIZE..],
                 aad: header,
