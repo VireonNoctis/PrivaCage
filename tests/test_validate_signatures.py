@@ -110,6 +110,7 @@ class ValidateSignaturesTests(unittest.TestCase):
             "pinterest-tag-conversion": ("ct.pinterest.com", "https://developers.pinterest.com/docs/"),
             "amplitude-event-ingestion": ("api2.amplitude.com", "https://www.amplitude.com/docs/"),
             "segment-event-ingestion": ("api.segment.io", "https://segment.com/"),
+            "mixpanel-event-ingestion": ("api.mixpanel.com", "https://developer.mixpanel.com/reference/"),
         }
         for entry_id, (domain, evidence_prefix) in expected.items():
             with self.subTest(entry_id=entry_id):
