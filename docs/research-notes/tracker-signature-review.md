@@ -1,7 +1,7 @@
 # Tracker signature review — evidence-backed starter catalog
 
 **Reviewed:** 2026-10-23  
-**Scope:** Six curated endpoint indicators across Analytics, behavioral analytics, and advertising. This is a small starter set, not a comprehensive tracker blocklist.
+**Scope:** Seven curated endpoint indicators across Analytics, behavioral analytics, and advertising. This is a small starter set, not a comprehensive tracker blocklist.
 
 ## Records
 
@@ -59,6 +59,15 @@
 - **Evidence:** Google's Google tag setup documentation lists `doubleclick.net` as a destination to inspect when verifying Floodlight traffic.
 - **Source:** https://developers.google.com/tag-platform/gtagjs
 - **Why review:** The domain is broad and shared across services. Keep it review-only; it must not silently become a hard block or enter the explicit active-domain import path.
+
+### `pinterest-tag-conversion`
+
+- **Domain:** `ct.pinterest.com`
+- **Classification:** Pinterest Tag conversion / page-event endpoint
+- **Confidence/status:** High / active
+- **Evidence:** Pinterest's official Tag documentation includes `https://ct.pinterest.com/v3/` pixel URLs for page-view and conversion events.
+- **Source:** https://developers.pinterest.com/docs/track-conversions/pinterest-tag/
+- **Caveat:** This identifies a documented Tag endpoint. It does not identify the initiating app on its own or establish the data in any particular request.
 
 ## Interpretation and enforcement limits
 
