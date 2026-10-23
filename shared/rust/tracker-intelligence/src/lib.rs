@@ -96,6 +96,7 @@ fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
     IndicatorKind::Domain=>e.indicators.domains.iter().map(String::as_str).collect(),
     IndicatorKind::IpAddress=>e.indicators.ip_addresses.iter().map(String::as_str).collect(),
     IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().map(String::as_str).collect(),
+    IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().map(String::as_str).collect(),
     IndicatorKind::PackageId=>e.indicators.package_ids.iter().map(String::as_str).collect(),
     IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().map(String::as_str).collect(),
     IndicatorKind::DexString=>e.indicators.dex_strings.iter().map(String::as_str).collect(),
@@ -104,6 +105,7 @@ fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
 fn matched(o:&Observation,v:&str)->bool{match o.kind{
     IndicatorKind::Domain=>domain_matches(&o.value,v),
     IndicatorKind::IpAddress=>normalize_ip(&o.value).is_some()&&normalize_ip(&o.value)==normalize_ip(v),
+    IndicatorKind::SdkPattern=>sdk_pattern_matches(&o.value,v),
     IndicatorKind::DexString=>o.value.contains(v),
     _=>o.value.eq_ignore_ascii_case(v),
 }}
@@ -116,7 +118,7 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
             hits.insert(format!("{:?}:{}",o.kind,o.value));types.insert(o.kind.clone());
         }}
         if hits.is_empty(){continue}
-        let expected=[IndicatorKind::Domain,IndicatorKind::IpAddress,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
+        let expected=[IndicatorKind::Domain,IndicatorKind::IpAddress,IndicatorKind::SdkPattern,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
             .iter().filter(|k|!indicator_values(e,k).is_empty()).count();
         let coverage=if expected==0{0}else{((types.len()*100)/expected).min(100) as u8};
         out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),localized_names:e.localized_names.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
@@ -131,7 +133,7 @@ pub fn discover_candidates(c:&Catalog,observations:&[Observation])->Vec<Candidat
     for o in observations{
         let value=if o.kind==IndicatorKind::Domain{normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else{o.value.trim().to_ascii_lowercase()};
         if value.is_empty()||!seen.insert((o.kind.clone(),value.clone())){continue}
-        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&value).is_some()&&normalize_ip(&value)==normalize_ip(v)}else{value==v.to_ascii_lowercase()}));
+        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&value).is_some()&&normalize_ip(&value)==normalize_ip(v)}else if o.kind==IndicatorKind::SdkPattern{sdk_pattern_matches(&value,v)}else{value==v.to_ascii_lowercase()}));
         if !known{out.push(Candidate{value:o.value.clone(),kind:o.kind.clone(),first_seen_context:o.context.clone(),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()})}
     }out
 }
@@ -168,6 +170,7 @@ pub fn verify_release(bytes:&[u8],m:&ReleaseManifest,trusted_key:&str)->Result<(
 #[cfg(test)] mod tests{
 use super::*;
 fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()}]}}
+#[test]fn sdk_patterns_match_terminal_prefixes(){let mut c=sample();c.entries[0].indicators.sdk_patterns=vec!["com.example.sdk.**".into()];assert!(valid_sdk_pattern("com.example.sdk.*"));assert!(!valid_sdk_pattern("com.*.sdk"));let r=match_observations(&c,&[Observation{value:"Lcom/example/sdk/Thing;".into(),kind:IndicatorKind::SdkPattern,context:None}]);assert_eq!(r.len(),1);}
 #[test]fn ip_addresses_are_parsed_and_matched(){let mut c=sample();c.entries[0].indicators.ip_addresses=vec!["2001:db8::1".into()];assert_eq!(normalize_ip("2001:0db8:0:0:0:0:0:1").as_deref(),Some("2001:db8::1"));let r=match_observations(&c,&[Observation{value:"2001:0db8:0:0:0:0:0:1".into(),kind:IndicatorKind::IpAddress,context:None}]);assert_eq!(r.len(),1);}
 #[test]fn domain_boundaries(){assert!(domain_matches("x.collector.example.com.","collector.example.com"));assert!(!domain_matches("notcollector.example.com","collector.example.com"));assert!(!domain_matches("collector.example.com.attacker.test","collector.example.com"));}
 #[test]fn duplicate_ids_rejected(){let mut c=sample();c.entries.push(c.entries[0].clone());assert!(validate_catalog(&c).is_err());}
