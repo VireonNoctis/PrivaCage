@@ -7,7 +7,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -60,9 +60,20 @@ def validate_https_url(value: object, context: str) -> None:
             f"{context} must not contain credentials")
 
 
-def validate_database(document: object) -> list[str]:
-    """Return validation errors; return an empty list when valid."""
+def validate_database(
+    document: object,
+    max_age_days: int | None = None,
+    today: date | None = None,
+) -> list[str]:
+    """Return validation errors, optionally requiring recently reviewed evidence."""
     try:
+        if max_age_days is not None:
+            require(type(max_age_days) is int and max_age_days > 0,
+                    "max_age_days must be a positive integer")
+            review_date = today if today is not None else date.today()
+        else:
+            review_date = None
+
         require(isinstance(document, dict), "document must be a JSON object")
         require(set(document) == VALID_TOP_LEVEL,
                 "top-level fields must be exactly schema_version, updated_at, entries")
@@ -94,6 +105,14 @@ def validate_database(document: object) -> list[str]:
             require(isinstance(entry["status"], str) and entry["status"] in VALID_STATUS,
                     f"{context}.status must be one of {sorted(VALID_STATUS)}")
             validate_date(entry["last_verified"], f"{context}.last_verified")
+            if review_date is not None:
+                last_verified = date.fromisoformat(entry["last_verified"])
+                age_days = (review_date - last_verified).days
+                require(age_days >= 0,
+                        f"{context}.last_verified must not be in the future")
+                require(age_days <= max_age_days,
+                        f"{context}.last_verified is {age_days} days old; "
+                        f"evidence review is required after {max_age_days} days")
 
             indicators = entry["indicators"]
             require(isinstance(indicators, dict), f"{context}.indicators must be an object")
@@ -137,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, default=DEFAULT_FILE,
                         help="path to tracker database JSON")
+    parser.add_argument("--max-age-days", type=int, default=None,
+                        help="fail if any evidence review is older than this many days")
     args = parser.parse_args(argv)
 
     try:
@@ -149,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: invalid JSON in {args.file}: {exc}", file=sys.stderr)
         return 2
 
-    errors = validate_database(document)
+    errors = validate_database(document, max_age_days=args.max_age_days)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
