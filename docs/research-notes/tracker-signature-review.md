@@ -117,3 +117,17 @@
 - **Evidence:** Mixpanel's official Track Event API documents event ingestion. Its tracking-proxy documentation identifies the default host and regional hosts for EU and India residency.
 - **Sources:** https://developer.mixpanel.com/reference/track-event
 - **Caveat:** Regional selection, custom proxies, and SDK changes can alter the observed host. A hostname match does not reveal event contents or identify which app initiated the request.
+
+
+### `mixpanel-event-ingestion`
+
+- **Domains:** `api.mixpanel.com`, `api-eu.mixpanel.com`, `api-in.mixpanel.com`
+- **Classification:** Mixpanel event-ingestion endpoints, including regional hosts
+- **Confidence/status:** High / active
+- **Evidence:** Mixpanel's official Track Event API documents event ingestion; Mixpanel's official tracking-proxy repository identifies the default API host and regional EU/India host choices.
+- **Sources:** https://developer.mixpanel.com/reference/track-event and https://github.com/mixpanel/tracking-proxy
+- **Caveat:** Regional selection, SDK versions, custom proxies, and server-side forwarding may alter observed hosts. A domain match does not reveal event contents or establish which application initiated the request.
+
+## SDK package wildcard semantics
+
+The catalog accepts exact dotted package/class names and terminal `.*` or `.**` patterns. In static DEX scanning, terminal wildcards are represented by a package-prefix string match in dotted and slash-separated forms. This improves coverage but remains a string heuristic: a hit does not prove that a class was loaded or executed. Wildcards in the middle of a pattern are rejected by the validator because the scanner does not implement their semantics.
