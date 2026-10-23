@@ -515,6 +515,7 @@ class MainActivity : Activity() {
             var cleaned: File? = null
             try {
                 staged = stageSelectedJpeg(uri)
+                val originalBytes = staged.length()
                 cleaned = File.createTempFile("privacage-cleaned-", ".jpg", cacheDir)
                 val result = JpegMetadataScrubber.scrub(staged, cleaned)
                 val verificationFile = File.createTempFile("privacage-jpeg-verify-", ".jpg", cacheDir)
@@ -533,16 +534,37 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
                         pendingScrubbedJpeg = completedFile
-                        statusText.text = "Removed " + result.metadataSegmentsRemoved +
-                            " supported metadata segments (" + result.metadataBytesRemoved +
-                            " bytes). The output passed a second-pass check for APP1, APP13, and COM segments. " +
-                            "Other JPEG APP markers may still contain metadata. Save the cleaned copy to a location you choose."
-                        val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "image/jpeg"
-                            putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.jpg")
+                        val report = buildString {
+                            append("LOCAL JPEG METADATA REPORT\\n\\n")
+                            append("Input size: ").append(originalBytes).append(" bytes\\n")
+                            append("Cleaned size: ").append(result.outputBytesWritten).append(" bytes\\n\\n")
+                            append("Removed APP1 segments (EXIF/XMP): ").append(result.app1SegmentsRemoved).append("\\n")
+                            append("Removed APP13 segments (IPTC/Photoshop): ").append(result.app13SegmentsRemoved).append("\\n")
+                            append("Removed JPEG comment segments: ").append(result.commentSegmentsRemoved).append("\\n")
+                            append("Total removed: ").append(result.metadataSegmentsRemoved)
+                                .append(" segments / ").append(result.metadataBytesRemoved).append(" bytes\\n\\n")
+                            append("Verification: a second pass found no remaining APP1, APP13, or COM segments.\\n\\n")
+                            append("LIMITATION: other JPEG APP markers may contain metadata and are preserved. ")
+                            append("This report does not enumerate every embedded field or guarantee that all identifying metadata is gone.")
                         }
-                        startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
+                        statusText.text = "JPEG processed locally. Review the metadata report before saving."
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("JPEG metadata inspection")
+                            .setMessage(report)
+                            .setNegativeButton("Discard cleaned copy") { _, _ ->
+                                pendingScrubbedJpeg?.delete()
+                                pendingScrubbedJpeg = null
+                                statusText.text = "Cleaned copy discarded. The original file was not changed."
+                            }
+                            .setPositiveButton("Save cleaned copy") { _, _ ->
+                                val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "image/jpeg"
+                                    putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.jpg")
+                                }
+                                startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
+                            }
+                            .show()
                     } else {
                         completedFile?.delete()
                     }
