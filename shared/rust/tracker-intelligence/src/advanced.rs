@@ -19,6 +19,39 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), IntelError> {
     fs::write(&tmp,bytes).map_err(|e|IntelError::Io(format!("write temporary file: {e}")))?;
     fs::rename(&tmp,path).map_err(|e|IntelError::Io(format!("atomic replace {}: {e}",path.display())))
 }
+
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
+pub struct SourcePolicy { pub automatic_fetching:bool, pub automatic_promotion:bool, pub unknown_source_default:String, pub required_review:bool, pub license_review_required:bool }
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
+pub struct SourceDefinition { pub id:String, pub name:String, pub url:String, pub source_type:String, pub trust_tier:String, pub ingest_mode:String, pub review_required:bool, pub license_status:String, #[serde(default)] pub last_verified:Option<String> }
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
+pub struct SourceRegistry { pub schema_version:u32, pub updated_at:String, pub policy:SourcePolicy, pub sources:Vec<SourceDefinition> }
+
+pub fn load_source_registry(path:impl AsRef<Path>)->Result<SourceRegistry,IntelError>{
+    let registry:SourceRegistry=read_json(path.as_ref())?;
+    validate_source_registry(&registry)?;
+    Ok(registry)
+}
+pub fn validate_source_registry(r:&SourceRegistry)->Result<(),IntelError>{
+    if r.schema_version!=1{return Err(invalid(format!("unsupported source registry schema {}",r.schema_version)))}
+    if r.policy.automatic_fetching||r.policy.automatic_promotion||r.policy.unknown_source_default!="untrusted"||!r.policy.required_review||!r.policy.license_review_required{
+        return Err(invalid("source policy must disable automatic fetching/promotion and require review plus license assessment"))
+    }
+    let mut ids=BTreeSet::new();let mut urls=BTreeSet::new();
+    for s in &r.sources{
+        if s.id.trim().is_empty()||s.name.trim().is_empty(){return Err(invalid("source id/name cannot be empty"))}
+        if !ids.insert(s.id.to_ascii_lowercase()){return Err(invalid(format!("duplicate source id {}",s.id)))}
+        if !urls.insert(s.url.to_ascii_lowercase()){return Err(invalid(format!("duplicate source URL {}",s.url)))}
+        if !s.url.starts_with("https://"){return Err(invalid(format!("source {} must use HTTPS",s.id))) }
+        if !["reference_documentation","official_advisory","research_paper","community_database","user_submission","other"].contains(&s.source_type.as_str()){return Err(invalid(format!("invalid source_type on {}",s.id)))}
+        if !["untrusted","reference","trusted"].contains(&s.trust_tier.as_str()){return Err(invalid(format!("invalid trust_tier on {}",s.id)))}
+        if !["manual_import","manual_review","disabled"].contains(&s.ingest_mode.as_str()){return Err(invalid(format!("invalid ingest_mode on {}",s.id)))}
+        if !s.review_required{return Err(invalid(format!("source {} cannot bypass review",s.id)))}
+        if !["not_assessed","approved","restricted","unknown"].contains(&s.license_status.as_str()){return Err(invalid(format!("invalid license status on {}",s.id)))}
+    }
+    Ok(())
+}
+
 fn safe_id(s:&str)->bool { !s.is_empty() && s.len()<=80 && s.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_'||b==b'.') }
 
 pub fn migrate_v1(c: Catalog) -> Result<IntelligenceBundle, IntelError> {
@@ -280,6 +313,7 @@ mod advanced_tests {
             last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()
         }]}
     }
+    #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();
         assert_eq!(b.schema_version,2);assert_eq!(b.entries.len(),1);

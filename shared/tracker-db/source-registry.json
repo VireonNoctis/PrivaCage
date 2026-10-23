@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-23",
+  "policy": {
+    "automatic_fetching": false,
+    "automatic_promotion": false,
+    "unknown_source_default": "untrusted",
+    "required_review": true,
+    "license_review_required": true
+  },
+  "sources": [
+    {
+      "id": "reference-001",
+      "name": "developers.google.com/analytics/devguides/collection/protocol/ga4/refe...",
+      "url": "https://developers.google.com/analytics/devguides/collection/protocol/ga4/reference",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-002",
+      "name": "developers.google.com/analytics/devguides/collection/ga4/troubleshoot",
+      "url": "https://developers.google.com/analytics/devguides/collection/ga4/troubleshoot?community_post=true",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-003",
+      "name": "learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-setup",
+      "url": "https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-setup",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-004",
+      "name": "posthog.com/docs/product-analytics/troubleshooting",
+      "url": "https://posthog.com/docs/product-analytics/troubleshooting",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-005",
+      "name": "developers.google.com/tag-platform/gtagjs",
+      "url": "https://developers.google.com/tag-platform/gtagjs",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-006",
+      "name": "developers.pinterest.com/docs/track-conversions/pinterest-tag/",
+      "url": "https://developers.pinterest.com/docs/track-conversions/pinterest-tag/",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-007",
+      "name": "www.amplitude.com/docs/apis/analytics/http-v2",
+      "url": "https://www.amplitude.com/docs/apis/analytics/http-v2",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-008",
+      "name": "segment.com/blog/twilio-segment-edge-sdk/",
+      "url": "https://segment.com/blog/twilio-segment-edge-sdk/",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-009",
+      "name": "dev.appsflyer.com/hc/docs/troubleshooting-ios",
+      "url": "https://dev.appsflyer.com/hc/docs/troubleshooting-ios",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-010",
+      "name": "developer.mixpanel.com/reference/track-event",
+      "url": "https://developer.mixpanel.com/reference/track-event",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-011",
+      "name": "help.adjust.com/en/article/links",
+      "url": "https://help.adjust.com/en/article/links",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-012",
+      "name": "docs.bugsnag.com/platforms/android/configuration-options/",
+      "url": "https://docs.bugsnag.com/platforms/android/configuration-options/",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-013",
+      "name": "help.branch.io/apidocs/",
+      "url": "https://help.branch.io/apidocs/",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-014",
+      "name": "github.com/getsentry/develop/blob/master/src/docs/self-host...",
+      "url": "https://github.com/getsentry/develop/blob/master/src/docs/self-hosted/reverse-proxy.mdx",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    }
+  ]
+}
