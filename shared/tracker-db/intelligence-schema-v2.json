@@ -194,7 +194,8 @@
         "category",
         "indicators",
         "status",
-        "evidence"
+        "evidence",
+        "confidence"
       ],
       "properties": {
         "id": {
