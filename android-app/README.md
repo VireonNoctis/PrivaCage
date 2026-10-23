@@ -4,7 +4,7 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 
 ## Implemented
 
-- JPEG metadata removal for a user-selected local image. The streaming parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; the cleaned file is saved only to a user-selected destination.
+- JPEG metadata inspection report before save, including input/output size and counts of removed APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments. A second pass verifies those supported segment classes are absent from the output; other APP markers are preserved and the report does not enumerate every embedded field or guarantee all metadata is gone.
 - JPEG input is limited to 100 MiB, staged in private cache, and temporary files are deleted after use or cancellation.
 
 - User-selected APK manifest inspection through Android's package archive parser, staged into a private cache file with a 100 MiB cap, then deleted after inspection.
