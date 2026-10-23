@@ -535,15 +535,15 @@ class MainActivity : Activity() {
                     if (!isFinishing && !isDestroyed) {
                         pendingScrubbedJpeg = completedFile
                         val report = buildString {
-                            append("LOCAL JPEG METADATA REPORT\\n\\n")
-                            append("Input size: ").append(originalBytes).append(" bytes\\n")
-                            append("Cleaned size: ").append(result.outputBytesWritten).append(" bytes\\n\\n")
-                            append("Removed APP1 segments (EXIF/XMP): ").append(result.app1SegmentsRemoved).append("\\n")
-                            append("Removed APP13 segments (IPTC/Photoshop): ").append(result.app13SegmentsRemoved).append("\\n")
-                            append("Removed JPEG comment segments: ").append(result.commentSegmentsRemoved).append("\\n")
+                            append("LOCAL JPEG METADATA REPORT\n\n")
+                            append("Input size: ").append(originalBytes).append(" bytes\n")
+                            append("Cleaned size: ").append(result.outputBytesWritten).append(" bytes\n\n")
+                            append("Removed APP1 segments (EXIF/XMP): ").append(result.app1SegmentsRemoved).append("\n")
+                            append("Removed APP13 segments (IPTC/Photoshop): ").append(result.app13SegmentsRemoved).append("\n")
+                            append("Removed JPEG comment segments: ").append(result.commentSegmentsRemoved).append("\n")
                             append("Total removed: ").append(result.metadataSegmentsRemoved)
-                                .append(" segments / ").append(result.metadataBytesRemoved).append(" bytes\\n\\n")
-                            append("Verification: a second pass found no remaining APP1, APP13, or COM segments.\\n\\n")
+                                .append(" segments / ").append(result.metadataBytesRemoved).append(" bytes\n\n")
+                            append("Verification: a second pass found no remaining APP1, APP13, or COM segments.\n\n")
                             append("LIMITATION: other JPEG APP markers may contain metadata and are preserved. ")
                             append("This report does not enumerate every embedded field or guarantee that all identifying metadata is gone.")
                         }
