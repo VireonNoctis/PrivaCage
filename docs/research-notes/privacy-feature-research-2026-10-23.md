@@ -169,3 +169,60 @@ Implementation shape:
 - Keep backup checks as evidence of configuration, not a guarantee about every device's vendor-specific transfer behavior.
 
 Suggested integration: a manifest policy check in the existing Python validation workflow and a manual device-test checklist. No extra permissions or data collection are needed.
+
+### 13. Signed tracker-catalog releases and anti-rollback — required before remote catalog updates
+
+The current catalog is bundled with the app and validated for schema and URL structure. That protects against malformed data, but schema validation cannot authenticate who published a file. If PrivaCage later downloads catalog updates, a compromised repository token or release pipeline could publish malicious entries, remove protective entries, or serve an older catalog.
+
+Implementation shape:
+- Evaluate an established update framework such as The Update Framework (TUF) rather than designing a custom signed-JSON protocol.
+- Authenticate catalog metadata with pinned trust roots, versioned metadata, expiry checks, key rotation, and rollback/freeze protections appropriate to the chosen framework.
+- Keep catalog release version, source revision, and content hash visible in the app and log which version informed a match.
+- Test invalid signatures, expired metadata, older-but-valid metadata, key rotation, missing files, and interrupted updates.
+- Preserve a last-known-good catalog and do not silently replace it with an invalid or older release.
+
+Grounding:
+- TUF specification: https://theupdateframework.io/specification/latest/
+
+Limit: signatures prove publication under an accepted key, not that each indicator is correct. Human evidence review and conservative status assignment remain necessary. There is no remote catalog updater to protect yet.
+
+Suggested integration: signed metadata alongside `shared/tracker-db/signatures.json`, updater verification before catalog activation, and events `tracker.catalog.verified`, `tracker.catalog.rejected`, and `tracker.catalog.rollback_blocked`.
+
+### 14. Cross-device encrypted sync threat model — design gate before a backend
+
+The PCAGE01 envelope supports passphrase-based file transfer, not device identity or synchronization. A server-side encrypted blob by itself does not define who may read or replace a profile, how devices join or leave, or what happens when a device is lost.
+
+Implementation shape:
+- Write and review a threat model before choosing backend endpoints or building account screens.
+- Specify authenticated device enrollment, key derivation and rotation, device revocation, encrypted conflict metadata, replay handling, version rollback protection, account recovery, and what metadata the server can observe.
+- Keep client-side encryption and decryption as the trust boundary; the relay should not receive the passphrase or plaintext profile.
+- Use a reviewed protocol/library for key establishment and message authentication rather than creating novel cryptographic primitives.
+- Test wrong-device, revoked-device, stale-version, duplicate-upload, corrupted-blob, lost-key, and restore scenarios.
+
+Grounding:
+- OWASP Key Management Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Key_Management_Cheat_Sheet.html
+- OWASP Mobile Application Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Mobile_Application_Security_Cheat_Sheet.html
+
+Limit: this is a design candidate, not implemented sync. End-to-end encryption does not hide all metadata, prevent endpoint compromise, or solve recovery and revocation automatically.
+
+Suggested integration: a separate opt-in sync module and backend relay only after the protocol review; no sync should be advertised until independent tests verify that the server cannot decrypt stored profile contents.
+
+### 15. Tamper-evident audit checkpoints — local-first, useful with clear limits
+
+A local event log is useful for reconstructing decisions, but a database described as append-only can still be edited by code with filesystem access or by a user/device with sufficient control. A hash chain can make accidental or partial edits detectable relative to a trusted checkpoint; a chain stored entirely beside the log is not proof against an attacker who can rewrite both.
+
+Implementation shape:
+- Canonicalize and sequence structured event records before hashing; exclude secrets, raw DNS question names, and packet payloads by default.
+- Periodically sign or export a checkpoint using a key protected separately from the event database where the OS supports that separation.
+- Verify chain continuity on open and export; report which range failed instead of silently repairing or dropping events.
+- Allow user-initiated signed export and document that timestamping is local-clock time unless backed by an independent timestamp service.
+- Test deleted, reordered, modified, duplicated, and truncated events plus unavailable signing keys.
+
+Grounding:
+- OWASP Logging Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
+- OWASP Mobile Application Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Mobile_Application_Security_Cheat_Sheet.html
+
+Limit: a local hash chain is not a trustworthy external timestamp, and cannot prove that unobserved events never happened. It is tamper evidence only when the checkpoint trust anchor remains outside the attacker's control.
+
+Suggested integration: structured local event storage and user-controlled signed export; event types `audit.checkpoint.created`, `audit.chain.verified`, and `audit.chain.verification_failed`. Avoid converting this into a telemetry upload feature.
+
