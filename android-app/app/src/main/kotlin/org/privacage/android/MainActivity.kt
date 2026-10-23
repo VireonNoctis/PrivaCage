@@ -517,6 +517,15 @@ class MainActivity : Activity() {
                 staged = stageSelectedJpeg(uri)
                 cleaned = File.createTempFile("privacage-cleaned-", ".jpg", cacheDir)
                 val result = JpegMetadataScrubber.scrub(staged, cleaned)
+                val verificationFile = File.createTempFile("privacage-jpeg-verify-", ".jpg", cacheDir)
+                try {
+                    val verification = JpegMetadataScrubber.scrub(cleaned, verificationFile)
+                    if (verification.metadataSegmentsRemoved != 0 || verificationFile.length() != cleaned.length()) {
+                        throw IOException("The cleaned JPEG did not pass the metadata-removal verification check.")
+                    }
+                } finally {
+                    verificationFile.delete()
+                }
                 staged.delete()
                 staged = null
                 val completedFile = cleaned
@@ -525,8 +534,9 @@ class MainActivity : Activity() {
                     if (!isFinishing && !isDestroyed) {
                         pendingScrubbedJpeg = completedFile
                         statusText.text = "Removed " + result.metadataSegmentsRemoved +
-                            " metadata segments (" + result.metadataBytesRemoved +
-                            " bytes). Save the cleaned JPEG to a location you choose."
+                            " supported metadata segments (" + result.metadataBytesRemoved +
+                            " bytes). The output passed a second-pass check for APP1, APP13, and COM segments. " +
+                            "Other JPEG APP markers may still contain metadata. Save the cleaned copy to a location you choose."
                         val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
                             type = "image/jpeg"
