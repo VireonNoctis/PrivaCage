@@ -51,7 +51,9 @@ impl fmt::Display for ProfileError {
             Self::DuplicateDomain => {
                 formatter.write_str("profile contains duplicate blocked domains")
             }
-            Self::InvalidDnsOverTls => formatter.write_str("profile DNS-over-TLS settings are invalid"),
+            Self::InvalidDnsOverTls => {
+                formatter.write_str("profile DNS-over-TLS settings are invalid")
+            }
             Self::SerializationFailure => formatter.write_str("profile serialization failed"),
             Self::Crypto(error) => write!(formatter, "profile cryptography failed: {error}"),
         }
@@ -88,12 +90,23 @@ impl ProfilePayload {
             return Err(ProfileError::UnsupportedVersion);
         }
         match self.format_version {
-            1 if self.dns_over_tls_enabled.is_some() || self.dns_over_tls_hostname.is_some() => return Err(ProfileError::InvalidDnsOverTls),
+            1 if self.dns_over_tls_enabled.is_some() || self.dns_over_tls_hostname.is_some() => {
+                return Err(ProfileError::InvalidDnsOverTls);
+            }
             2 => {
-                let enabled = self.dns_over_tls_enabled.ok_or(ProfileError::InvalidDnsOverTls)?;
-                let hostname = self.dns_over_tls_hostname.as_deref().ok_or(ProfileError::InvalidDnsOverTls)?;
-                if enabled && !is_valid_tls_hostname(hostname) { return Err(ProfileError::InvalidDnsOverTls); }
-                if !enabled && !hostname.is_empty() && !is_valid_tls_hostname(hostname) { return Err(ProfileError::InvalidDnsOverTls); }
+                let enabled = self
+                    .dns_over_tls_enabled
+                    .ok_or(ProfileError::InvalidDnsOverTls)?;
+                let hostname = self
+                    .dns_over_tls_hostname
+                    .as_deref()
+                    .ok_or(ProfileError::InvalidDnsOverTls)?;
+                if enabled && !is_valid_tls_hostname(hostname) {
+                    return Err(ProfileError::InvalidDnsOverTls);
+                }
+                if !enabled && !hostname.is_empty() && !is_valid_tls_hostname(hostname) {
+                    return Err(ProfileError::InvalidDnsOverTls);
+                }
             }
             _ => {}
         }
@@ -137,9 +150,13 @@ pub fn decrypt_profile(envelope: &[u8], passphrase: &str) -> Result<ProfilePaylo
 }
 
 fn is_valid_tls_hostname(hostname: &str) -> bool {
-    !hostname.is_empty() && hostname.len() <= 253 && hostname.is_ascii() &&
-        hostname == hostname.to_ascii_lowercase() && hostname.contains('.') &&
-        hostname.split('.').all(|label| is_valid_label(label)) && hostname != "localhost"
+    !hostname.is_empty()
+        && hostname.len() <= 253
+        && hostname.is_ascii()
+        && hostname == hostname.to_ascii_lowercase()
+        && hostname.contains('.')
+        && hostname.split('.').all(|label| is_valid_label(label))
+        && hostname != "localhost"
 }
 
 fn is_normalized_domain(domain: &str) -> bool {
