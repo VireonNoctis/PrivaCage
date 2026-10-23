@@ -1,4 +1,4 @@
-use pcage_tracker_intelligence::{
+use crate::{
     build_release, discover_candidates, match_observations, normalize_domain, sha256_hex,
     verify_release, AppFingerprint, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, SdkFingerprint, Entity, IntelError,
@@ -22,7 +22,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), IntelError> {
 fn safe_id(s:&str)->bool { !s.is_empty() && s.len()<=80 && s.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_'||b==b'.') }
 
 pub fn migrate_v1(c: Catalog) -> Result<IntelligenceBundle, IntelError> {
-    pcage_tracker_intelligence::validate_catalog(&c)?;
+    crate::validate_catalog(&c)?;
     let updated_at=if c.updated_at.is_empty(){"1970-01-01".to_string()}else{c.updated_at.clone()};
     let entries=c.entries;
     let mut bundle=IntelligenceBundle{schema_version:2,updated_at,entities:vec![],sdk_fingerprints:vec![],sources:vec![],entries,app_fingerprints:vec![]};
@@ -154,7 +154,7 @@ pub fn publish_release(catalog_path:&Path,root:&Path,release_id:&str,date:&str,s
     if !safe_id(release_id){return Err(invalid("release id may contain only letters, digits, dot, underscore, and hyphen (max 80 chars)"))}
     let bytes=fs::read(catalog_path).map_err(|e|IntelError::Io(e.to_string()))?;
     let v:Value=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;
-    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_value(v).map_err(|e|IntelError::Json(e.to_string()))?;pcage_tracker_intelligence::validate_catalog(&c)?;},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?;},_=>return Err(invalid("release must be schema v1 catalog or schema v2 bundle"))}
+    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_value(v).map_err(|e|IntelError::Json(e.to_string()))?;crate::validate_catalog(&c)?;},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?;},_=>return Err(invalid("release must be schema v1 catalog or schema v2 bundle"))}
     let m=build_release(&bytes,date,seed)?;let dir=root.join("releases").join(release_id);
     fs::create_dir_all(&dir).map_err(|e|IntelError::Io(e.to_string()))?;
     if dir.join("catalog.json").exists(){return Err(invalid(format!("release {release_id} already exists; releases are immutable")))}
@@ -171,7 +171,7 @@ pub fn rollback_release(root:&Path,release_id:&str,trusted_key:&str)->Result<(),
     let m:ReleaseManifest=read_json(&dir.join("manifest.json"))?;
     verify_release(&bytes,&m,trusted_key)?;
     let v:Value=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;
-    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;pcage_tracker_intelligence::validate_catalog(&c)?},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?},_=>return Err(invalid("unsupported catalog schema"))}
+    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;crate::validate_catalog(&c)?},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?},_=>return Err(invalid("unsupported catalog schema"))}
     let current=CurrentRelease{release_id:release_id.into(),catalog_sha256:m.catalog_sha256};
     write_atomic(&root.join("current.json"),&serde_json::to_vec_pretty(&current).map_err(|e|IntelError::Json(e.to_string()))?)
 }
@@ -182,7 +182,7 @@ pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError
     if sha256_hex(&b)!=c.catalog_sha256{return Err(invalid("current pointer digest does not match release catalog"))}
     Ok(())
 }
-pub fn render_csv_matches(matches:&[pcage_tracker_intelligence::MatchResult])->String{
+pub fn render_csv_matches(matches:&[crate::MatchResult])->String{
     let mut s=String::from("entry_id,name,category,status,identity,evidence_quality,detection_coverage,matched_indicators\n");
     for m in matches {let values=[m.entry_id.clone(),m.name.clone(),m.category.clone(),m.status.clone(),m.confidence.identity.to_string(),m.confidence.evidence_quality.to_string(),m.confidence.detection_coverage.to_string(),m.matched_indicators.join(";")];
         s.push_str(&values.iter().map(|v|format!("\"{}\"",v.replace('"',"''"))).collect::<Vec<_>>().join(","));s.push('\n');
