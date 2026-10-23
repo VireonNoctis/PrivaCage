@@ -21,6 +21,7 @@ VALID_INDICATORS = {"domains", "sdk_patterns"}
 VALID_EVIDENCE = {"url", "description"}
 ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DOMAIN_LABEL_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+SDK_PATTERN = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$*][A-Za-z0-9_$*]*)+$")
 
 
 class ValidationFailure(Exception):
@@ -136,6 +137,10 @@ def validate_database(
                 if key == "domains":
                     for domain_index, domain in enumerate(values):
                         validate_domain(domain, f"{context}.indicators.domains[{domain_index}]")
+                elif key == "sdk_patterns":
+                    for pattern_index, pattern in enumerate(values):
+                        require(SDK_PATTERN.fullmatch(pattern) is not None,
+                                f"{context}.indicators.sdk_patterns[{pattern_index}] must be a dotted package/class pattern")
 
             evidence = entry["evidence"]
             require(isinstance(evidence, list) and bool(evidence),
