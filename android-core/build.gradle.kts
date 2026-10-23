@@ -15,6 +15,7 @@ tasks.test {
 }
 
 dependencies {
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
 }

@@ -17,6 +17,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
+| Encrypted profile transfer | First Android implementation | Password-encrypted settings file (Argon2id + AES-256-GCM); no account, remote sync, or live DNS encryption |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
@@ -42,9 +43,10 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, and Android build workflow.
-- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, tests, and Gradle configuration.
+- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
+- `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
 - `shared/tracker-db/schema.md` — tracker database contract.
-- `shared/tracker-db/signatures.json` — small, evidence-backed starter dataset; not yet loaded by the app.
+- `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
 - `tests/test_validate_signatures.py` — regression tests.
 

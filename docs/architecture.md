@@ -54,6 +54,12 @@ For static scanning: user-selected APK → manifest/DEX inspection → signature
 
 The tracker database is advisory intelligence. It does not replace platform enforcement and is not proof of runtime behavior.
 
+## Encrypted profile export
+
+Android can export the resolver and user-configured domain rules as a versioned `.pcage` file. It derives a 256-bit key from the user passphrase with Argon2id v1.3 (19 MiB memory, 2 iterations, 1 lane), then encrypts and authenticates the payload using AES-256-GCM with a fresh 96-bit nonce. A random 128-bit salt and the nonce are stored in the header; the full header is authenticated as associated data. The full byte-level definition is in `docs/encrypted-profile-format.md`.
+
+The file is encrypted before it is written through Android's Storage Access Framework. Import authenticates/decrypts and validates the complete profile before asking the user to replace local settings. This provides encrypted manual transfer if the passphrase is conveyed separately; it is not account sync, not a server-side messaging system, and not encryption of live DNS queries. The sender's identity is not authenticated by this passphrase container. Swift and Rust consumers must implement the documented wire format and share test vectors before cross-platform interoperability is claimed.
+
 ## Privacy properties
 
 - No required account or backend for core functionality.

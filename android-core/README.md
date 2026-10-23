@@ -16,12 +16,12 @@ This is the pure Kotlin/JVM DNS engine used by the early Android app adapter in 
 - Provides a UDP DNS forwarder that enforces policy, protects the upstream socket through a callback, applies a bounded timeout, validates response identity/question and resource-record boundaries, and retries over protected TCP when the UDP response is truncated.
 - Coordinates these pieces in a packet-to-packet engine: blocked queries return a REFUSED packet, allowed queries are forwarded and returned as response packets, malformed queries are dropped, and upstream I/O errors propagate to the caller.
 
-The Android adapter provides the VPN service, consent flow, TUN read/write loop, and a `VpnService.protect`-backed callback for both UDP and TCP upstream sockets. The app has not yet been validated on a physical device or emulator, and the shared tracker database is not loaded by the app. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2).
+The Android adapter provides the VPN service, consent flow, TUN read/write loop, and a `VpnService.protect`-backed callback for both UDP and TCP upstream sockets. The app bundles the shared tracker database and exposes an explicit import of active domain indicators. The app has not yet been validated on a physical device or emulator. EDNS support follows the OPT wire format in [RFC 6891, section 6.1.2](https://www.rfc-editor.org/rfc/rfc6891.html#section-6.1.2).
 
 ## Current limits
 
 - The Android VPN adapter is early implementation code and has not yet been verified on an emulator or physical device.
-- Only user-entered domains are active; no verified tracker list is bundled or loaded.
+- User-entered domains and explicitly imported active domain indicators are active. The bundled tracker database currently contains only two Analytics endpoint records and is not comprehensive.
 - It does not identify which app made a query.
 - It rejects compressed query names, multiple questions, answer/authority records in queries, more than one additional record, non-OPT additional records, non-IN question classes, non-ASCII query hostnames, and EDNS versions other than 0.
 - The client-facing tunnel supports IPv4 UDP DNS only. Upstream TCP fallback is used for truncated UDP responses, but DNS-over-TCP connections from apps are not handled.
@@ -29,7 +29,7 @@ The Android adapter provides the VPN service, consent flow, TUN read/write loop,
 - It does not filter DNS-over-HTTPS, DNS-over-TLS, or DNS-over-QUIC.
 - It has not been tested on a physical Android device.
 
-The next integration stage still needs a downstream TCP DNS endpoint, a deliberate IPv6 strategy, network-change handling, concurrency/backpressure, and emulator/device tests. RFC 7766 requires general-purpose DNS implementations to support both UDP and TCP; the remaining downstream TCP limitation must remain visible.
+The core also contains a portable passphrase-encrypted profile envelope, implemented using Argon2id v1.3 and AES-256-GCM. It encrypts exported configuration only; it does not encrypt live DNS transport or provide remote synchronization. The next integration stage still needs a downstream TCP DNS endpoint, a deliberate IPv6 strategy, network-change handling, concurrency/backpressure, and emulator/device tests. RFC 7766 requires general-purpose DNS implementations to support both UDP and TCP; the remaining downstream TCP limitation must remain visible.
 
 ## Run tests
 
