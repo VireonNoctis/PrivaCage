@@ -78,6 +78,22 @@ class ValidateSignaturesTests(unittest.TestCase):
         document["entries"][0]["indicators"]["sdk_patterns"] = ["contains spaces and no package syntax"]
         self.assertTrue(any("dotted package/class pattern" in error for error in validator.validate_database(document)))
 
+    def test_terminal_sdk_wildcards_are_valid(self):
+        document = valid_document()
+        document["entries"][0]["indicators"]["sdk_patterns"] = [
+            "org.example.analytics.*",
+            "org.example.crash.**",
+        ]
+        self.assertEqual(validator.validate_database(document), [])
+
+    def test_sdk_wildcards_must_be_terminal(self):
+        document = valid_document()
+        document["entries"][0]["indicators"]["sdk_patterns"] = ["org.example.*.analytics"]
+        self.assertTrue(any(
+            "terminal .* or .** wildcard" in error
+            for error in validator.validate_database(document)
+        ))
+
     def test_unknown_fields_are_rejected(self):
         document = valid_document()
         document["entries"][0]["trusted"] = True
