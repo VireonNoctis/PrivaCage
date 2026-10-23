@@ -1,12 +1,12 @@
-# Encrypted profile format v1
+# Encrypted profile envelope and profile schema
 
 This document specifies the portable `.pcage` binary envelope used for Android profile export/import. The Kotlin/JVM and Rust implementations both decrypt the shared known-answer vector at `shared/crypto/test-vectors/`. Swift and Windows clients can implement the same wire format without changing it.
 
 ## Security scope
 
-The envelope encrypts the profile fields currently exported by Android: the numeric IPv4 resolver and the configured blocked-domain list. It is encrypted on the exporting device before the document is handed to the storage provider. A receiver needs the file and the passphrase. The passphrase must be conveyed separately using a channel the user trusts.
+The PCAGE01 binary envelope remains version 1. The JSON payload schema is versioned separately: profile schema v1 contains the numeric IPv4 resolver and blocked-domain list; schema v2 adds DNS-over-TLS enablement and the TLS certificate hostname. It is encrypted on the exporting device before the document is handed to the storage provider. A receiver needs the file and the passphrase. The passphrase must be conveyed separately using a channel the user trusts.
 
-This is encrypted file transfer, not a synced account, not encryption of live DNS traffic, and not sender identity/authentication. There is no cloud key escrow or recovery route. Losing the passphrase means the profile cannot be recovered. A party with both file and passphrase can decrypt it. The file size and its fixed magic/version remain visible.
+This is encrypted file transfer, not a synced account, not sender identity/authentication. When DNS-over-TLS is enabled, live DNS is encrypted only between the device and the configured resolver; the resolver can still observe query names. There is no cloud key escrow or recovery route. Losing the passphrase means the profile cannot be recovered. A party with both file and passphrase can decrypt it. The file size and its fixed magic/version remain visible.
 
 ## Binary layout
 
@@ -37,13 +37,15 @@ The plaintext is UTF-8 JSON with exactly these fields:
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "resolver_ipv4": "192.0.2.53",
-  "blocked_domains": ["ads.example", "tracker.example"]
+  "blocked_domains": ["ads.example", "tracker.example"],
+  "dns_over_tls_enabled": true,
+  "dns_over_tls_hostname": "dns.google"
 }
 ```
 
-The IP in this example is documentation-only, not a recommended DNS resolver. Production import rejects unknown/missing fields, non-numeric IPv4 resolver addresses, empty rule lists, duplicate/non-normalized domains, and invalid hostnames. The Rust core now includes a typed profile parser/serializer with explicit validation for these constraints; platform callers still must validate before applying settings. The example values are illustrative only.
+The IP in this example is documentation-only, not a recommended DNS resolver. Schema v1 is still accepted for backwards compatibility and has exactly the original three fields. Schema v2 has exactly the five fields shown above; the hostname is required even when DoT is disabled (use an empty string in that case). Production import rejects unknown/missing fields, non-numeric IPv4 resolver addresses, empty rule lists, duplicate/non-normalized domains, and invalid TLS hostnames. The Rust core now includes a typed profile parser/serializer with explicit validation for these constraints; platform callers still must validate before applying settings. The example values are illustrative only.
 
 ## Implementation requirements for other platforms
 

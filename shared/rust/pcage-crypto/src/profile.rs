@@ -13,6 +13,10 @@ pub struct ProfilePayload {
     pub format_version: u32,
     pub resolver_ipv4: String,
     pub blocked_domains: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_over_tls_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_over_tls_hostname: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +28,7 @@ pub enum ProfileError {
     EmptyDomainList,
     InvalidDomain,
     DuplicateDomain,
+    InvalidDnsOverTls,
     SerializationFailure,
     Crypto(CryptoError),
 }
@@ -46,6 +51,7 @@ impl fmt::Display for ProfileError {
             Self::DuplicateDomain => {
                 formatter.write_str("profile contains duplicate blocked domains")
             }
+            Self::InvalidDnsOverTls => formatter.write_str("profile DNS-over-TLS settings are invalid"),
             Self::SerializationFailure => formatter.write_str("profile serialization failed"),
             Self::Crypto(error) => write!(formatter, "profile cryptography failed: {error}"),
         }
@@ -78,8 +84,18 @@ impl ProfilePayload {
 
     /// Checks the shared profile contract without performing any I/O.
     pub fn validate(&self) -> Result<(), ProfileError> {
-        if self.format_version != 1 {
+        if !matches!(self.format_version, 1 | 2) {
             return Err(ProfileError::UnsupportedVersion);
+        }
+        match self.format_version {
+            1 if self.dns_over_tls_enabled.is_some() || self.dns_over_tls_hostname.is_some() => return Err(ProfileError::InvalidDnsOverTls),
+            2 => {
+                let enabled = self.dns_over_tls_enabled.ok_or(ProfileError::InvalidDnsOverTls)?;
+                let hostname = self.dns_over_tls_hostname.as_deref().ok_or(ProfileError::InvalidDnsOverTls)?;
+                if enabled && !is_valid_tls_hostname(hostname) { return Err(ProfileError::InvalidDnsOverTls); }
+                if !enabled && !hostname.is_empty() && !is_valid_tls_hostname(hostname) { return Err(ProfileError::InvalidDnsOverTls); }
+            }
+            _ => {}
         }
 
         if Ipv4Addr::from_str(&self.resolver_ipv4).is_err() {
@@ -118,6 +134,12 @@ pub fn encrypt_profile(
 pub fn decrypt_profile(envelope: &[u8], passphrase: &str) -> Result<ProfilePayload, ProfileError> {
     let plaintext = Zeroizing::new(decrypt(envelope, passphrase).map_err(ProfileError::Crypto)?);
     ProfilePayload::from_json(plaintext.as_slice())
+}
+
+fn is_valid_tls_hostname(hostname: &str) -> bool {
+    !hostname.is_empty() && hostname.len() <= 253 && hostname.is_ascii() &&
+        hostname == hostname.to_ascii_lowercase() && hostname.contains('.') &&
+        hostname.split('.').all(|label| is_valid_label(label)) && hostname != "localhost"
 }
 
 fn is_normalized_domain(domain: &str) -> bool {
@@ -162,6 +184,8 @@ mod tests {
             format_version: 1,
             resolver_ipv4: "192.0.2.53".to_owned(),
             blocked_domains: vec!["ads.example".to_owned(), "tracker.example".to_owned()],
+            dns_over_tls_enabled: None,
+            dns_over_tls_hostname: None,
         }
     }
 
@@ -190,7 +214,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_profile_version() {
-        let invalid = br#"{"format_version":2,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"]}"#;
+        let invalid = br#"{"format_version":3,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"]}"#;
         assert_eq!(
             ProfilePayload::from_json(invalid),
             Err(ProfileError::UnsupportedVersion)

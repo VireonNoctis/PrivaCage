@@ -720,16 +720,17 @@ class MainActivity : Activity() {
             return null
         }
         val useDot = dnsOverTlsInput.isChecked
-        val tlsHostname = resolverHostnameInput.text.toString().trim()
-        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) {
+        val tlsHostname = if (useDot) try {
+            DnsOverTlsForwarder.validateHostname(resolverHostnameInput.text.toString())
+        } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return null
-        }
+        } else resolverHostnameInput.text.toString().trim()
         val json = JSONObject()
             .put("format_version", PROFILE_FORMAT_VERSION)
             .put("resolver_ipv4", resolver)
             .put("blocked_domains", JSONArray(domains.sorted()))
             .put("dns_over_tls_enabled", useDot)
-            .put("dns_over_tls_hostname", tlsHostname
+            .put("dns_over_tls_hostname", tlsHostname)
         val bytes = json.toString().toByteArray(StandardCharsets.UTF_8)
         if (bytes.size > EncryptedBackupEnvelope.MAX_PLAINTEXT_BYTES) {
             bytes.fill(0)
@@ -887,8 +888,8 @@ class MainActivity : Activity() {
             throw IOException("Profile contains an invalid domain rule", exception)
         }
         val useDot = if (version.toInt() == 1) false else (json.opt("dns_over_tls_enabled") as? Boolean ?: throw IOException("Profile DNS-over-TLS flag is invalid"))
-        val tlsHostname = if (version.toInt() == 1) "" else (json.opt("dns_over_tls_hostname") as? String ?: throw IOException("Profile DNS-over-TLS hostname is invalid"))
-        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) { throw IOException("Profile DNS-over-TLS hostname is invalid", exception) }
+        var tlsHostname = if (version.toInt() == 1) "" else (json.opt("dns_over_tls_hostname") as? String ?: throw IOException("Profile DNS-over-TLS hostname is invalid"))
+        if (useDot) tlsHostname = try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) { throw IOException("Profile DNS-over-TLS hostname is invalid", exception) }
         return ImportedProfile(resolver, domains, useDot, tlsHostname)
     }
 
@@ -932,10 +933,11 @@ class MainActivity : Activity() {
             return false
         }
         val useDot = dnsOverTlsInput.isChecked
-        val tlsHostname = resolverHostnameInput.text.toString().trim()
-        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) {
+        val tlsHostname = if (useDot) try {
+            DnsOverTlsForwarder.validateHostname(resolverHostnameInput.text.toString())
+        } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return false
-        }
+        } else resolverHostnameInput.text.toString().trim()
         getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
             .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, resolver)
             .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, domains)
