@@ -53,6 +53,16 @@ class ValidateSignaturesTests(unittest.TestCase):
         document["entries"][0]["evidence"][0]["url"] = "http://docs.example.org/analytics-sdk"
         self.assertTrue(any("must use HTTPS" in error for error in validator.validate_database(document)))
 
+    def test_evidence_url_credentials_are_rejected(self):
+        document = valid_document()
+        document["entries"][0]["evidence"][0]["url"] = "https://user:pass@docs.example.org/analytics-sdk"
+        self.assertTrue(any("must not contain credentials" in error for error in validator.validate_database(document)))
+
+    def test_evidence_url_invalid_port_is_rejected(self):
+        document = valid_document()
+        document["entries"][0]["evidence"][0]["url"] = "https://docs.example.org:99999/analytics-sdk"
+        self.assertTrue(any("port" in error for error in validator.validate_database(document)))
+
     def test_url_syntax_is_rejected_as_a_domain(self):
         document = valid_document()
         document["entries"][0]["indicators"]["domains"] = ["https://metrics.example.org/path"]
