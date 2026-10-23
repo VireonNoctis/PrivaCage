@@ -86,7 +86,7 @@ pub fn encrypt(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, CryptoErro
 
     let key = derive_key(passphrase, &salt[..])?;
     let cipher = Aes256Gcm::new_from_slice(&key[..]).map_err(|_| CryptoError::EncryptionFailure)?;
-    let nonce = Nonce::from_slice(&nonce_bytes[..]);
+    let nonce = Nonce::try_from(&nonce_bytes[..]).map_err(|_| CryptoError::EncryptionFailure)?;
 
     let mut envelope = Vec::with_capacity(HEADER_SIZE + plaintext.len() + TAG_SIZE);
     envelope.extend_from_slice(&MAGIC);
@@ -127,7 +127,7 @@ pub fn decrypt(envelope: &[u8], passphrase: &str) -> Result<Vec<u8>, CryptoError
     let key = derive_key(passphrase, salt)?;
     let cipher =
         Aes256Gcm::new_from_slice(&key[..]).map_err(|_| CryptoError::AuthenticationFailure)?;
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce = Nonce::try_from(nonce_bytes).map_err(|_| CryptoError::AuthenticationFailure)?;
 
     cipher
         .decrypt(
