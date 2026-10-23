@@ -12,7 +12,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 
 | Area | Status | Honest scope |
 |---|---|---|
-| Tracker intelligence format | Initial implementation | Nine source-backed endpoint records across analytics, behavioral analytics, and advertising; broad shared domains remain review-only; still small and non-comprehensive |
+| Tracker intelligence format | Initial implementation | Ten source-backed endpoint records across analytics, behavioral analytics, and advertising; broad shared domains remain review-only; still small and non-comprehensive |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), returns allow/block/malformed decisions, supports offline rule previews, and records aggregate per-session outcomes without retaining query names |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
