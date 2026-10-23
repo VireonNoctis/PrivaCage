@@ -1,7 +1,7 @@
 # Tracker signature review — evidence-backed starter catalog
 
 **Reviewed:** 2026-10-23  
-**Scope:** Ten curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
+**Scope:** Eleven curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
 
 ## Records
 
@@ -107,3 +107,13 @@
 - **Evidence:** AppsFlyer's official iOS troubleshooting guide recommends `appsflyersdk.com` for SDK traffic in the documented TLS configuration.
 - **Source:** https://dev.appsflyer.com/hc/docs/troubleshooting-ios
 - **Why review:** The source supports an association with SDK communication in a described configuration, but does not establish that this hostname is exclusively an attribution endpoint across all SDK versions and deployments. Do not bulk-import it as a blocking rule until scope is reviewed.
+
+
+### `mixpanel-event-ingestion`
+
+- **Domains:** `api.mixpanel.com`, `api-eu.mixpanel.com`, `api-in.mixpanel.com`
+- **Classification:** Mixpanel event/profile ingestion endpoints
+- **Confidence/status:** High / active
+- **Evidence:** Mixpanel's official Track Event API documents event ingestion. Its tracking-proxy documentation identifies the default host and regional hosts for EU and India residency.
+- **Sources:** https://developer.mixpanel.com/reference/track-event
+- **Caveat:** Regional selection, custom proxies, and SDK changes can alter the observed host. A hostname match does not reveal event contents or identify which app initiated the request.
