@@ -42,6 +42,25 @@ class DnsPolicyEngineTest {
     }
 
     @Test
+    fun resolvesMostSpecificMatchesAcrossTenThousandRules() {
+        val rules = (0 until 10_000)
+            .mapTo(mutableSetOf()) { index -> "tracker$index.example.test" }
+            .apply {
+                add("example.test")
+                add("sdk.example.test")
+            }
+        val engine = DnsPolicyEngine(rules)
+
+        assertEquals(
+            "tracker9999.example.test",
+            engine.matchingRuleForDomain("img.tracker9999.example.test")
+        )
+        assertEquals("sdk.example.test", engine.matchingRuleForDomain("sdk.example.test"))
+        assertEquals("example.test", engine.matchingRuleForDomain("other.example.test"))
+        assertNull(engine.matchingRuleForDomain("notexample.test"))
+    }
+
+    @Test
     fun rejectsRulesWithMultipleTrailingDots() {
         assertFailsWith<IllegalArgumentException> {
             DnsPolicyEngine(setOf("tracker.example.."))

@@ -8,7 +8,17 @@ package org.privacage.dns
  */
 class DnsPolicyEngine(blockedDomains: Set<String>) {
 
-    private val blockedDomains: Set<String> = blockedDomains.map(::normalizeRule).toSet()
+    private val ruleRoot = RuleNode()
+
+    init {
+        blockedDomains.map(::normalizeRule).toSet().forEach { rule ->
+            var node = ruleRoot
+            for (label in rule.split('.').asReversed()) {
+                node = node.children.getOrPut(label) { RuleNode() }
+            }
+            node.terminalRule = rule
+        }
+    }
 
     fun evaluate(message: ByteArray): DnsDecision {
         val question = try {
@@ -33,11 +43,21 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
     fun matchingRuleForDomain(domainName: String): String? =
         matchingRuleForNormalizedName(normalizeRule(domainName))
 
-    private fun matchingRuleForNormalizedName(name: String): String? =
-        blockedDomains
-            .asSequence()
-            .filter { rule -> name == rule || name.endsWith(".$rule") }
-            .maxByOrNull { it.length }
+    private fun matchingRuleForNormalizedName(name: String): String? {
+        var node = ruleRoot
+        var matchingRule: String? = null
+
+        for (label in name.split('.').asReversed()) {
+            node = node.children[label] ?: break
+            node.terminalRule?.let { matchingRule = it }
+        }
+        return matchingRule
+    }
+
+    private class RuleNode {
+        val children: MutableMap<String, RuleNode> = HashMap()
+        var terminalRule: String? = null
+    }
 
     private fun normalizeRule(rule: String): String {
         val trimmed = rule.trim()
