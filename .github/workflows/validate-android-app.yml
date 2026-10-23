@@ -6,6 +6,8 @@ on:
       - "android-app/**"
       - "android-core/**"
       - "shared/tracker-db/**"
+      - "shared/scripts/**"
+      - "tests/**"
       - ".github/workflows/validate-android-app.yml"
   pull_request:
     paths:
@@ -44,6 +46,11 @@ jobs:
       - name: Run APK scanner unit tests
         working-directory: android-app
         run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Validate Android privacy baseline
+        run: |
+          python shared/scripts/validate-android-backup.py
+          python shared/scripts/validate-android-privacy.py
+          python -m unittest discover -s tests -p 'test_android_privacy_baseline.py' -v
       - name: Validate and inspect the bundled tracker catalog
         run: |
           python shared/scripts/validate-signatures.py
