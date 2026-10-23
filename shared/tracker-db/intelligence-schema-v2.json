@@ -216,6 +216,7 @@
           "enum": [
             "active",
             "review",
+            "retired",
             "deprecated"
           ]
         },
@@ -337,6 +338,12 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Fa-f0-9]{64}$"
+          }
+        },
+        "sdk_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       },

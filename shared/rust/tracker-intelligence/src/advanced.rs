@@ -1,5 +1,5 @@
 use crate::{
-    build_release, normalize_domain, normalize_ip, sha256_hex,
+    build_release, normalize_domain, normalize_ip, sdk_pattern_matches, valid_sdk_pattern, sha256_hex,
     verify_release, Candidate, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, IntelError,
 };
@@ -136,6 +136,8 @@ pub fn validate_bundle(b:&IntelligenceBundle)->Result<(),IntelError>{
         for h in &s.file_hashes_sha256 {validate_hash(h)?;}
     }
     for e in &b.entries {
+        if !["active","review","retired","deprecated"].contains(&e.status.as_str()){return Err(invalid(format!("entry {} has invalid status {}",e.id,e.status)))}
+        if !["low","medium","high"].contains(&e.confidence.as_str()){return Err(invalid(format!("entry {} has invalid confidence {}",e.id,e.confidence)))}
         if e.evidence.is_empty(){return Err(invalid(format!("entry {} has no evidence",e.id)))}
         for ev in &e.evidence {validate_evidence(ev)?;}
         for id in &e.entity_ids {if !entities.contains(id.as_str()){return Err(invalid(format!("entry {} references missing entity {id}",e.id)))}}
@@ -143,6 +145,7 @@ pub fn validate_bundle(b:&IntelligenceBundle)->Result<(),IntelError>{
         for h in e.indicators.file_hashes_sha256.iter().chain(e.indicators.certificate_sha256.iter()){validate_hash(h)?;}
         for d in &e.indicators.domains {if normalize_domain(d).is_none(){return Err(invalid(format!("entry {} has invalid domain {d}",e.id)))}}
         for ip in &e.indicators.ip_addresses {if normalize_ip(ip).is_none(){return Err(invalid(format!("entry {} has invalid IP {ip}",e.id)))}}
+        for pattern in &e.indicators.sdk_patterns {if !valid_sdk_pattern(pattern){return Err(invalid(format!("entry {} has invalid SDK pattern {pattern}",e.id)))}}
     }
     for a in &b.app_fingerprints {
         if a.package_id.trim().is_empty(){return Err(invalid(format!("app fingerprint {} has empty package id",a.id)))}
@@ -192,10 +195,11 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
         let strings=extract_ascii_strings(&bytes);
         let mut hits=Vec::new();
         for sdk in &catalog.entries {
-            for indicator in &sdk.indicators.dex_strings {
-                if strings.iter().any(|s|s.contains(indicator)) {
-                    hits.push(json!({"entry_id":sdk.id,"name":sdk.name,"matched_string":indicator,"evidence":sdk.evidence}));
-                    observations.push(Observation{value:indicator.clone(),kind:IndicatorKind::DexString,context:Some(format!("{name} string match"))});
+            for (indicator_kind,indicator) in sdk.indicators.dex_strings.iter().map(|v|(IndicatorKind::DexString,v)).chain(sdk.indicators.sdk_patterns.iter().map(|v|(IndicatorKind::SdkPattern,v))) {
+                if strings.iter().any(|s|s.contains(indicator)||sdk_pattern_matches(s,indicator)) {
+                    let kind_label=if indicator_kind==IndicatorKind::SdkPattern{"sdk_pattern"}else{"dex_string"};
+                    hits.push(json!({"entry_id":sdk.id,"name":sdk.name,"indicator_type":kind_label,"matched_string":indicator,"evidence":sdk.evidence}));
+                    observations.push(Observation{value:indicator.clone(),kind:indicator_kind.clone(),context:Some(format!("{name} string match"))});
                 }
             }
         }
@@ -373,6 +377,7 @@ pub fn detect_regressions(old:&IntelligenceBundle,new:&IntelligenceBundle)->Valu
             ("certificate_sha256",&before.indicators.certificate_sha256,&after.indicators.certificate_sha256),
             ("dex_strings",&before.indicators.dex_strings,&after.indicators.dex_strings),
             ("file_hashes_sha256",&before.indicators.file_hashes_sha256,&after.indicators.file_hashes_sha256),
+            ("sdk_patterns",&before.indicators.sdk_patterns,&after.indicators.sdk_patterns),
         ];
         for (kind,old_values,new_values) in groups {
             let removed:Vec<_>=old_values.iter().filter(|v|!new_values.iter().any(|n|n.eq_ignore_ascii_case(v))).cloned().collect();

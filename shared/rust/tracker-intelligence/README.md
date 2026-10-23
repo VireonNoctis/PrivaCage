@@ -11,6 +11,7 @@ cargo run -- freshness ../../tracker-db/signatures.json "$(date -u +%F)" 180 /tm
 cargo run -- analyze ../../tracker-db/signatures.json www.google-analytics.com
 cargo run -- analyze-v2 /tmp/intelligence-v2.json domain www.google-analytics.com
 cargo run -- analyze-v2 /tmp/intelligence-v2.json ip_address 192.0.2.1
+cargo run -- analyze-v2 /tmp/intelligence-v2.json sdk_pattern "Lcom/example/sdk/Tracker;"
 cargo run -- ingest ../../tracker-db/signatures.json /tmp/observations.json /tmp/candidates.json /tmp/ingest-manifest.json ./observations.json ./domains.txt
 cargo run -- scan-apk ../../tracker-db/signatures.json app.apk /tmp/apk-observations.json /tmp/apk-report.json
 cargo run -- diff old-v2.json new-v2.json /tmp/catalog-diff.json
