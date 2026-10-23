@@ -15,6 +15,8 @@ import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsTunnelEngine
 import org.privacage.dns.DnsTunnelResult
 import org.privacage.dns.DnsTunnelStatsSnapshot
+import org.privacage.dns.DnsOverTlsForwarder
+import org.privacage.dns.DnsUpstreamTransport
 import org.privacage.dns.TcpSocketProtector
 import org.privacage.dns.UdpDnsForwarder
 import org.privacage.dns.UdpSocketProtector
@@ -46,12 +48,23 @@ class PrivacyDnsVpnService : VpnService() {
 
             val policy = DnsPolicyEngine(domains)
             val resolver = InetSocketAddress(InetAddress.getByName(resolverText), DNS_PORT)
-            val forwarder = UdpDnsForwarder(
-                resolver,
-                UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
-                policy,
-                tcpSocketProtector = TcpSocketProtector { socket: Socket -> protect(socket) }
-            )
+            val forwarder: DnsUpstreamTransport = if (prefs.getBoolean(KEY_DOT_ENABLED, false)) {
+                val hostname = prefs.getString(KEY_DOT_HOSTNAME, "").orEmpty()
+                require(hostname.isNotBlank()) { "DNS-over-TLS requires a certificate hostname" }
+                DnsOverTlsForwarder(
+                    resolverAddress = InetAddress.getByName(resolverText),
+                    tlsHostname = hostname,
+                    socketProtector = TcpSocketProtector { socket: Socket -> protect(socket) },
+                    policyEngine = policy
+                )
+            } else {
+                UdpDnsForwarder(
+                    resolver,
+                    UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
+                    policy,
+                    tcpSocketProtector = TcpSocketProtector { socket: Socket -> protect(socket) }
+                )
+            }
             val engine = DnsTunnelEngine(DnsPacketProcessor(policy), forwarder)
             val descriptor = Builder()
                 .setSession("PrivaCage DNS filtering")
@@ -237,6 +250,8 @@ class PrivacyDnsVpnService : VpnService() {
     companion object {
         const val PREFERENCES_NAME = "privacage_local_dns"
         const val KEY_RESOLVER_IP = "resolver_ipv4"
+        const val KEY_DOT_ENABLED = "dns_over_tls_enabled"
+        const val KEY_DOT_HOSTNAME = "dns_over_tls_hostname"
         const val KEY_BLOCKED_DOMAINS = "blocked_domains"
         const val KEY_STATS_BLOCKED = "dns_stats_blocked"
         const val KEY_STATS_FORWARDED = "dns_stats_forwarded"

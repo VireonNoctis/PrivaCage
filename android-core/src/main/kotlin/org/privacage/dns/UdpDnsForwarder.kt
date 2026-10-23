@@ -9,6 +9,11 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /** Callback used by Android integration to call VpnService.protect(socket). */
+interface DnsUpstreamTransport {
+    @Throws(IOException::class)
+    fun forward(query: ByteArray): ByteArray
+}
+
 fun interface UdpSocketProtector {
     fun protect(socket: DatagramSocket): Boolean
 }
@@ -30,7 +35,7 @@ class UdpDnsForwarder(
     private val policyEngine: DnsPolicyEngine,
     private val timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
     private val tcpSocketProtector: TcpSocketProtector? = null
-) {
+) : DnsUpstreamTransport {
 
     init {
         require(!resolver.isUnresolved) { "DNS resolver address must be resolved" }
@@ -45,7 +50,7 @@ class UdpDnsForwarder(
      * Does not retry or silently convert failures into synthetic answers.
      */
     @Throws(IOException::class)
-    fun forward(query: ByteArray): ByteArray {
+    override fun forward(query: ByteArray): ByteArray {
         if (query.size > MAX_UDP_DNS_PAYLOAD) throw IOException("DNS query exceeds UDP payload limit")
         val expectedQuestion = readSupportedQuery(query)
 

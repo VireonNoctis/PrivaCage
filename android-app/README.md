@@ -11,6 +11,8 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - Static report with package/version/target-SDK metadata, a SHA-256 file identity, declared permissions with conservative explanations, components the parser reports as exported, and a bounded scan of DEX byte strings for catalog domain/SDK literals.
 - Permission findings are not described as proof of runtime use; the APK is not installed or executed and is not uploaded.
 - Local UI for a numeric IPv4 upstream resolver and user-entered blocked domains.
+- Optional DNS-over-TLS on port 853 with platform trust, SNI, strict certificate hostname verification, protected sockets, bounded reads, DNS response validation, and no plaintext fallback.
+- Android Privacy Dashboard, app-management, location, and Wi-Fi settings shortcuts; these open OS-owned controls rather than claiming to revoke other apps' permissions.
 - Bundles the canonical `shared/tracker-db/signatures.json` directly as an Android asset; it does not duplicate the database.
 - Displays tracker records with evidence URLs, confidence, review status, and verification dates.
 - Lets users explicitly import only `active` domain indicators into the rule editor; changes still require saving. `review` and `retired` records are never imported by this action, and SDK class patterns are informational only.
@@ -38,7 +40,8 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 - The APK is user-selected, limited to 100 MiB, copied into private cache for parsing, and deleted after inspection; no APK upload or installation occurs.
 - The bundled catalog currently contains only two Analytics endpoint indicators and is not comprehensive. Only explicitly imported active domain indicators (plus manually entered domains) become blocking rules; review-status records are excluded.
 - The client-facing tunnel supports IPv4 UDP DNS only. It does not accept DNS-over-TCP connections from device apps.
-- Upstream DNS uses ordinary UDP/TCP to the user-selected resolver, not encrypted DNS. Encrypted profile backups protect exported configuration only; they do not encrypt live DNS traffic or provide account/device sync.
+- Plain DNS mode uses ordinary UDP/TCP and remains unencrypted. Optional DNS-over-TLS encrypts only device-to-resolver DNS; the resolver can still observe queries, and DoH/DoQ or IPv6 paths are not filtered. TLS failure drops the query rather than falling back to plaintext. Encrypted backups include the selected transport and TLS hostname, but do not provide account/device sync.
+- Privacy settings shortcuts do not give PrivaCage OS privileges. Android itself, privileged system components, device-management software, and OEM services remain outside an ordinary app's control.
 - If a complete TCP response is too large to fit into the client-facing UDP packet, the query fails rather than producing a fabricated answer.
 - Queries are processed sequentially; a slow resolver delays later requests.
 - The service does not attribute queries to apps or inspect HTTPS contents.

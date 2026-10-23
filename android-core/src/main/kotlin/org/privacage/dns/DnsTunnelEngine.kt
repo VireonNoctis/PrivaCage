@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class DnsTunnelEngine(
     private val processor: DnsPacketProcessor,
-    private val upstreamForwarder: UdpDnsForwarder
+    private val upstreamForwarder: DnsUpstreamTransport
 ) {
     val stats = DnsTunnelStats()
 

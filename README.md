@@ -15,11 +15,11 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Tracker intelligence format | Initial implementation | Seven source-backed endpoint records across analytics, behavioral analytics, and advertising; broad shared domains remain review-only; still small and non-comprehensive |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), returns allow/block/malformed decisions, supports offline rule previews, and records aggregate per-session outcomes without retaining query names |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
-| Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
+| Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust decrypt a shared test vector. No account, remote sync, or live DNS encryption |
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals. These are possible indicators, not proof of runtime use or malicious behavior |
-| Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
+| Android permission auditing | Guided OS settings | Opens Android Privacy Dashboard, app management, location and Wi-Fi settings; PrivaCage cannot revoke other apps' permissions itself |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
 | Windows network controls | Planned | Explicit firewall rules require appropriate privileges |
 | Legal request assistant | Planned | Drafts and tracks requests; cannot verify deletion from company systems |
@@ -47,7 +47,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK manifest audit and DEX indicator scan, JPEG metadata removal, and Android build workflow.
 - `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — streaming JPEG marker parser that removes common EXIF/XMP, IPTC/Photoshop, and comment segments without re-encoding image pixels.
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
-- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
+- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.

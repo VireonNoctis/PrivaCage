@@ -3,6 +3,7 @@ package org.privacage.android
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.provider.Settings
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
@@ -10,6 +11,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -28,6 +30,8 @@ import java.nio.charset.StandardCharsets
 
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
+    private lateinit var resolverHostnameInput: EditText
+    private lateinit var dnsOverTlsInput: CheckBox
     private lateinit var domainsInput: EditText
     private lateinit var domainTestInput: EditText
     private lateinit var statsText: TextView
@@ -56,9 +60,19 @@ class MainActivity : Activity() {
         }
         root.addView(TextView(this).apply { text = "PrivaCage"; textSize = 28f })
         root.addView(TextView(this).apply {
-            text = "Local DNS filtering. No account or required cloud service."
-            setPadding(0, dp(8), 0, dp(20))
+            text = "Local-first privacy controls. Android still owns OS-level permissions and system telemetry."
+            setPadding(0, dp(8), 0, dp(12))
         })
+        root.addView(TextView(this).apply { text = "ANDROID PRIVACY CONTROLS"; textSize = 16f; setPadding(0, dp(8), 0, dp(4)) })
+        root.addView(TextView(this).apply {
+            text = "These shortcuts open Android's own settings so you can review access and revoke permissions there. PrivaCage cannot override the OS or secretly revoke permissions for other apps."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply { text = "Open Privacy Dashboard"; setOnClickListener { openSystemSettings(Settings.ACTION_PRIVACY_SETTINGS, "Privacy Dashboard") } }, matchWidth())
+        root.addView(Button(this).apply { text = "Review app permissions"; setOnClickListener { openSystemSettings(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, "App management") } }, matchWidth())
+        root.addView(Button(this).apply { text = "Location access settings"; setOnClickListener { openSystemSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location settings") } }, matchWidth())
+        root.addView(Button(this).apply { text = "Wi-Fi and network settings"; setOnClickListener { openSystemSettings(Settings.ACTION_WIFI_SETTINGS, "Wi-Fi settings") } }, matchWidth())
+        root.addView(TextView(this).apply { text = "DNS PRIVACY"; textSize = 16f; setPadding(0, dp(18), 0, dp(4)) })
         root.addView(Button(this).apply {
             text = "Remove photo metadata (JPEG)"
             setOnClickListener { chooseJpegForScrubbing() }
@@ -81,6 +95,23 @@ class MainActivity : Activity() {
             setText(prefs.getString(PrivacyDnsVpnService.KEY_RESOLVER_IP, ""))
         }
         root.addView(resolverInput, matchWidth())
+        dnsOverTlsInput = CheckBox(this).apply {
+            text = "Use DNS-over-TLS (encrypted upstream DNS; fails closed)"
+            isChecked = prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)
+        }
+        root.addView(dnsOverTlsInput, matchWidth())
+        root.addView(TextView(this).apply { text = "TLS certificate hostname (required when DNS-over-TLS is enabled)" })
+        resolverHostnameInput = EditText(this).apply {
+            hint = "e.g. dns.google or cloudflare-dns.com"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+            setText(prefs.getString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, ""))
+        }
+        root.addView(resolverHostnameInput, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "DNS-over-TLS encrypts DNS between this device and the selected resolver; that resolver can still see queries. It does not stop Android, apps, or the Wi-Fi operator from collecting other data, and it does not block DoH/DoQ or all IPv6 traffic."
+            textSize = 12f; setPadding(0, dp(4), 0, dp(8))
+        })
         root.addView(TextView(this).apply {
             text = "Bundled tracker intelligence (optional)"
             setPadding(0, dp(18), 0, dp(4))
@@ -688,10 +719,17 @@ class MainActivity : Activity() {
             statusText.text = exception.message ?: "One or more domain rules are invalid."
             return null
         }
+        val useDot = dnsOverTlsInput.isChecked
+        val tlsHostname = resolverHostnameInput.text.toString().trim()
+        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) {
+            statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return null
+        }
         val json = JSONObject()
             .put("format_version", PROFILE_FORMAT_VERSION)
             .put("resolver_ipv4", resolver)
             .put("blocked_domains", JSONArray(domains.sorted()))
+            .put("dns_over_tls_enabled", useDot)
+            .put("dns_over_tls_hostname", tlsHostname
         val bytes = json.toString().toByteArray(StandardCharsets.UTF_8)
         if (bytes.size > EncryptedBackupEnvelope.MAX_PLAINTEXT_BYTES) {
             bytes.fill(0)
@@ -793,9 +831,13 @@ class MainActivity : Activity() {
                     getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
                         .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
                         .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
+                        .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
+                        .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
                         .apply()
                     resolverInput.setText(imported.resolverIpv4)
                     domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
+                    dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
+                    resolverHostnameInput.setText(imported.dnsOverTlsHostname)
                     statusText.text = "Encrypted profile imported. Restart active DNS filtering to apply the new configuration."
                 }
                 .show()
@@ -819,13 +861,10 @@ class MainActivity : Activity() {
         val actualKeys = mutableSetOf<String>()
         val iterator = json.keys()
         while (iterator.hasNext()) actualKeys += iterator.next()
-        if (actualKeys != setOf("format_version", "resolver_ipv4", "blocked_domains")) {
-            throw IOException("Profile fields do not match the supported format")
-        }
         val version = json.opt("format_version")
-        if (version !is Number || version.toInt() != PROFILE_FORMAT_VERSION || version.toDouble() != PROFILE_FORMAT_VERSION.toDouble()) {
-            throw IOException("Unsupported profile format version")
-        }
+        if (version !is Number || version.toInt() !in 1..PROFILE_FORMAT_VERSION || version.toDouble() != version.toInt().toDouble()) throw IOException("Unsupported profile format version")
+        val expectedKeys = if (version.toInt() == 1) setOf("format_version", "resolver_ipv4", "blocked_domains") else setOf("format_version", "resolver_ipv4", "blocked_domains", "dns_over_tls_enabled", "dns_over_tls_hostname")
+        if (actualKeys != expectedKeys) throw IOException("Profile fields do not match the supported format")
         val resolver = json.opt("resolver_ipv4") as? String
             ?: throw IOException("Profile resolver is invalid")
         if (!isIpv4Address(resolver)) throw IOException("Profile resolver must be a numeric IPv4 address")
@@ -847,7 +886,10 @@ class MainActivity : Activity() {
         } catch (exception: IllegalArgumentException) {
             throw IOException("Profile contains an invalid domain rule", exception)
         }
-        return ImportedProfile(resolver, domains)
+        val useDot = if (version.toInt() == 1) false else (json.opt("dns_over_tls_enabled") as? Boolean ?: throw IOException("Profile DNS-over-TLS flag is invalid"))
+        val tlsHostname = if (version.toInt() == 1) "" else (json.opt("dns_over_tls_hostname") as? String ?: throw IOException("Profile DNS-over-TLS hostname is invalid"))
+        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) { throw IOException("Profile DNS-over-TLS hostname is invalid", exception) }
+        return ImportedProfile(resolver, domains, useDot, tlsHostname)
     }
 
     private fun readLimited(input: InputStream, maxBytes: Int): ByteArray {
@@ -869,7 +911,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private data class ImportedProfile(val resolverIpv4: String, val blockedDomains: List<String>)
+    private data class ImportedProfile(val resolverIpv4: String, val blockedDomains: List<String>, val dnsOverTlsEnabled: Boolean, val dnsOverTlsHostname: String)
 
     private fun saveConfiguration(): Boolean {
         val resolver = resolverInput.text.toString().trim()
@@ -889,11 +931,23 @@ class MainActivity : Activity() {
             statusText.text = exception.message ?: "One or more blocked-domain rules are invalid."
             return false
         }
+        val useDot = dnsOverTlsInput.isChecked
+        val tlsHostname = resolverHostnameInput.text.toString().trim()
+        if (useDot) try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) {
+            statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return false
+        }
         getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
             .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, resolver)
             .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, domains)
+            .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, useDot)
+            .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, tlsHostname)
             .apply()
         return true
+    }
+
+    private fun openSystemSettings(action: String, label: String) {
+        try { startActivity(Intent(action)); statusText.text = "Opened Android $label. Changes are controlled by Android Settings." }
+        catch (exception: Exception) { statusText.text = "This Android build does not expose the $label shortcut. Open it manually in Settings." }
     }
 
     private fun startVpnService() {
@@ -924,6 +978,6 @@ class MainActivity : Activity() {
         private const val REQUEST_JPEG_SCRUB_INPUT = 4111
         private const val REQUEST_JPEG_SCRUB_OUTPUT = 4112
         private const val MAX_AUDIT_ITEMS_TO_DISPLAY = 80
-        private const val PROFILE_FORMAT_VERSION = 1
+        private const val PROFILE_FORMAT_VERSION = 2
     }
 }
