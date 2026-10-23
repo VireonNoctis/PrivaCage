@@ -1,0 +1,30 @@
+name: Validate Rust tracker intelligence
+on:
+  push:
+    paths:
+      - "shared/rust/tracker-intelligence/**"
+      - "shared/tracker-db/**"
+      - ".github/workflows/validate-tracker-intelligence.yml"
+  pull_request:
+    paths:
+      - "shared/rust/tracker-intelligence/**"
+      - "shared/tracker-db/**"
+      - ".github/workflows/validate-tracker-intelligence.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust-intelligence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shared/rust/tracker-intelligence
+      - name: Test Rust intelligence engine
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo test
+      - name: Validate existing catalog with Rust
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo run -- validate ../../tracker-db/signatures.json

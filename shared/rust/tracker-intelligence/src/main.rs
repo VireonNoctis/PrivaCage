@@ -1,0 +1,11 @@
+use pcage_tracker_intelligence::{build_release,discover_candidates,load_catalog,match_observations,verify_release,IndicatorKind,Observation,ReleaseManifest};
+use std::{env,fs,process};
+fn usage()->!{eprintln!("Usage:\n  pcage-tracker-intel validate <catalog.json>\n  pcage-tracker-intel analyze <catalog.json> <domain>\n  pcage-tracker-intel discover <catalog.json> <observations.json>\n  pcage-tracker-intel build-release <catalog.json> <manifest.json> <date> <seed-hex>\n  pcage-tracker-intel verify-release <catalog.json> <manifest.json> <trusted-public-key-hex>");process::exit(2)}
+fn run()->Result<(),String>{let a:Vec<String>=env::args().collect();match a.get(1).map(String::as_str){
+Some("validate") if a.len()==3=>{let c=load_catalog(&a[2]).map_err(|e|e.to_string())?;println!("valid schema v1; {} entries",c.entries.len());}
+Some("analyze") if a.len()==4=>{let c=load_catalog(&a[2]).map_err(|e|e.to_string())?;let o=vec![Observation{value:a[3].clone(),kind:IndicatorKind::Domain,context:Some("CLI input".into())}];println!("{}",serde_json::to_string_pretty(&match_observations(&c,&o)).map_err(|e|e.to_string())?);}
+Some("discover") if a.len()==4=>{let c=load_catalog(&a[2]).map_err(|e|e.to_string())?;let o:Vec<Observation>=serde_json::from_slice(&fs::read(&a[3]).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;println!("{}",serde_json::to_string_pretty(&discover_candidates(&c,&o)).map_err(|e|e.to_string())?);}
+Some("build-release") if a.len()==6=>{let b=fs::read(&a[2]).map_err(|e|e.to_string())?;let c:pcage_tracker_intelligence::Catalog=serde_json::from_slice(&b).map_err(|e|e.to_string())?;pcage_tracker_intelligence::validate_catalog(&c).map_err(|e|e.to_string())?;let m=build_release(&b,&a[4],&a[5]).map_err(|e|e.to_string())?;fs::write(&a[3],serde_json::to_vec_pretty(&m).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;println!("manifest written; pin signer public key in trusted config");}
+Some("verify-release") if a.len()==5=>{let b=fs::read(&a[2]).map_err(|e|e.to_string())?;let m:ReleaseManifest=serde_json::from_slice(&fs::read(&a[3]).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;verify_release(&b,&m,&a[4]).map_err(|e|e.to_string())?;println!("signature and digest verified");}
+_=>usage()}Ok(())}
+fn main(){if let Err(e)=run(){eprintln!("error: {e}");process::exit(1)}}

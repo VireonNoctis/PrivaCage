@@ -1,0 +1,2 @@
+use pcage_tracker_intelligence::{load_catalog,match_observations,IndicatorKind,Observation};
+#[test]fn existing_catalog_remains_compatible(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/signatures.json");let c=load_catalog(p).expect("legacy catalog");assert!(c.entries.len()>=10);let hits=match_observations(&c,&[Observation{value:"www.google-analytics.com".into(),kind:IndicatorKind::Domain,context:None}]);assert!(hits.iter().any(|h|h.entry_id=="google-analytics-collection"));}
