@@ -121,6 +121,25 @@
           "description": "Google's Google tag setup guide lists doubleclick.net as a destination to inspect when verifying Floodlight traffic. The domain is broad and can be shared across services, so it remains review-only and is not imported by the active-indicator action."
         }
       ]
+    },
+    {
+      "id": "pinterest-tag-conversion",
+      "name": "Pinterest Tag conversion endpoint",
+      "category": "advertising",
+      "indicators": {
+        "domains": [
+          "ct.pinterest.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://developers.pinterest.com/docs/track-conversions/pinterest-tag/",
+          "description": "Pinterest's official Tag documentation includes https://ct.pinterest.com/v3/ pixel URLs for page-view and conversion events. A hostname match identifies a documented tag endpoint, not the initiating app or full payload."
+        }
+      ]
     }
   ]
 }
