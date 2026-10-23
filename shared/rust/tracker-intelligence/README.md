@@ -29,6 +29,8 @@ cargo run -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 cargo run -- rollback ./release-store release-2026-10-01 "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 ```
 
+Candidate reviews append JSONL decisions with a previous-record hash chain. The chain detects edits to individual records, but it is not a digital signature and does not authenticate the self-declared reviewer; protect and externally back up the ledger for stronger audit guarantees.
+
 The release store keeps immutable `releases/<id>/catalog.json` and `manifest.json`, plus an atomically replaced `current.json` pointer. Rollback verifies the selected release against a separately pinned trusted public key before changing the pointer. Back up the release directory; this is a local release store, not a remote distribution/rollback service.
 
 ## Implemented behavior and limits

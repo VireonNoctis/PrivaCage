@@ -435,6 +435,16 @@ mod advanced_tests {
         assert!(verify_review_ledger(&ledger).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
+    #[test] fn release_store_publishes_verifies_and_lists(){
+        let dir=std::env::temp_dir().join(format!("pcage-release-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&dir).unwrap();
+        let catalog=dir.join("catalog.json");fs::write(&catalog,serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
+        let root=dir.join("store");let seed="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let manifest=publish_release(&catalog,&root,"release-1","2026-10-23",seed).unwrap();
+        verify_current_release(&root,&manifest.signer_public_key_hex).unwrap();
+        assert_eq!(list_verified_releases(&root,&manifest.signer_public_key_hex).unwrap().len(),1);
+        rollback_release(&root,"release-1",&manifest.signer_public_key_hex).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+    }
     #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();
