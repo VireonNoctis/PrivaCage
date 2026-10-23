@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var statsText: TextView
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
+    private lateinit var devicePrivacyText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -73,6 +74,29 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply { text = "Open app management"; setOnClickListener { openSystemSettings(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, "App management") } }, matchWidth())
         root.addView(Button(this).apply { text = "Location access settings"; setOnClickListener { openSystemSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location settings") } }, matchWidth())
         root.addView(Button(this).apply { text = "Wi-Fi and network settings"; setOnClickListener { openSystemSettings(Settings.ACTION_WIFI_SETTINGS, "Wi-Fi settings") } }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open Private DNS settings"
+            setOnClickListener { openSystemSettings("android.settings.PRIVATE_DNS_SETTINGS", "Private DNS settings") }
+        }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "DEVICE PRIVACY SNAPSHOT (LOCAL ONLY)"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Reads only exposed device settings: location-services state, Wi-Fi radio state, Android Private DNS mode, and whether the active default network uses a VPN. It does not read your Wi-Fi name, scan nearby networks, or send this snapshot anywhere."
+            textSize = 13f
+        })
+        devicePrivacyText = TextView(this).apply {
+            text = "Snapshot not refreshed yet."
+            textSize = 13f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(devicePrivacyText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Refresh device privacy snapshot"
+            setOnClickListener { refreshDevicePrivacySnapshot() }
+        }, matchWidth())
         root.addView(TextView(this).apply { text = "DNS PRIVACY"; textSize = 16f; setPadding(0, dp(18), 0, dp(4)) })
         root.addView(Button(this).apply {
             text = "Remove photo metadata (JPEG)"
@@ -279,11 +303,13 @@ class MainActivity : Activity() {
         root.addView(statusText, matchWidth())
         refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+        refreshDevicePrivacySnapshot()
     }
 
     override fun onResume() {
         super.onResume()
         if (::statsText.isInitialized) refreshDnsStats()
+        if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -310,6 +336,10 @@ class MainActivity : Activity() {
         pendingScrubbedJpeg?.delete()
         pendingScrubbedJpeg = null
         super.onDestroy()
+    }
+
+    private fun refreshDevicePrivacySnapshot() {
+        devicePrivacyText.text = DevicePrivacySnapshot.capture(this).render()
     }
 
     private fun chooseJpegForScrubbing() {
