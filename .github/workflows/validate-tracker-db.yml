@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate tracker database
-        run: python shared/scripts/validate-signatures.py
+        run: python shared/scripts/validate-signatures.py --max-age-days 180
       - name: Validate declared Android backup posture
         run: python shared/scripts/validate-android-backup.py
       - name: Run unit tests
