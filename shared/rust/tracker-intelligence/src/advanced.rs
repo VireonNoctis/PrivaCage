@@ -101,7 +101,10 @@ pub fn ingest_observations(paths:&[PathBuf])->Result<Vec<Observation>,IntelError
 fn normalize_observation(o:&mut Observation){o.value=match o.kind{IndicatorKind::Domain=>normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase()),_=>o.value.trim().to_ascii_lowercase()};}
 
 pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observation>,Vec<Value>),IntelError>{
-    let p=path.as_ref();let size=fs::metadata(p).map_err(|e|IntelError::Io(format!("stat APK: {e}")))?.len();\n    if size>512*1024*1024{return Err(invalid("APK exceeds the 512 MiB static-scan limit"))}\n    let file=fs::File::open(p).map_err(|e|IntelError::Io(format!("open APK: {e}")))?;
+    let p=path.as_ref();
+    let size=fs::metadata(p).map_err(|e|IntelError::Io(format!("stat APK: {e}")))?.len();
+    if size>512*1024*1024{return Err(invalid("APK exceeds the 512 MiB static-scan limit"))}
+    let file=fs::File::open(p).map_err(|e|IntelError::Io(format!("open APK: {e}")))?;
     let mut archive=zip::ZipArchive::new(file).map_err(|e|invalid(format!("APK is not a readable ZIP archive: {e}")))?;
     let apk_bytes=fs::read(p).map_err(|e|IntelError::Io(e.to_string()))?;
     let mut observations=vec![Observation{value:sha256_hex(&apk_bytes),kind:IndicatorKind::FileHashSha256,context:Some(format!("APK SHA-256: {}",p.display()))}];
@@ -110,6 +113,7 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
         let mut entry=archive.by_index(i).map_err(|e|invalid(format!("read APK entry: {e}")))?;
         let name=entry.name().to_string();
         if !name.ends_with(".dex"){continue}
+        if entry.size()>128*1024*1024{return Err(invalid(format!("{name} exceeds the 128 MiB DEX scan limit")))}
         let mut bytes=Vec::new();entry.read_to_end(&mut bytes).map_err(|e|IntelError::Io(format!("read {name}: {e}")))?;
         let strings=extract_ascii_strings(&bytes);
         let mut hits=Vec::new();
@@ -126,11 +130,18 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
     Ok((observations,reports))
 }
 fn extract_ascii_strings(bytes:&[u8])->Vec<String>{
-    let mut out=Vec::new();let mut cur=Vec::new();
+    let mut out=Vec::new();let mut cur=Vec::new();let mut too_long=false;
     for &b in bytes {
-        if (0x20..=0x7e).contains(&b) {cur.push(b)} else if cur.len()>=8 {out.push(String::from_utf8_lossy(&cur).into_owned());cur.clear()} else {cur.clear()}
+        if (0x20..=0x7e).contains(&b) {
+            if !too_long {cur.push(b);if cur.len()>4096{cur.clear();too_long=true;}}
+        } else {
+            if !too_long&&cur.len()>=8{out.push(String::from_utf8_lossy(&cur).into_owned());}
+            cur.clear();too_long=false;
+            if out.len()>=100_000{break}
+        }
     }
-    if cur.len()>=8{out.push(String::from_utf8_lossy(&cur).into_owned())} out
+    if out.len()<100_000&&!too_long&&cur.len()>=8{out.push(String::from_utf8_lossy(&cur).into_owned())}
+    out
 }
 
 pub fn diff_bundles(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
