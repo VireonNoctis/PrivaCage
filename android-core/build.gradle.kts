@@ -2,6 +2,12 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
 }
 
+sourceSets {
+    test {
+        resources.srcDir("../shared/crypto/test-vectors")
+    }
+}
+
 repositories {
     mavenCentral()
 }

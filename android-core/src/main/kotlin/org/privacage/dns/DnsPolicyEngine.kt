@@ -8,7 +8,17 @@ package org.privacage.dns
  */
 class DnsPolicyEngine(blockedDomains: Set<String>) {
 
-    private val blockedDomains: Set<String> = blockedDomains.map(::normalizeRule).toSet()
+    private val ruleRoot = RuleNode()
+
+    init {
+        blockedDomains.map(::normalizeRule).toSet().forEach { rule ->
+            var node = ruleRoot
+            for (label in rule.split('.').asReversed()) {
+                node = node.children.getOrPut(label) { RuleNode() }
+            }
+            node.terminalRule = rule
+        }
+    }
 
     fun evaluate(message: ByteArray): DnsDecision {
         val question = try {
@@ -17,10 +27,7 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
             return DnsDecision.Malformed(e.message ?: "Malformed DNS query")
         }
 
-        val matchingRule = blockedDomains
-            .asSequence()
-            .filter { rule -> question.name == rule || question.name.endsWith(".$rule") }
-            .maxByOrNull { it.length }
+        val matchingRule = matchingRuleForNormalizedName(question.name)
 
         return if (matchingRule == null) {
             DnsDecision.Allow(question)
@@ -29,8 +36,32 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         }
     }
 
+    /**
+     * Previews the blocklist decision for a hostname without sending a DNS request.
+     * Uses the same suffix-boundary and most-specific-rule logic as live packet evaluation.
+     */
+    fun matchingRuleForDomain(domainName: String): String? =
+        matchingRuleForNormalizedName(normalizeRule(domainName))
+
+    private fun matchingRuleForNormalizedName(name: String): String? {
+        var node = ruleRoot
+        var matchingRule: String? = null
+
+        for (label in name.split('.').asReversed()) {
+            node = node.children[label] ?: break
+            node.terminalRule?.let { matchingRule = it }
+        }
+        return matchingRule
+    }
+
+    private class RuleNode {
+        val children: MutableMap<String, RuleNode> = HashMap()
+        var terminalRule: String? = null
+    }
+
     private fun normalizeRule(rule: String): String {
-        val normalized = rule.trim().trimEnd('.').lowercase()
+        val trimmed = rule.trim()
+        val normalized = (if (trimmed.endsWith('.')) trimmed.dropLast(1) else trimmed).lowercase()
         require(normalized.isNotEmpty()) { "Blocked domain must not be empty" }
         require(normalized.length <= 253) { "Blocked domain exceeds 253 characters" }
         val labels = normalized.split('.')

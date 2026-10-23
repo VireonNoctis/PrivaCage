@@ -25,7 +25,7 @@ A signature is an indicator, not a verdict that an app is malicious. Each propos
 
 Do not submit a domain merely because it sounds like advertising infrastructure. Do not claim that a signature proves data collection, a network request, or malicious intent. If evidence conflicts or is stale, use review or omit the entry.
 
-The validator checks structure, not the truth of evidence URLs. Human review remains required.
+The validator checks structure and, in CI, requires the `last_verified` date to be within 180 days. This freshness gate does not prove that a source is accurate, online, or still describes the same endpoint. Revisit sources and update the review date only after checking the supporting evidence; human review remains required.
 
 ## Code requirements
 

@@ -1,6 +1,6 @@
 # Privacy Opportunity Backlog
 
-These are candidates, not promises. Prioritize by user impact, feasibility, evidence quality, and the risk of misleading the user.
+These are candidates, not promises. Prioritize by user impact, feasibility, evidence quality, and the risk of misleading the user. The sourced review dated 23 October 2026 lives in [privacy feature research](research-notes/privacy-feature-research-2026-10-23.md).
 
 ## Buildable with local processing or public APIs
 
@@ -41,6 +41,33 @@ If router logs or a user-controlled DNS resolver provide data, identify new dest
 
 ### Data broker opt-out workflow
 Identify brokers, explain opt-out routes, draft requests, and track submission evidence. Automate only verified forms and current legal requirements. Never imply that a request guarantees removal from resellers or copies.
+
+## Additional evidence-backed candidates
+
+### Protected local settings and export lifecycle
+Protect persisted sensitive settings with platform-native key storage, versioned migration, crash-safe writes, and clear unrecoverable-key handling. This is distinct from the passphrase-encrypted export format; it does not provide sync.
+
+### VPN preflight and observed service state
+Explain VPN replacement behavior and data handling before consent. Report actual service lifecycle and tested route diagnostics. Do not imply a successful tunnel means IPv6, encrypted DNS, or every app path is covered.
+
+### App-update privacy diff
+Compare selected APK versions locally for manifest permissions, exported components, SDK signature matches, and embedded endpoint candidates. Record the APK hash and signature database version; never present static indicators as observed runtime behavior.
+
+### Minimal, redacted audit export
+Let users choose the date range and event categories, preview redactions, and exclude raw DNS names, packet payloads, internal paths, and identifiers by default.
+
+### Offline breach-exposure lookup
+Use a sourced, appropriately licensed local dataset with an explicit refresh date and coverage limitations. Do not send a raw email address to a third-party lookup service by default.
+
+### Data-broker request assistant
+Maintain verified opt-out links and source dates, draft user-reviewed requests, and store submission evidence separately from a confirmed company response. Do not promise removal from downstream copies.
+
+
+### Authenticated encrypted DNS upstream
+The current upstream DNS path uses plaintext UDP/TCP. Research a strict DNS-over-TLS or DNS-over-HTTPS transport with explicit resolver hostname verification, no silent plaintext fallback, and tests for certificate failures. A secure channel still exposes queries to the chosen resolver and does not cover traffic that bypasses the VPN.
+
+### Backup and restore privacy audit
+Verify backup flags and XML rules in CI, then test cloud restore and device-to-device transfer on supported Android versions/OEMs. The manifest's explicit backup posture is evidence of configuration, not proof that every vendor transfer path behaves identically.
 
 ## Prioritization rule
 

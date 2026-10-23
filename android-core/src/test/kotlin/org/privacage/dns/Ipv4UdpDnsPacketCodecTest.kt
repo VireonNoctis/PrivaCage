@@ -42,6 +42,18 @@ class Ipv4UdpDnsPacketCodecTest {
     }
 
     @Test
+    fun rejectsReservedIpv4Flag() {
+        val packet = ipv4UdpPacket(dnsQuery("tracker.example"), fragmentField = 0x8000)
+        assertIs<Ipv4UdpDnsDecode.Malformed>(Ipv4UdpDnsPacketCodec.decode(packet))
+    }
+
+    @Test
+    fun acceptsDontFragmentFlag() {
+        val packet = ipv4UdpPacket(dnsQuery("tracker.example"), fragmentField = 0x4000)
+        assertIs<Ipv4UdpDnsDecode.Query>(Ipv4UdpDnsPacketCodec.decode(packet))
+    }
+
+    @Test
     fun rejectsUdpLengthMismatch() {
         val packet = ipv4UdpPacket(dnsQuery("tracker.example"))
         putU16(packet, 24, u16(packet, 24) - 1)

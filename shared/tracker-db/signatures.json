@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-21",
+  "updated_at": "2026-10-23",
   "entries": [
     {
       "id": "google-analytics-collection",
@@ -41,6 +41,103 @@
         {
           "url": "https://developers.google.com/analytics/devguides/collection/ga4/troubleshoot?community_post=true",
           "description": "Google lists analytics.google.com/g/collect as an Analytics request endpoint. The hostname is kept in review status because a domain match alone does not establish which application initiated a request or what data it sent."
+        }
+      ]
+    },
+    {
+      "id": "microsoft-clarity-collection",
+      "name": "Microsoft Clarity collection endpoint",
+      "category": "behavioral_analytics",
+      "indicators": {
+        "domains": [
+          "www.clarity.ms"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-setup",
+          "description": "Microsoft's Clarity setup guide identifies POST requests to https://www.clarity.ms/collect as Clarity collection traffic. The hostname match identifies a known service endpoint; it does not prove which app initiated the request or what any payload contained."
+        }
+      ]
+    },
+    {
+      "id": "posthog-hosted-event-capture",
+      "name": "PostHog hosted event-capture endpoints",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "us.i.posthog.com",
+          "eu.i.posthog.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://posthog.com/docs/product-analytics/troubleshooting",
+          "description": "PostHog's event-capture troubleshooting documentation names us.i.posthog.com and eu.i.posthog.com as hosted API hosts. Self-hosted deployments or custom API hosts will not necessarily match; a match does not establish which data was sent."
+        }
+      ]
+    },
+    {
+      "id": "google-ads-measurement-endpoints",
+      "name": "Google Ads measurement endpoints",
+      "category": "advertising",
+      "indicators": {
+        "domains": [
+          "googleadservices.com",
+          "googlesyndication.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://developers.google.com/tag-platform/gtagjs",
+          "description": "Google's Google tag setup guide recommends checking requests to googleadservices.com or googlesyndication.com when verifying Google Ads tags. These are broad advertising-service domains; blocking them may affect ad-supported or conversion-related functionality and is not proof of personalized ads."
+        }
+      ]
+    },
+    {
+      "id": "google-floodlight-doubleclick",
+      "name": "Google Floodlight / DoubleClick domain",
+      "category": "advertising",
+      "indicators": {
+        "domains": [
+          "doubleclick.net"
+        ]
+      },
+      "confidence": "medium",
+      "status": "review",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://developers.google.com/tag-platform/gtagjs",
+          "description": "Google's Google tag setup guide lists doubleclick.net as a destination to inspect when verifying Floodlight traffic. The domain is broad and can be shared across services, so it remains review-only and is not imported by the active-indicator action."
+        }
+      ]
+    },
+    {
+      "id": "pinterest-tag-conversion",
+      "name": "Pinterest Tag conversion endpoint",
+      "category": "advertising",
+      "indicators": {
+        "domains": [
+          "ct.pinterest.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://developers.pinterest.com/docs/track-conversions/pinterest-tag/",
+          "description": "Pinterest's official Tag documentation includes https://ct.pinterest.com/v3/ pixel URLs for page-view and conversion events. A hostname match identifies a documented tag endpoint, not the initiating app or full payload."
         }
       ]
     }

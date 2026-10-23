@@ -5,6 +5,8 @@ on:
     paths:
       - "shared/tracker-db/**"
       - "shared/scripts/validate-signatures.py"
+      - "shared/scripts/validate-android-backup.py"
+      - "android-app/app/src/main/AndroidManifest.xml"
       - "tests/**"
       - ".github/workflows/validate-tracker-db.yml"
   pull_request:
@@ -29,6 +31,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate tracker database
-        run: python shared/scripts/validate-signatures.py
+        run: python shared/scripts/validate-signatures.py --max-age-days 180
+      - name: Validate declared Android backup posture
+        run: python shared/scripts/validate-android-backup.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -v

@@ -1,0 +1,37 @@
+name: Validate Rust PCAGE crypto core
+
+on:
+  push:
+    paths:
+      - "shared/rust/pcage-crypto/**"
+      - "shared/crypto/test-vectors/**"
+      - "android-core/**"
+      - "docs/encrypted-profile-format.md"
+      - ".github/workflows/validate-rust-crypto.yml"
+  pull_request:
+    paths:
+      - "shared/rust/pcage-crypto/**"
+      - "shared/crypto/test-vectors/**"
+      - "android-core/**"
+      - "docs/encrypted-profile-format.md"
+      - ".github/workflows/validate-rust-crypto.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-crypto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --manifest-path shared/rust/pcage-crypto/Cargo.toml --all -- --check
+      - name: Test PCAGE implementation and shared vector
+        run: cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
+      - name: Run Clippy
+        run: cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings

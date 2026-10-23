@@ -19,6 +19,8 @@ import org.json.JSONObject
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
@@ -26,6 +28,9 @@ import java.nio.charset.StandardCharsets
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
     private lateinit var domainsInput: EditText
+    private lateinit var domainTestInput: EditText
+    private lateinit var statsText: TextView
+    private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -50,6 +55,16 @@ class MainActivity : Activity() {
             text = "Local DNS filtering. No account or required cloud service."
             setPadding(0, dp(8), 0, dp(20))
         })
+        root.addView(Button(this).apply {
+            text = "Inspect APK manifest offline"
+            setOnClickListener { chooseApkForAudit() }
+        }, matchWidth())
+        apkAuditText = TextView(this).apply {
+            visibility = android.view.View.GONE
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(apkAuditText, matchWidth())
         root.addView(TextView(this).apply { text = "Upstream DNS resolver (numeric IPv4)" })
         resolverInput = EditText(this).apply {
             hint = "Enter a resolver IP you trust"
@@ -149,6 +164,20 @@ class MainActivity : Activity() {
                 .orEmpty().sorted().joinToString("\n"))
         }
         root.addView(domainsInput, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Preview a rule match (offline; no DNS request is sent)"
+            setPadding(0, dp(12), 0, 0)
+        })
+        domainTestInput = EditText(this).apply {
+            hint = "example.org"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        root.addView(domainTestInput, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Test domain against current editor rules"
+            setOnClickListener { previewDomainRule() }
+        }, matchWidth())
         root.addView(Button(this).apply {
             text = "Export encrypted settings backup"
             setOnClickListener { promptExportPassphrase() }
@@ -190,12 +219,31 @@ class MainActivity : Activity() {
                 statusText.text = "Stop requested. Confirm disconnection using Android's VPN indicator."
             }
         }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Privacy-preserving DNS counters"
+            setPadding(0, dp(16), 0, 0)
+        })
+        statsText = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        root.addView(statsText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Refresh DNS counters"
+            setOnClickListener { refreshDnsStats() }
+        }, matchWidth())
         statusText = TextView(this).apply {
             text = "Not connected (service state is not inferred by this screen)."
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(statusText, matchWidth())
+        refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::statsText.isInitialized) refreshDnsStats()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -208,6 +256,7 @@ class MainActivity : Activity() {
             }
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
+            REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
         }
     }
 
@@ -217,6 +266,168 @@ class MainActivity : Activity() {
         pendingImportBackup?.fill(0)
         pendingImportBackup = null
         super.onDestroy()
+    }
+
+    private fun chooseApkForAudit() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/vnd.android.package-archive"))
+        }
+        startActivityForResult(intent, REQUEST_APK_AUDIT)
+    }
+
+    private fun auditSelectedApk(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            statusText.text = "APK inspection cancelled; no file was installed or uploaded."
+            return
+        }
+
+        statusText.text = "Inspecting the selected APK locally. It will not be installed or executed."
+        Thread({
+            var stagedApk: File? = null
+            try {
+                stagedApk = stageSelectedApk(uri)
+                val report = ApkManifestAuditor(packageManager).inspect(stagedApk)
+                val summary = formatApkAuditReport(report)
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        apkAuditText.text = summary
+                        apkAuditText.visibility = android.view.View.VISIBLE
+                        statusText.text = "APK manifest inspection finished locally. The temporary copy was deleted."
+                    }
+                }
+            } catch (exception: Exception) {
+                val failure = exception.message ?: "The selected APK could not be inspected."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        statusText.text = "APK inspection failed: $failure No file was installed or uploaded."
+                    }
+                }
+            } finally {
+                stagedApk?.delete()
+            }
+        }, "PrivaCage-APK-audit").start()
+    }
+
+    private fun stageSelectedApk(uri: Uri): File {
+        val staged = File.createTempFile("privacage-apk-audit-", ".apk", cacheDir)
+        val buffer = ByteArray(8_192)
+        var totalBytes = 0L
+        try {
+            val source = contentResolver.openInputStream(uri)
+                ?: throw IOException("The selected document could not be opened.")
+            source.use { input ->
+                FileOutputStream(staged).use { output ->
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        if (totalBytes > ApkManifestAuditor.MAX_APK_BYTES.toLong() - count) {
+                            throw IOException("APK exceeds the 100 MiB local inspection limit.")
+                        }
+                        output.write(buffer, 0, count)
+                        totalBytes += count
+                    }
+                    output.flush()
+                }
+            }
+            if (totalBytes == 0L) throw IOException("The selected file is empty.")
+            return staged
+        } catch (exception: Exception) {
+            staged.delete()
+            throw exception
+        } finally {
+            buffer.fill(0)
+        }
+    }
+
+    private fun formatApkAuditReport(report: ApkManifestAuditReport): String = buildString {
+        append("OFFLINE STATIC MANIFEST REVIEW\n")
+        append("Package: ").append(report.packageName).append('\n')
+        append("Version: ").append(report.versionName ?: "unknown")
+            .append(" (code ").append(report.versionCode).append(")\n")
+        append("Target SDK: ").append(report.targetSdkVersion ?: "unknown").append('\n')
+        append("File size: ").append(report.fileSizeBytes).append(" bytes\n")
+        append("SHA-256: ").append(report.sha256).append("\n\n")
+
+        append("Declared permissions (").append(report.permissions.size).append("):")
+        if (report.permissions.isEmpty()) append("\nNo requested manifest permissions were declared.")
+        else {
+            report.permissions.take(MAX_AUDIT_ITEMS_TO_DISPLAY).forEach { finding ->
+                append("\n[").append(finding.review.category.displayName).append("] ")
+                    .append(finding.permissionName)
+                append("\n  ").append(finding.review.explanation)
+            }
+            if (report.permissions.size > MAX_AUDIT_ITEMS_TO_DISPLAY) {
+                append("\n… ").append(report.permissions.size - MAX_AUDIT_ITEMS_TO_DISPLAY)
+                    .append(" additional permissions omitted from this view.")
+            }
+        }
+
+        append("\n\nExported components (").append(report.exportedComponents.size).append("):")
+        if (report.exportedComponents.isEmpty()) append("\nNo components marked exported were reported by Android's package parser.")
+        else {
+            report.exportedComponents.take(MAX_AUDIT_ITEMS_TO_DISPLAY).forEach { component ->
+                append("\n[").append(component.kind).append("] ").append(component.className)
+                    .append(" — enabled=").append(component.enabled)
+                    .append(", required permission=").append(component.requiredPermission ?: "none")
+            }
+            if (report.exportedComponents.size > MAX_AUDIT_ITEMS_TO_DISPLAY) {
+                append("\n… ").append(report.exportedComponents.size - MAX_AUDIT_ITEMS_TO_DISPLAY)
+                    .append(" additional exported components omitted from this view.")
+            }
+        }
+
+        append("\n\nLIMITS: These are declarations, not proof of permission grants, runtime behavior,")
+        append(" transmitted data, or malicious intent. This scan does not inspect every SDK or")
+        append(" runtime code path. Exported components may be intentional; review their purpose and guards.")
+    }
+
+    private fun previewDomainRule() {
+        val candidate = domainTestInput.text.toString().trim()
+        if (candidate.isEmpty()) {
+            statusText.text = "Enter a hostname to preview. No network request will be sent."
+            return
+        }
+
+        val rules = domainsInput.text.toString().lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+        if (rules.isEmpty()) {
+            statusText.text = "There are no rules in the editor to test."
+            return
+        }
+
+        try {
+            val engine = DnsPolicyEngine(rules)
+            val matchedRule = engine.matchingRuleForDomain(candidate)
+            statusText.text = if (matchedRule == null) {
+                "No current editor rule matches '$candidate'. This is only a local rule preview; no DNS request was sent."
+            } else {
+                "Would be blocked by '$matchedRule'. This is only a local rule preview; no DNS request was sent."
+            }
+        } catch (exception: IllegalArgumentException) {
+            statusText.text = exception.message ?: "Enter a valid fully qualified hostname."
+        }
+    }
+
+    private fun refreshDnsStats() {
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        statsText.text = buildString {
+            append("Current/last VPN session totals (domain names are not recorded):\n")
+            append("Blocked replies prepared: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
+            append("\nUpstream replies prepared: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
+            append("\nUnsupported or malformed packets: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
+            append("\nUpstream failures/timeouts: ")
+            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
+            append("\nActive-session counts update in batches and flush again when the tunnel stops.")
+            append("\nCounters reflect DNS-core outcomes, not proof that Android delivered every reply.")
+        }
     }
 
     private fun promptExportPassphrase() {
@@ -536,6 +747,8 @@ class MainActivity : Activity() {
         private const val REQUEST_VPN_PERMISSION = 4107
         private const val REQUEST_EXPORT_FILE = 4108
         private const val REQUEST_IMPORT_FILE = 4109
+        private const val REQUEST_APK_AUDIT = 4110
+        private const val MAX_AUDIT_ITEMS_TO_DISPLAY = 80
         private const val PROFILE_FORMAT_VERSION = 1
     }
 }

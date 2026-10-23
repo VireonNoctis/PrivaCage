@@ -2,7 +2,9 @@ package org.privacage.dns
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DnsPolicyEngineTest {
@@ -27,6 +29,42 @@ class DnsPolicyEngineTest {
     fun normalizesCaseAndTrailingDotInRules() {
         val result = DnsPolicyEngine(setOf("Tracker.Example.")).evaluate(query("TRACKER.EXAMPLE"))
         assertIs<DnsDecision.Block>(result)
+    }
+
+    @Test
+    fun previewsMostSpecificRuleWithoutSuffixFalsePositives() {
+        val engine = DnsPolicyEngine(setOf("example.org", "api.example.org"))
+
+        assertEquals("api.example.org", engine.matchingRuleForDomain("V1.API.EXAMPLE.ORG."))
+        assertEquals("example.org", engine.matchingRuleForDomain("EXAMPLE.ORG"))
+        assertNull(engine.matchingRuleForDomain("notexample.org"))
+        assertNull(engine.matchingRuleForDomain("example.org.attacker.test"))
+    }
+
+    @Test
+    fun resolvesMostSpecificMatchesAcrossTenThousandRules() {
+        val rules = (0 until 10_000)
+            .mapTo(mutableSetOf()) { index -> "tracker$index.example.test" }
+            .apply {
+                add("example.test")
+                add("sdk.example.test")
+            }
+        val engine = DnsPolicyEngine(rules)
+
+        assertEquals(
+            "tracker9999.example.test",
+            engine.matchingRuleForDomain("img.tracker9999.example.test")
+        )
+        assertEquals("sdk.example.test", engine.matchingRuleForDomain("sdk.example.test"))
+        assertEquals("example.test", engine.matchingRuleForDomain("other.example.test"))
+        assertNull(engine.matchingRuleForDomain("notexample.test"))
+    }
+
+    @Test
+    fun rejectsRulesWithMultipleTrailingDots() {
+        assertFailsWith<IllegalArgumentException> {
+            DnsPolicyEngine(setOf("tracker.example.."))
+        }
     }
 
     @Test
