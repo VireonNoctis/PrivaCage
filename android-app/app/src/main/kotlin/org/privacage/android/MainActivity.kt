@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
     private lateinit var devicePrivacyText: TextView
+    private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -97,6 +98,24 @@ class MainActivity : Activity() {
             text = "Refresh device privacy snapshot"
             setOnClickListener { refreshDevicePrivacySnapshot() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Audit visible apps' sensitive permissions"
+            setOnClickListener {
+                appPermissionAuditText.text = "Scanning launcher-visible apps. Results stay on this device..."
+                Thread({
+                    val report = AppPermissionAudit.scan(this@MainActivity)
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) appPermissionAuditText.text = report
+                    }
+                }, "PrivaCage-permission-audit").start()
+            }
+        }, matchWidth())
+        appPermissionAuditText = TextView(this).apply {
+            text = "No app permission audit has been run."
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(appPermissionAuditText, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "PRIVACY HARDENING"
