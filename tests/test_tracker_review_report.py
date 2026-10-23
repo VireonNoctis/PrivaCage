@@ -42,7 +42,7 @@ class TrackerReviewReportTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
         self.assertIn("limitation", report)
-        self.assertGreaterEqual(len(report["entries"]), 14)
+        self.assertGreaterEqual(len(report["entries"]), 15)
 
     def test_future_review_date_is_flagged(self):
         document = {"entries": [
