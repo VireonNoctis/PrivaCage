@@ -179,6 +179,25 @@
           "description": "Segment's official engineering article documents Analytics.js track/identify calls sending data to api.segment.io and describes its Tracking API. First-party proxies, regional/custom endpoints, and server-side forwarding may not match; the domain does not reveal which properties were sent."
         }
       ]
+    },
+    {
+      "id": "appsflyer-mobile-attribution",
+      "name": "AppsFlyer mobile attribution SDK endpoint",
+      "category": "mobile_attribution",
+      "indicators": {
+        "domains": [
+          "appsflyersdk.com"
+        ]
+      },
+      "confidence": "medium",
+      "status": "review",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://dev.appsflyer.com/hc/docs/troubleshooting-ios",
+          "description": "AppsFlyer's official troubleshooting documentation recommends the appsflyersdk.com endpoint for SDK traffic to ensure TLS 1.2/1.3 in the described iOS configuration. This supports an association with SDK communication but not an exclusive attribution-only purpose across all deployments; kept review-only pending broader endpoint-scope review."
+        }
+      ]
     }
   ]
 }
