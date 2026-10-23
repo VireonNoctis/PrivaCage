@@ -129,7 +129,6 @@ class ValidateSignaturesTests(unittest.TestCase):
             "mixpanel-event-ingestion": ("api.mixpanel.com", "https://developer.mixpanel.com/reference/"),
             "adjust-attribution-links": ("app.adjust.com", "https://help.adjust.com/"),
             "bugsnag-crash-reporting": ("notify.bugsnag.com", "https://docs.bugsnag.com/"),
-            "branch-mobile-linking": ("api2.branch.io", "https://help.branch.io/"),
         }
         for entry_id, (domain, evidence_prefix) in expected.items():
             with self.subTest(entry_id=entry_id):
@@ -137,6 +136,14 @@ class ValidateSignaturesTests(unittest.TestCase):
                 self.assertIn(domain, entry["indicators"]["domains"])
                 self.assertTrue(any(source["url"].startswith(evidence_prefix) for source in entry["evidence"]))
                 self.assertEqual(entry["status"], "active")
+
+    def test_branch_mobile_linking_remains_review_only(self):
+        database = SCRIPT.parents[1] / "shared" / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        entry = next(item for item in document["entries"] if item["id"] == "branch-mobile-linking")
+        self.assertEqual(entry["status"], "review")
+        self.assertEqual(entry["confidence"], "medium")
+        self.assertIn("api2.branch.io", entry["indicators"]["domains"])
 
     def test_appsflyer_indicator_remains_review_only(self):
         database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
