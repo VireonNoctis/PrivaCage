@@ -39,6 +39,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/architecture.md` — system boundaries and data flow.
 - `docs/threat-model.md` — assets, threats, and non-goals.
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
+- `docs/security-boundaries.md` — explicit implemented/not-implemented claims and required verification.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
