@@ -140,6 +140,45 @@
           "description": "Pinterest's official Tag documentation includes https://ct.pinterest.com/v3/ pixel URLs for page-view and conversion events. A hostname match identifies a documented tag endpoint, not the initiating app or full payload."
         }
       ]
+    },
+    {
+      "id": "amplitude-event-ingestion",
+      "name": "Amplitude analytics event-ingestion endpoints",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "api2.amplitude.com",
+          "api.eu.amplitude.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://www.amplitude.com/docs/apis/analytics/http-v2",
+          "description": "Amplitude documents api2.amplitude.com as the default HTTP V2 event-ingestion host and api.eu.amplitude.com for EU data residency. SDKs may use different paths or configurable proxies; a hostname match does not establish payload contents or the initiating app."
+        }
+      ]
+    },
+    {
+      "id": "segment-event-ingestion",
+      "name": "Twilio Segment event-ingestion endpoint",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "api.segment.io"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://segment.com/blog/twilio-segment-edge-sdk/",
+          "description": "Segment's official engineering article documents Analytics.js track/identify calls sending data to api.segment.io and describes its Tracking API. First-party proxies, regional/custom endpoints, and server-side forwarding may not match; the domain does not reveal which properties were sent."
+        }
+      ]
     }
   ]
 }
