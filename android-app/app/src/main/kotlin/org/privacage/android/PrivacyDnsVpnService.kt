@@ -117,8 +117,9 @@ class PrivacyDnsVpnService : VpnService() {
                 if (count < 0) break
                 if (count == 0) continue
 
+                val packet = buffer.copyOf(count)
                 val result = try {
-                    engine.processIpv4Packet(buffer.copyOf(count))
+                    engine.processIpv4Packet(packet)
                 } catch (exception: IOException) {
                     if (running) {
                         // An upstream timeout should drop one DNS request, not tear down the VPN.
@@ -134,6 +135,9 @@ class PrivacyDnsVpnService : VpnService() {
 
                 when (result) {
                     is DnsTunnelResult.Response -> {
+                        if (result.domain.isNotBlank()) {
+                            LocalDnsEventHistory.record(this, packet, result.domain, result.action.name)
+                        }
                         output.write(result.packet)
                         output.flush()
                     }
