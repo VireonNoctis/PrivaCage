@@ -267,7 +267,7 @@ class MainActivity : Activity() {
         }, matchWidth())
         root.addView(trackerDetails, matchWidth())
         root.addView(Button(this).apply {
-            text = "Import active tracker domains"
+            text = "Review and import active tracker domains"
             setOnClickListener {
                 val catalog = trackerCatalog
                 if (catalog == null) {
@@ -277,15 +277,31 @@ class MainActivity : Activity() {
                     if (activeDomains.isEmpty()) {
                         statusText.text = "The catalog has no active domain indicators to import. Review-only entries were left untouched."
                     } else {
-                        val currentDomains = domainsInput.text.toString().lineSequence()
-                            .map(String::trim).filter(String::isNotEmpty).toSet()
-                        val newlyAdded = activeDomains - currentDomains
-                        domainsInput.setText((currentDomains + activeDomains).sorted().joinToString("\n"))
-                        statusText.text = if (newlyAdded.isEmpty()) {
-                            "All active tracker domains are already in the rule editor. Save configuration to retain changes."
-                        } else {
-                            "Added ${newlyAdded.size} active domain indicator(s) to the rule editor. These changes are not saved until you tap Save configuration."
+                        val preview = activeDomains.sorted().take(18).joinToString("\n")
+                        val omitted = (activeDomains.size - 18).coerceAtLeast(0)
+                        val message = buildString {
+                            append("This adds ").append(activeDomains.size).append(" active hostname rule(s) to the editor; it does not save or enable them.\n\n")
+                            append("Blocking may break sign-in, analytics, ads, deep links, crash reporting, or other app features. A domain match does not identify the initiating app or prove personal data was sent.\n\n")
+                            append(preview)
+                            if (omitted > 0) append("\n… and ").append(omitted).append(" more")
+                            append("\n\nReview the resulting rules and save only if you accept the possible breakage.")
                         }
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Review tracker block rules")
+                            .setMessage(message)
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Add to editor") { _, _ ->
+                                val currentDomains = domainsInput.text.toString().lineSequence()
+                                    .map(String::trim).filter(String::isNotEmpty).toSet()
+                                val newlyAdded = activeDomains - currentDomains
+                                domainsInput.setText((currentDomains + activeDomains).sorted().joinToString("\n"))
+                                statusText.text = if (newlyAdded.isEmpty()) {
+                                    "All active tracker domains are already in the rule editor. No settings were saved."
+                                } else {
+                                    "Added ${newlyAdded.size} active domain indicator(s) to the editor only. Review rules and tap Save configuration to retain changes."
+                                }
+                            }
+                            .show()
                     }
                 }
             }
@@ -371,6 +387,49 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Refresh DNS counters"
             setOnClickListener { refreshDnsStats() }
+        }, matchWidth())
+
+        root.addView(CheckBox(this).apply {
+            text = "Enable local DNS event history (saves queried hostnames on this device)"
+            isChecked = prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(LocalDnsEventHistory.KEY_ENABLED, checked).apply()
+                if (!checked) {
+                    statusText.text = "DNS event recording disabled. Existing local history remains until you clear it."
+                } else {
+                    statusText.text = "Local DNS event recording enabled. History is stored on this device and is not uploaded."
+                }
+            }
+        }, matchWidth())
+        val dnsEventHistoryText = TextView(this).apply {
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+            text = "DNS event history is disabled. Enable it above to record hostnames."
+        }
+        root.addView(dnsEventHistoryText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Refresh local DNS event history"
+            setOnClickListener {
+                dnsEventHistoryText.text = if (prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)) {
+                    LocalDnsEventHistory.read(this@MainActivity).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
+                } else {
+                    "DNS event history is disabled. Existing entries are not displayed while recording is off."
+                }
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Clear local DNS event history"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Clear DNS history?")
+                    .setMessage("This permanently clears the locally stored DNS event list. Aggregate counters are separate.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Clear history") { _, _ ->
+                        LocalDnsEventHistory.clear(this@MainActivity)
+                        dnsEventHistoryText.text = "Local DNS event history cleared."
+                    }
+                    .show()
+            }
         }, matchWidth())
         statusText = TextView(this).apply {
             text = "Not connected (service state is not inferred by this screen)."
