@@ -70,7 +70,7 @@ internal object AppPermissionAudit {
 
             if (sensitive.isNotEmpty()) {
                 val label = try {
-                    packageManager.getApplicationLabel(packageInfo.applicationInfo).toString()
+                    packageInfo.applicationInfo?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName
                 } catch (exception: RuntimeException) {
                     packageName
                 }
