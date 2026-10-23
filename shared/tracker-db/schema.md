@@ -42,3 +42,10 @@ Unknown fields are rejected in version 1 so typos cannot silently become ignored
 - active means an indicator may be offered for explicit user-reviewed rules, not that it is malicious or safe to block globally. review must be excluded from bulk active-domain import. retired is historical and must not drive enforcement.
 - Evidence dates record a human review of the cited source, not automated proof that the endpoint is live. CI freshness checks force re-review but do not validate the source itself.
 - Keep broad shared infrastructure review-only when collateral breakage or service ambiguity is high. Never elevate a record based only on vendor reputation or category.
+
+
+## Evidence lifecycle report
+
+Run `python shared/scripts/tracker-review-report.py --format markdown` to calculate each record's review state from `last_verified` and the configured review interval. The report distinguishes current, due-soon, overdue, and future-dated records and includes each evidence URL for a human reviewer. CI currently fails the catalog freshness gate when a record is more than 180 days old.
+
+The report deliberately does not fetch evidence URLs or claim source truth. `last_verified` is a human-maintained review date; changing it without actually rechecking the source would defeat the freshness control.
