@@ -155,7 +155,7 @@ fn is_valid_tls_hostname(hostname: &str) -> bool {
         && hostname.is_ascii()
         && hostname == hostname.to_ascii_lowercase()
         && hostname.contains('.')
-        && hostname.split('.').all(|label| is_valid_label(label))
+        && hostname.split('.').all(is_valid_label)
         && hostname != "localhost"
 }
 
