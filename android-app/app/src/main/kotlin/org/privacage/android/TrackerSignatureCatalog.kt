@@ -18,6 +18,7 @@ internal object TrackerSignatureCatalog {
     private val allowedIndicatorKeys = setOf("domains", "sdk_patterns")
     private val allowedStatuses = setOf("active", "review", "retired")
     private val allowedConfidence = setOf("low", "medium", "high")
+    private val sdkPatternRegex = Regex("^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+(?:\\.(?:\\*|\\*\\*))?$")
 
     fun load(context: Context): List<TrackerSignature> {
         val text = context.assets.open(ASSET_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -58,6 +59,9 @@ internal object TrackerSignatureCatalog {
             val domains = if (indicators.has("domains")) readStringArray(indicators.opt("domains"), "$contextLabel.indicators.domains") else emptyList()
             val sdkPatterns = if (indicators.has("sdk_patterns")) readStringArray(indicators.opt("sdk_patterns"), "$contextLabel.indicators.sdk_patterns") else emptyList()
             if (domains.isEmpty() && sdkPatterns.isEmpty()) throw IOException("$contextLabel has no usable indicators")
+            for (pattern in sdkPatterns) {
+                if (!sdkPatternRegex.matches(pattern)) throw IOException("$contextLabel contains an unsupported SDK pattern: $pattern")
+            }
             for (domain in domains) {
                 if (domain != domain.lowercase() || domain.endsWith(".")) throw IOException("$contextLabel has a non-normalized domain: $domain")
             }
