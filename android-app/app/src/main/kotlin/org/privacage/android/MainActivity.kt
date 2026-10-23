@@ -220,8 +220,16 @@ class MainActivity : Activity() {
             textSize = 13f
         })
         val trackerDetails = TextView(this).apply {
-            text = trackerCatalog.orEmpty().joinToString("\n\n") { record ->
-                buildString {
+            text = buildString {
+                val records = trackerCatalog.orEmpty()
+                append("CATALOG SUMMARY\\n")
+                append("Records: ").append(records.size)
+                append(" | Active: ").append(records.count { it.status == "active" })
+                append(" | Review-only: ").append(records.count { it.status == "review" })
+                append(" | Retired: ").append(records.count { it.status == "retired" })
+                append("\\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\\n\\n")
+                append(records.joinToString("\\n\\n") { record ->
+                    buildString {
                     append(record.name)
                     append(" [")
                     append(record.status.uppercase())
@@ -238,7 +246,8 @@ class MainActivity : Activity() {
                     append(record.lastVerified)
                     append("\nEvidence:\n")
                     append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
-                }
+                    }
+                })
             }
             textSize = 12f
             visibility = android.view.View.GONE
