@@ -93,6 +93,8 @@ class ValidateSignaturesTests(unittest.TestCase):
             "posthog-hosted-event-capture": ("us.i.posthog.com", "https://posthog.com/docs/"),
             "google-ads-measurement-endpoints": ("googleadservices.com", "https://developers.google.com/"),
             "pinterest-tag-conversion": ("ct.pinterest.com", "https://developers.pinterest.com/docs/"),
+            "amplitude-event-ingestion": ("api2.amplitude.com", "https://www.amplitude.com/docs/"),
+            "segment-event-ingestion": ("api.segment.io", "https://segment.com/"),
         }
         for entry_id, (domain, evidence_prefix) in expected.items():
             with self.subTest(entry_id=entry_id):
