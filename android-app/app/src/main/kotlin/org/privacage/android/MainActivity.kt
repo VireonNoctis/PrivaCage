@@ -20,6 +20,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
+import org.privacage.dns.DnsOverTlsForwarder
 import org.privacage.metadata.JpegMetadataScrubber
 import java.io.ByteArrayOutputStream
 import java.io.File
