@@ -18,7 +18,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust decrypt a shared test vector. No account, remote sync, or live DNS encryption |
-| APK manifest audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; findings are not proof of runtime use or malicious behavior |
+| APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals. These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
 | Windows network controls | Planned | Explicit firewall rules require appropriate privileges |

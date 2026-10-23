@@ -41,6 +41,9 @@ jobs:
       - name: Run DNS core unit tests
         working-directory: android-app
         run: gradle --no-daemon :android-core:test
+      - name: Run APK scanner unit tests
+        working-directory: android-app
+        run: gradle --no-daemon :app:testDebugUnitTest
       - name: Validate and inspect the bundled tracker catalog
         run: |
           python shared/scripts/validate-signatures.py

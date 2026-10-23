@@ -33,4 +33,5 @@ kotlin {
 
 dependencies {
     implementation(project(":android-core"))
+    testImplementation("junit:junit:4.13.2")
 }

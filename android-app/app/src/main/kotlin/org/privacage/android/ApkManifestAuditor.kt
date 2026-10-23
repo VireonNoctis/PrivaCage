@@ -31,17 +31,18 @@ internal data class ApkManifestAuditReport(
     val fileSizeBytes: Long,
     val sha256: String,
     val permissions: List<ApkPermissionFinding>,
-    val exportedComponents: List<ExportedApkComponent>
+    val exportedComponents: List<ExportedApkComponent>,
+    val trackerScan: ApkTrackerScanReport
 )
 
 /**
- * Reads an explicitly selected APK with Android's package parser. It never installs or executes
- * the archive. This is manifest inspection, not full binary or behavioral analysis.
+ * Reads an explicitly selected APK with Android's package parser and scans bounded DEX byte strings.
+ * It never installs or executes the archive; static declarations and strings are not runtime proof.
  */
 internal class ApkManifestAuditor(
     private val packageManager: PackageManager
 ) {
-    fun inspect(apkFile: File): ApkManifestAuditReport {
+    fun inspect(apkFile: File, trackerCatalog: List<TrackerSignature>): ApkManifestAuditReport {
         if (!apkFile.isFile || apkFile.length() !in 1..MAX_APK_BYTES.toLong()) {
             throw IOException("APK must be a readable file no larger than 100 MiB.")
         }
@@ -81,6 +82,8 @@ internal class ApkManifestAuditor(
             }
         }.sortedWith(compareBy<ExportedApkComponent> { it.kind }.thenBy { it.className })
 
+        val trackerScan = ApkTrackerIndicatorScanner().scan(apkFile, trackerCatalog)
+
         @Suppress("DEPRECATION")
         val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             packageInfo.longVersionCode
@@ -96,7 +99,8 @@ internal class ApkManifestAuditor(
             fileSizeBytes = apkFile.length(),
             sha256 = sha256(apkFile),
             permissions = permissions,
-            exportedComponents = exportedComponents
+            exportedComponents = exportedComponents,
+            trackerScan = trackerScan
         )
     }
 

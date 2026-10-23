@@ -5,7 +5,7 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 ## Implemented
 
 - User-selected APK manifest inspection through Android's package archive parser, staged into a private cache file with a 100 MiB cap, then deleted after inspection.
-- Static report with package/version/target-SDK metadata, a SHA-256 file identity, declared permissions with conservative explanations, and components the parser reports as exported.
+- Static report with package/version/target-SDK metadata, a SHA-256 file identity, declared permissions with conservative explanations, components the parser reports as exported, and a bounded scan of DEX byte strings for catalog domain/SDK literals.
 - Permission findings are not described as proof of runtime use; the APK is not installed or executed and is not uploaded.
 - Local UI for a numeric IPv4 upstream resolver and user-entered blocked domains.
 - Bundles the canonical `shared/tracker-db/signatures.json` directly as an Android asset; it does not duplicate the database.
@@ -31,7 +31,7 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Limits
 
-- APK inspection is static manifest analysis only. It does not decompile or analyze every DEX/native-code path, verify runtime permission grants, prove network activity, or decide that an app is malicious.
+- APK inspection is static: it reports manifest declarations and searches bounded DEX data for literal catalog markers. It does not decompile or analyze every code path, verify permission grants, prove network activity, or decide that an app is malicious. Marker strings may be unused, dead code, test data, or embedded documentation.
 - The APK is user-selected, limited to 100 MiB, copied into private cache for parsing, and deleted after inspection; no APK upload or installation occurs.
 - The bundled catalog currently contains only two Analytics endpoint indicators and is not comprehensive. Only explicitly imported active domain indicators (plus manually entered domains) become blocking rules; review-status records are excluded.
 - The client-facing tunnel supports IPv4 UDP DNS only. It does not accept DNS-over-TCP connections from device apps.

@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var statsText: TextView
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
+    private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
 
@@ -46,6 +47,7 @@ class MainActivity : Activity() {
             // Surface the failure to the user while preserving manual-rule functionality.
             trackerCatalogError = exception.message ?: exception.javaClass.simpleName
         }
+        apkTrackerCatalog = trackerCatalog.orEmpty()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(24))
@@ -288,7 +290,7 @@ class MainActivity : Activity() {
             var stagedApk: File? = null
             try {
                 stagedApk = stageSelectedApk(uri)
-                val report = ApkManifestAuditor(packageManager).inspect(stagedApk)
+                val report = ApkManifestAuditor(packageManager).inspect(stagedApk, apkTrackerCatalog)
                 val summary = formatApkAuditReport(report)
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
@@ -379,9 +381,38 @@ class MainActivity : Activity() {
             }
         }
 
-        append("\n\nLIMITS: These are declarations, not proof of permission grants, runtime behavior,")
-        append(" transmitted data, or malicious intent. This scan does not inspect every SDK or")
-        append(" runtime code path. Exported components may be intentional; review their purpose and guards.")
+        append("\n\nPossible embedded catalog indicators found in DEX strings (")
+            .append(report.trackerScan.findings.size).append("):")
+        append("\nCatalog markers considered: ").append(report.trackerScan.indicatorsConsidered)
+        append("\nDEX files scanned: ").append(report.trackerScan.dexFilesScanned)
+        append("\nDEX bytes scanned: ").append(report.trackerScan.dexBytesScanned)
+        if (report.trackerScan.findings.isEmpty()) {
+            append("\nNo catalog indicator strings were found in scanned DEX data. This does not prove their absence.")
+        } else {
+            report.trackerScan.findings.take(MAX_AUDIT_ITEMS_TO_DISPLAY).forEach { finding ->
+                append("\n[").append(finding.status.uppercase()).append(", ")
+                    .append(finding.confidence).append(" confidence] ")
+                    .append(finding.recordName).append(" — ").append(finding.indicatorType)
+                    .append(": ").append(finding.indicator)
+                append("\n  DEX entry: ").append(finding.dexEntries.joinToString(", "))
+                if (finding.evidenceUrls.isNotEmpty()) {
+                    append("\n  Evidence: ").append(finding.evidenceUrls.take(2).joinToString(", "))
+                }
+            }
+            if (report.trackerScan.findings.size > MAX_AUDIT_ITEMS_TO_DISPLAY) {
+                append("\n… ").append(report.trackerScan.findings.size - MAX_AUDIT_ITEMS_TO_DISPLAY)
+                    .append(" additional indicator findings omitted from this view.")
+            }
+        }
+        if (report.trackerScan.warnings.isNotEmpty()) {
+            append("\n\nScan coverage warnings:")
+            report.trackerScan.warnings.forEach { append("\n• ").append(it) }
+        }
+
+        append("\n\nLIMITS: These are declarations and embedded strings, not proof of permission grants,")
+        append(" runtime execution, network connections, transmitted data, or malicious intent.")
+        append(" Obfuscation, native code, encryption, and dynamic loading can evade static string scans.")
+        append(" Exported components may be intentional; review their purpose and guards.")
     }
 
     private fun previewDomainRule() {
