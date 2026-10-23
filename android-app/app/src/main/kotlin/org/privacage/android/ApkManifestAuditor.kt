@@ -63,10 +63,22 @@ internal class ApkManifestAuditor(
             }
 
         val exportedComponents = buildList {
-            packageInfo.activities.orEmpty().forEach { addIfExported("Activity", it) }
-            packageInfo.services.orEmpty().forEach { addIfExported("Service", it) }
-            packageInfo.receivers.orEmpty().forEach { addIfExported("Receiver", it) }
-            packageInfo.providers.orEmpty().forEach { addIfExported("Provider", it) }
+            packageInfo.activities.orEmpty().forEach {
+                addIfExported("Activity", it, it.permission)
+            }
+            packageInfo.services.orEmpty().forEach {
+                addIfExported("Service", it, it.permission)
+            }
+            packageInfo.receivers.orEmpty().forEach {
+                addIfExported("Receiver", it, it.permission)
+            }
+            packageInfo.providers.orEmpty().forEach { provider ->
+                val providerPermissions = listOfNotNull(
+                    provider.readPermission?.takeIf(String::isNotBlank)?.let { "read=$it" },
+                    provider.writePermission?.takeIf(String::isNotBlank)?.let { "write=$it" }
+                ).joinToString(", ").ifEmpty { null }
+                addIfExported("Provider", provider, providerPermissions)
+            }
         }.sortedWith(compareBy<ExportedApkComponent> { it.kind }.thenBy { it.className })
 
         @Suppress("DEPRECATION")
@@ -96,7 +108,11 @@ internal class ApkManifestAuditor(
             packageManager.getPackageArchiveInfo(path, flags)
         }
 
-    private fun MutableList<ExportedApkComponent>.addIfExported(kind: String, component: ComponentInfo) {
+    private fun MutableList<ExportedApkComponent>.addIfExported(
+        kind: String,
+        component: ComponentInfo,
+        requiredPermission: String?
+    ) {
         if (!component.exported) return
         val name = component.name?.takeIf(String::isNotBlank) ?: return
         add(
@@ -104,7 +120,7 @@ internal class ApkManifestAuditor(
                 kind = kind,
                 className = name,
                 enabled = component.enabled,
-                requiredPermission = component.permission
+                requiredPermission = requiredPermission
             )
         )
     }
