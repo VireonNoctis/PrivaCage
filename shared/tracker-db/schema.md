@@ -15,7 +15,7 @@ The JSON document has exactly three fields: schema_version (integer 1), updated_
 | category | string | Category such as analytics, advertising, fingerprinting, crash_reporting, or other |
 | indicators | object | At least one non-empty domains or sdk_patterns array |
 | indicators.domains | string array | Lowercase hostnames, no URL scheme, path, or port; matches must use exact-host or DNS-label-boundary semantics |
-| indicators.sdk_patterns | string array | Dotted Java/Kotlin package or class indicators, optionally using `*` or `**` wildcard segments; static strings are not proof of runtime use |
+| indicators.sdk_patterns | string array | Dotted Java/Kotlin package or class indicators, optionally ending in `.*` (direct package members) or `.**` (package subtree); static strings are not proof of runtime use |
 | confidence | string | low, medium, or high |
 | status | string | active, review, or retired |
 | last_verified | string | Real calendar date in ISO YYYY-MM-DD format |
