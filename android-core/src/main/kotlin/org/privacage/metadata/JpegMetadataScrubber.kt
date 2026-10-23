@@ -63,7 +63,7 @@ object JpegMetadataScrubber {
                     var inEntropyData = false
                     while (!sawEnd) {
                         if (inEntropyData) {
-                            copyEntropyUntilMarker(input, output)
+                            outputBytes += copyEntropyUntilMarker(input, output)
                             inEntropyData = false
                         }
                         val prefix = ArrayList<Int>()
@@ -121,11 +121,16 @@ object JpegMetadataScrubber {
         }
     }
 
-    private fun copyEntropyUntilMarker(input: PushbackInputStream, output: BufferedOutputStream) {
+    private fun copyEntropyUntilMarker(input: PushbackInputStream, output: BufferedOutputStream): Long {
+        var copied = 0L
         while (true) {
             val value = input.read()
             if (value < 0) throw IOException("JPEG scan data ended before an end marker.")
-            if (value != 0xFF) { output.write(value); continue }
+            if (value != 0xFF) {
+                output.write(value)
+                copied++
+                continue
+            }
             val markerBytes = ArrayList<Int>()
             markerBytes.add(0xFF)
             var code = input.read()
@@ -139,11 +144,12 @@ object JpegMetadataScrubber {
             if (code == 0x00 || code in RST0..RST7) {
                 markerBytes.add(code)
                 markerBytes.forEach(output::write)
+                copied += markerBytes.size
                 continue
             }
             markerBytes.add(code)
             input.unread(ByteArray(markerBytes.size) { markerBytes[it].toByte() })
-            return
+            return copied
         }
     }
 
