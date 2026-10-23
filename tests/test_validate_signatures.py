@@ -82,5 +82,31 @@ class ValidateSignaturesTests(unittest.TestCase):
         self.assertEqual(entry["status"], "review")
 
 
+    def test_new_collection_signatures_have_official_evidence(self):
+        database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        by_id = {item["id"]: item for item in document["entries"]}
+
+        expected = {
+            "microsoft-clarity-collection": ("www.clarity.ms", "https://learn.microsoft.com/"),
+            "posthog-hosted-event-capture": ("us.i.posthog.com", "https://posthog.com/docs/"),
+            "google-ads-measurement-endpoints": ("googleadservices.com", "https://developers.google.com/"),
+        }
+        for entry_id, (domain, evidence_prefix) in expected.items():
+            with self.subTest(entry_id=entry_id):
+                entry = by_id[entry_id]
+                self.assertIn(domain, entry["indicators"]["domains"])
+                self.assertTrue(any(source["url"].startswith(evidence_prefix) for source in entry["evidence"]))
+                self.assertEqual(entry["status"], "active")
+
+    def test_broad_doubleclick_indicator_remains_review_only(self):
+        database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        entry = next(item for item in document["entries"] if item["id"] == "google-floodlight-doubleclick")
+        self.assertEqual(entry["status"], "review")
+        self.assertEqual(entry["confidence"], "medium")
+        self.assertIn("doubleclick.net", entry["indicators"]["domains"])
+
+
 if __name__ == "__main__":
     unittest.main()
