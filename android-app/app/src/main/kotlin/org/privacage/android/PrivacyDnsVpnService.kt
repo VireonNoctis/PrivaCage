@@ -95,6 +95,7 @@ class PrivacyDnsVpnService : VpnService() {
         val input = FileInputStream(descriptor.fileDescriptor)
         val output = FileOutputStream(descriptor.fileDescriptor)
         val buffer = ByteArray(MAX_IP_PACKET_SIZE)
+        var packetsSinceStatsFlush = 0
         var failureMessage: String? = null
 
         try {
@@ -110,7 +111,11 @@ class PrivacyDnsVpnService : VpnService() {
                         // An upstream timeout should drop one DNS request, not tear down the VPN.
                         Log.w(TAG, "Upstream DNS request failed; dropping this query while keeping the tunnel active.", exception)
                     }
-                    persistStats(engine.stats.snapshot())
+                    packetsSinceStatsFlush += 1
+                    if (packetsSinceStatsFlush >= STATS_FLUSH_PACKET_INTERVAL) {
+                        persistStats(engine.stats.snapshot())
+                        packetsSinceStatsFlush = 0
+                    }
                     continue
                 }
 
@@ -126,7 +131,11 @@ class PrivacyDnsVpnService : VpnService() {
                         // The VPN route is limited to the virtual DNS endpoint.
                     }
                 }
-                persistStats(engine.stats.snapshot())
+                packetsSinceStatsFlush += 1
+                if (packetsSinceStatsFlush >= STATS_FLUSH_PACKET_INTERVAL) {
+                    persistStats(engine.stats.snapshot())
+                    packetsSinceStatsFlush = 0
+                }
             }
         } catch (exception: IOException) {
             if (running) {
@@ -239,6 +248,7 @@ class PrivacyDnsVpnService : VpnService() {
         private const val NOTIFICATION_ID = 4108
         private const val DNS_PORT = 53
         private const val MAX_IP_PACKET_SIZE = 65_535
+        private const val STATS_FLUSH_PACKET_INTERVAL = 16
         private const val VPN_INTERFACE_ADDRESS = "10.111.0.1"
         private const val VIRTUAL_DNS_ADDRESS = "10.111.0.2"
     }

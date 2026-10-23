@@ -295,6 +295,7 @@ class MainActivity : Activity() {
             append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
             append("\nUpstream failures/timeouts: ")
             append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
+            append("\nActive-session counts update in batches and flush again when the tunnel stops.")
             append("\nCounters reflect DNS-core outcomes, not proof that Android delivered every reply.")
         }
     }

@@ -28,10 +28,14 @@ object Ipv4UdpDnsPacketCodec {
         if (checksum(packet, 0, headerLength) != 0) {
             return Ipv4UdpDnsDecode.Malformed("IPv4 header checksum is invalid")
         }
+        val fragmentField = u16(packet, 6)
+        if ((fragmentField and RESERVED_IPV4_FLAG) != 0) {
+            return Ipv4UdpDnsDecode.Malformed("IPv4 reserved flag is set")
+        }
         if ((packet[9].toInt() and 0xff) != PROTOCOL_UDP) {
             return Ipv4UdpDnsDecode.NotDns("IPv4 packet is not UDP")
         }
-        if ((u16(packet, 6) and FRAGMENT_MASK) != 0) {
+        if ((fragmentField and FRAGMENT_MASK) != 0) {
             return Ipv4UdpDnsDecode.Malformed("Fragmented IPv4 packets are not supported")
         }
 
@@ -172,6 +176,7 @@ object Ipv4UdpDnsPacketCodec {
     private const val DNS_QUESTION_TAIL_SIZE = 4
     private const val DNS_PORT = 53
     private const val PROTOCOL_UDP = 17
+    private const val RESERVED_IPV4_FLAG = 0x8000
     private const val FRAGMENT_MASK = 0x3fff
     private const val DONT_FRAGMENT_FLAG = 0x4000
     private const val DEFAULT_TTL = 64
