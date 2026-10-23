@@ -1,7 +1,7 @@
 # Tracker signature review — evidence-backed starter catalog
 
 **Reviewed:** 2026-10-23  
-**Scope:** Eleven curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
+**Scope:** Fourteen curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
 
 ## Records
 
@@ -118,16 +118,38 @@
 - **Sources:** https://developer.mixpanel.com/reference/track-event
 - **Caveat:** Regional selection, custom proxies, and SDK changes can alter the observed host. A hostname match does not reveal event contents or identify which app initiated the request.
 
-
-### `mixpanel-event-ingestion`
-
-- **Domains:** `api.mixpanel.com`, `api-eu.mixpanel.com`, `api-in.mixpanel.com`
-- **Classification:** Mixpanel event-ingestion endpoints, including regional hosts
-- **Confidence/status:** High / active
-- **Evidence:** Mixpanel's official Track Event API documents event ingestion; Mixpanel's official tracking-proxy repository identifies the default API host and regional EU/India host choices.
-- **Sources:** https://developer.mixpanel.com/reference/track-event and https://github.com/mixpanel/tracking-proxy
-- **Caveat:** Regional selection, SDK versions, custom proxies, and server-side forwarding may alter observed hosts. A domain match does not reveal event contents or establish which application initiated the request.
-
 ## SDK package wildcard semantics
 
 The catalog accepts exact dotted package/class names and terminal `.*` or `.**` patterns. In static DEX scanning, terminal wildcards are represented by a package-prefix string match in dotted and slash-separated forms. This improves coverage but remains a string heuristic: a hit does not prove that a class was loaded or executed. Wildcards in the middle of a pattern are rejected by the validator because the scanner does not implement their semantics.
+
+
+### `adjust-attribution-links`
+
+- **Domains:** `app.adjust.com`, `view.adjust.com`
+- **Classification:** Adjust click and impression attribution-link endpoints
+- **Confidence/status:** High / active
+- **Evidence:** Adjust's official link documentation distinguishes `app.adjust.com` click links from `view.adjust.com/impression` impression and connected-TV links.
+- **Source:** https://help.adjust.com/en/article/links
+- **Caveat:** A hostname match does not prove which app initiated a link or identify the identifiers or campaign parameters in a request. Blocking can break attribution links and campaign redirects.
+
+### `bugsnag-crash-reporting`
+
+- **Domains:** `notify.bugsnag.com`, `sessions.bugsnag.com`
+- **Classification:** BugSnag error-report and session endpoints
+- **Confidence/status:** High / active
+- **Evidence:** BugSnag's Android configuration guide documents these as default hosted endpoints and explains that self-hosted installations can override them.
+- **Source:** https://docs.bugsnag.com/platforms/android/configuration-options/
+- **Caveat:** Blocking may prevent crash diagnostics or session reporting. A hostname match does not prove that a report was sent or expose its contents.
+
+### `branch-mobile-linking`
+
+- **Domain:** `api2.branch.io`
+- **Classification:** Branch API, deep-linking, and attribution infrastructure
+- **Confidence/status:** Medium / review
+- **Evidence:** Branch's official API reference documents `api2.branch.io` as the API base URL and describes events and attribution APIs.
+- **Source:** https://help.branch.io/apidocs/
+- **Why review:** This host serves multiple API functions and is not a dedicated tracker-only endpoint. It stays excluded from active bulk-import until its collateral-blocking scope is reviewed.
+
+## Evidence freshness report
+
+`shared/scripts/tracker-review-report.py` calculates review due dates from `last_verified`, highlights overdue and due-soon entries, and can emit Markdown or JSON. The CI freshness gate fails records older than 180 days. The report does not fetch URLs or prove source truth; a reviewer must actually recheck the cited source before changing a review date.
