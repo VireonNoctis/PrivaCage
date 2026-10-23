@@ -78,3 +78,22 @@
 - Blocking an endpoint can break analytics, ad-supported functions, login flows, or conversion measurement. Users need a reviewable rule and an undo path.
 - The validator checks schema and URL structure, not source availability, accuracy, or continued validity. Confidence and status require human evidence review; automated schema checks do not certify truth.
 - These entries are based on the cited official documentation; they are not a claim that the set is comprehensive or that all vendor endpoints are covered.
+
+
+### `amplitude-event-ingestion`
+
+- **Domains:** `api2.amplitude.com`, `api.eu.amplitude.com`
+- **Classification:** Amplitude HTTP V2 analytics event-ingestion hosts
+- **Confidence/status:** High / active
+- **Evidence:** Amplitude's HTTP V2 API reference documents the default host and the EU data-residency host for event ingestion.
+- **Source:** https://www.amplitude.com/docs/apis/analytics/http-v2
+- **Caveat:** SDK configuration, regional routing, first-party proxies, and server-side forwarding can change the observed host. A domain match does not establish event contents or identify the initiating app.
+
+### `segment-event-ingestion`
+
+- **Domain:** `api.segment.io`
+- **Classification:** Twilio Segment Tracking API / Analytics.js event-ingestion endpoint
+- **Confidence/status:** High / active
+- **Evidence:** Segment's official engineering article documents Analytics.js track/identify calls sending data to `api.segment.io`.
+- **Source:** https://segment.com/blog/twilio-segment-edge-sdk/
+- **Caveat:** First-party proxies, regional/custom endpoints, and server-side forwarding may not match. A hostname match does not reveal which properties were sent or prove that a particular app collected personal data.
