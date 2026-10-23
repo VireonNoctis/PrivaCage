@@ -12,7 +12,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 
 | Area | Status | Honest scope |
 |---|---|---|
-| Tracker intelligence format | Initial implementation | Two official-source analytics endpoint indicators; bundled in Android app; small and non-comprehensive |
+| Tracker intelligence format | Initial implementation | Six source-backed endpoint records across analytics, behavioral analytics, and advertising; one broad shared domain remains review-only; still small and non-comprehensive |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
@@ -51,14 +51,16 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
-- `shared/scripts/validate-signatures.py` — standard-library validator.
-- `tests/test_validate_signatures.py` — regression tests.
+- `shared/scripts/validate-signatures.py` — standard-library tracker schema and evidence-structure validator.
+- `shared/scripts/validate-android-backup.py` — static check for the declared Android backup policy; not an OEM transfer test.
+- `tests/test_validate_signatures.py` and `tests/test_android_backup_policy.py` — regression tests for signature evidence and backup configuration.
 
 ## Build and test
 
 Requires Python 3.11 or newer for the tracker database validator/tests:
 
     python shared/scripts/validate-signatures.py
+    python shared/scripts/validate-android-backup.py
     python -m unittest discover -s tests -v
 
 The Android app requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible:
