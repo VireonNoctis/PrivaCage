@@ -1,7 +1,7 @@
 # Tracker signature review — evidence-backed starter catalog
 
 **Reviewed:** 2026-10-23  
-**Scope:** Fourteen curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
+**Scope:** Fifteen curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
 
 ## Records
 
@@ -153,3 +153,13 @@ The catalog accepts exact dotted package/class names and terminal `.*` or `.**` 
 ## Evidence freshness report
 
 `shared/scripts/tracker-review-report.py` calculates review due dates from `last_verified`, highlights overdue and due-soon entries, and can emit Markdown or JSON. The CI freshness gate fails records older than 180 days. The report does not fetch URLs or prove source truth; a reviewer must actually recheck the cited source before changing a review date.
+
+
+### `sentry-event-ingestion`
+
+- **Domain indicator:** `sentry.io`
+- **Classification:** Sentry event-ingestion host family
+- **Confidence/status:** Medium / review
+- **Evidence:** Sentry's official self-hosted reverse-proxy documentation describes organization-specific ingest hosts such as `o123456789.ingest.de.sentry.io` and the `/api/<project-id>/envelope/` event submission endpoint.
+- **Source:** https://github.com/getsentry/develop/blob/master/src/docs/self-hosted/reverse-proxy.mdx
+- **Why review:** The parent domain is a broad approximation; regional and organization-specific ingest hosts vary, and Sentry also provides other services. This entry is excluded from active bulk import and should not be treated as a dedicated tracker endpoint.
