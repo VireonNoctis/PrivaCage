@@ -46,7 +46,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK manifest audit and DEX indicator scan, JPEG metadata removal, and Android build workflow.
-- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — streaming JPEG marker parser that removes common EXIF/XMP, IPTC/Photoshop, and comment segments without re-encoding image pixels.
+- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — streaming JPEG marker parser that removes common EXIF/XMP, IPTC/Photoshop, and comment segments without re-encoding image pixels; reports removal counts by marker class for the local pre-save inspection report.
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
@@ -101,4 +101,4 @@ Please do not publish details of an unpatched vulnerability involving user data 
 MIT. See LICENSE.
 
 
-| JPEG metadata removal | Initial implementation with output verification | Local JPEG parser removes APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without recompressing pixels; a second pass rejects the save flow if those supported segments remain. Other APP markers are preserved for compatibility, so this is not a universal metadata scrubber. |
+| JPEG metadata inspection and removal | Local report before save | Reports input/output sizes and removed APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM counts; second-pass verification checks those classes are absent. Other APP markers are preserved, and the report does not enumerate every embedded field or guarantee complete metadata removal. |
