@@ -21,8 +21,8 @@ This document is a claim boundary for PrivaCage. A capability is not treated as 
 - **No generic permission shim on stock devices.** An ordinary Android app cannot freely revoke every other app's permissions or intercept every sensor/API call. iOS cannot inspect other apps' binaries or override their permissions outside approved system APIs and entitlements.
 - **No claim of encrypted local preferences.** PCAGE export encryption does not imply that all on-device settings, logs, caches, or crash artifacts are encrypted at rest.
 - **No claim that an imported signature is unquestionably malicious.** Active records are sourced indicators with known service semantics; broad/shared endpoints remain review-only where blocking could break unrelated functionality.
-- **No guarantee of metadata anonymization.** Removing known EXIF fields cannot remove identifying visual content and does not cover unsupported file formats.
-- **No guarantee of data deletion.** Legal request tooling can prepare or track user-reviewed requests; a request being sent is not proof that a company or downstream recipient erased the data.
+- **No metadata scrubber yet.** Metadata inspection/scrubbing is a research candidate, not an implemented feature. Any future scrubber must validate the sanitized copy; removing known EXIF fields cannot remove identifying visual content or cover unsupported formats.
+- **No legal request automation yet.** The legal request assistant is planned, not established as implemented by this branch. Even after it is built, a submitted request will not prove that a company or downstream recipient erased the data.
 
 ## Required checks
 
