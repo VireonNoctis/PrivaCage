@@ -305,10 +305,11 @@ class MainActivity : Activity() {
                 val result = JpegMetadataScrubber.scrub(staged, cleaned)
                 staged.delete()
                 staged = null
+                val completedFile = cleaned
+                cleaned = null
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        pendingScrubbedJpeg = cleaned
-                        cleaned = null
+                        pendingScrubbedJpeg = completedFile
                         statusText.text = "Removed " + result.metadataSegmentsRemoved +
                             " metadata segments (" + result.metadataBytesRemoved +
                             " bytes). Save the cleaned JPEG to a location you choose."
@@ -318,6 +319,8 @@ class MainActivity : Activity() {
                             putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.jpg")
                         }
                         startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
+                    } else {
+                        completedFile?.delete()
                     }
                 }
             } catch (exception: Exception) {
