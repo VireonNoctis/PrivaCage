@@ -58,6 +58,12 @@ def validate_https_url(value: object, context: str) -> None:
     require(bool(parsed.hostname), f"{context} must include a hostname")
     require(parsed.username is None and parsed.password is None,
             f"{context} must not contain credentials")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValidationFailure(f"{context} contains an invalid port") from exc
+    require(port is None or 1 <= port <= 65535,
+            f"{context} port must be between 1 and 65535")
 
 
 def validate_database(
