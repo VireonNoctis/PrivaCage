@@ -2,6 +2,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "shared" / "scripts" / "validate-signatures.py"
@@ -107,6 +108,33 @@ class ValidateSignaturesTests(unittest.TestCase):
         self.assertEqual(entry["status"], "review")
         self.assertEqual(entry["confidence"], "medium")
         self.assertIn("doubleclick.net", entry["indicators"]["domains"])
+
+
+    def test_recent_evidence_passes_freshness_gate(self):
+        document = valid_document()
+        document["entries"][0]["last_verified"] = "2026-10-20"
+        self.assertEqual(
+            validator.validate_database(document, max_age_days=180, today=date(2026, 10, 23)),
+            [],
+        )
+
+    def test_stale_evidence_fails_freshness_gate(self):
+        document = valid_document()
+        document["entries"][0]["last_verified"] = "2026-04-01"
+        errors = validator.validate_database(document, max_age_days=180, today=date(2026, 10, 23))
+        self.assertTrue(any("evidence review is required" in error for error in errors))
+
+    def test_future_verification_date_fails_freshness_gate(self):
+        document = valid_document()
+        document["entries"][0]["last_verified"] = "2026-10-24"
+        errors = validator.validate_database(document, max_age_days=180, today=date(2026, 10, 23))
+        self.assertTrue(any("must not be in the future" in error for error in errors))
+
+    def test_nonpositive_freshness_window_is_rejected(self):
+        self.assertTrue(any(
+            "max_age_days must be a positive integer" in error
+            for error in validator.validate_database(valid_document(), max_age_days=0, today=date(2026, 10, 23))
+        ))
 
 
 if __name__ == "__main__":
