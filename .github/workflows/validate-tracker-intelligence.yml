@@ -28,3 +28,8 @@ jobs:
       - name: Validate existing catalog with Rust
         working-directory: shared/rust/tracker-intelligence
         run: cargo run -- validate ../../tracker-db/signatures.json
+      - name: Migration round-trip validation
+        working-directory: shared/rust/tracker-intelligence
+        run: |
+          cargo run -- migrate-v1 ../../tracker-db/signatures.json /tmp/intelligence-v2.json
+          cargo run -- validate-v2 /tmp/intelligence-v2.json
