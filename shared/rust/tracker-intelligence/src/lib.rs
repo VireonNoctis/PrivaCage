@@ -29,7 +29,7 @@ pub struct SdkFingerprint { pub id: String, pub name: String, #[serde(default)] 
 pub struct AppFingerprint { pub id: String, pub package_id: String, #[serde(default)] pub signing_certificate_sha256: Option<String>, #[serde(default)] pub sdk_ids: Vec<String>, #[serde(default)] pub evidence_ids: Vec<String> }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IntelligenceBundle { pub schema_version: u32, pub updated_at: String, #[serde(default)] pub entities: Vec<Entity>, #[serde(default)] pub sdk_fingerprints: Vec<SdkFingerprint>, #[serde(default)] pub sources: Vec<Evidence>, #[serde(default)] pub entries: Vec<Entry>, #[serde(default)] pub app_fingerprints: Vec<AppFingerprint> }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum IndicatorKind { Domain, PackageId, CertificateSha256, DexString, FileHashSha256 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
