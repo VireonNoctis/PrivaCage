@@ -278,6 +278,25 @@
           "description": "Branch's official API reference documents api2.branch.io as the API base URL and describes event tracking and attribution APIs. Because the host serves multiple Branch functions, the indicator remains review-only rather than being treated as a dedicated tracker endpoint."
         }
       ]
+    },
+    {
+      "id": "sentry-event-ingestion",
+      "name": "Sentry event-ingestion host family",
+      "category": "crash_reporting",
+      "indicators": {
+        "domains": [
+          "sentry.io"
+        ]
+      },
+      "confidence": "medium",
+      "status": "review",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://github.com/getsentry/develop/blob/master/src/docs/self-hosted/reverse-proxy.mdx",
+          "description": "Sentry's official self-hosted reverse-proxy documentation identifies organization-specific hosts such as o123456789.ingest.de.sentry.io and the /api/<project-id>/envelope/ endpoint as SDK event-ingestion paths. The catalog stores the parent domain only as a review indicator because regional and organization-specific hosts vary and sentry.io also covers unrelated Sentry services."
+        }
+      ]
     }
   ]
 }
