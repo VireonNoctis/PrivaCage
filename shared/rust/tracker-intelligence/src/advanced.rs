@@ -122,7 +122,7 @@ pub fn ingest_observations(paths:&[PathBuf])->Result<Vec<Observation>,IntelError
     for p in paths {
         let bytes=fs::read(p).map_err(|e|IntelError::Io(format!("read {}: {e}",p.display())))?;
         if let Ok(items)=serde_json::from_slice::<Vec<Observation>>(&bytes) {
-            for mut o in items {normalize_observation(&mut o);if !o.value.is_empty()&&seen.insert((format!("{:?}",o.kind),o.value.to_ascii_lowercase())){out.push(o)}}
+            for mut o in items {o.context=Some(match o.context.take(){Some(existing)=>format!("local source: {} | {}",p.display(),existing),None=>format!("local source: {}",p.display())});normalize_observation(&mut o);if !o.value.is_empty()&&seen.insert((format!("{:?}",o.kind),o.value.to_ascii_lowercase())){out.push(o)}}
         } else {
             let text=String::from_utf8(bytes).map_err(|e|IntelError::Invalid(format!("{} is neither observations JSON nor UTF-8 text: {e}",p.display())))?;
             for line in text.lines().map(str::trim).filter(|s|!s.is_empty()&&!s.starts_with('#')) {
