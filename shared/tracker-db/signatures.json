@@ -198,6 +198,27 @@
           "description": "AppsFlyer's official troubleshooting documentation recommends the appsflyersdk.com endpoint for SDK traffic to ensure TLS 1.2/1.3 in the described iOS configuration. This supports an association with SDK communication but not an exclusive attribution-only purpose across all deployments; kept review-only pending broader endpoint-scope review."
         }
       ]
+    },
+    {
+      "id": "mixpanel-event-ingestion",
+      "name": "Mixpanel event and profile ingestion endpoints",
+      "category": "analytics",
+      "indicators": {
+        "domains": [
+          "api.mixpanel.com",
+          "api-eu.mixpanel.com",
+          "api-in.mixpanel.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://developer.mixpanel.com/reference/track-event",
+          "description": "Mixpanel's official Track Event API documents the event-ingestion endpoint. Mixpanel's official tracking-proxy documentation describes api.mixpanel.com as the default host and api-eu.mixpanel.com/api-in.mixpanel.com for EU/India residency. Regional selection, custom proxies, and SDK changes can alter the observed host; a hostname match does not reveal event contents."
+        }
+      ]
     }
   ]
 }
