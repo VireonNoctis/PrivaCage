@@ -14,6 +14,8 @@ on:
       - "android-app/**"
       - "android-core/**"
       - "shared/tracker-db/**"
+      - "shared/scripts/**"
+      - "tests/**"
       - ".github/workflows/validate-android-app.yml"
   workflow_dispatch:
 
