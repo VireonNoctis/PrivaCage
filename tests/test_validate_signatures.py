@@ -137,6 +137,14 @@ class ValidateSignaturesTests(unittest.TestCase):
                 self.assertTrue(any(source["url"].startswith(evidence_prefix) for source in entry["evidence"]))
                 self.assertEqual(entry["status"], "active")
 
+    def test_sentry_ingestion_indicator_remains_review_only(self):
+        database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        entry = next(item for item in document["entries"] if item["id"] == "sentry-event-ingestion")
+        self.assertEqual(entry["status"], "review")
+        self.assertEqual(entry["confidence"], "medium")
+        self.assertIn("sentry.io", entry["indicators"]["domains"])
+
     def test_branch_mobile_linking_remains_review_only(self):
         database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
         document = json.loads(database.read_text(encoding="utf-8"))
