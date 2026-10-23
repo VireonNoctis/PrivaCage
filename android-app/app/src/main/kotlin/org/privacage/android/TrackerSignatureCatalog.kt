@@ -6,6 +6,8 @@ import org.json.JSONObject
 import org.privacage.dns.DnsPolicyEngine
 import java.io.IOException
 import java.net.URI
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 
 /** Reads the bundled tracker database; importing a domain is always an explicit user action. */
 internal object TrackerSignatureCatalog {
@@ -79,7 +81,7 @@ internal object TrackerSignatureCatalog {
                 val parsedUrl = try { URI(url) } catch (exception: Exception) {
                     throw IOException("$sourceLabel.url is invalid", exception)
                 }
-                if (parsedUrl.scheme != "https" || parsedUrl.host.isNullOrBlank()) throw IOException("$sourceLabel.url must be an HTTPS URL")
+                if (parsedUrl.scheme != "https" || parsedUrl.host.isNullOrBlank() || parsedUrl.rawUserInfo != null) throw IOException("$sourceLabel.url must be an HTTPS URL without credentials")
                 if (!seenUrls.add(url)) throw IOException("$sourceLabel contains a duplicate URL")
                 evidence += TrackerEvidence(url, requiredString(source, "description", sourceLabel))
             }
@@ -112,8 +114,13 @@ internal object TrackerSignatureCatalog {
     }
 
     private fun requireDate(value: Any?, context: String) {
-        if (value !is String || !value.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
-            throw IOException("$context must use YYYY-MM-DD format")
+        if (value !is String) throw IOException("$context must use YYYY-MM-DD format")
+        try {
+            if (LocalDate.parse(value).toString() != value) {
+                throw IOException("$context must use canonical YYYY-MM-DD format")
+            }
+        } catch (exception: DateTimeParseException) {
+            throw IOException("$context must be a valid calendar date in YYYY-MM-DD format", exception)
         }
     }
 
