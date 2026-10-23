@@ -7,6 +7,7 @@ cargo run -- validate ../../tracker-db/signatures.json
 cargo run -- migrate-v1 ../../tracker-db/signatures.json /tmp/intelligence-v2.json
 cargo run -- validate-v2 /tmp/intelligence-v2.json
 cargo run -- validate-sources ../../tracker-db/source-registry.json
+cargo run -- freshness ../../tracker-db/signatures.json "$(date -u +%F)" 180 /tmp/tracker-freshness.json
 cargo run -- analyze ../../tracker-db/signatures.json www.google-analytics.com
 cargo run -- analyze-v2 /tmp/intelligence-v2.json domain www.google-analytics.com
 cargo run -- analyze-v2 /tmp/intelligence-v2.json ip_address 192.0.2.1

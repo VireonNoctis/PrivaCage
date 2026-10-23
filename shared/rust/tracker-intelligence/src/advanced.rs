@@ -52,6 +52,44 @@ pub fn validate_source_registry(r:&SourceRegistry)->Result<(),IntelError>{
     Ok(())
 }
 
+
+fn date_ordinal(s:&str)->Option<i64>{
+    let mut p=s.split('-');
+    let y=p.next()?.parse::<i64>().ok()?;
+    let m=p.next()?.parse::<usize>().ok()?;
+    let d=p.next()?.parse::<usize>().ok()?;
+    if p.next().is_some()||y<1||m<1||m>12{return None}
+    let leap=y%4==0&&(y%100!=0||y%400==0);
+    let mdays=[31,if leap{29}else{28},31,30,31,30,31,31,30,31,30,31];
+    if d<1||d>mdays[m-1]{return None}
+    let prev=y-1;
+    let mut ordinal=365*prev+prev/4-prev/100+prev/400;
+    for days in mdays.iter().take(m-1){ordinal+=*days as i64;}
+    Some(ordinal+d as i64-1)
+}
+pub fn audit_freshness(c:&Catalog,as_of:&str,max_age_days:i64)->Result<Value,IntelError>{
+    let now=date_ordinal(as_of).ok_or_else(||invalid(format!("invalid as-of date {as_of}; expected YYYY-MM-DD")))?;
+    if max_age_days<0{return Err(invalid("max-age-days cannot be negative"))}
+    let mut stale=Vec::new();let mut missing=Vec::new();let mut future=Vec::new();let mut invalid_dates=Vec::new();
+    for e in &c.entries{
+        match e.last_verified.as_deref(){
+            None=>missing.push(e.id.clone()),
+            Some(raw)=>match date_ordinal(raw){
+                None=>invalid_dates.push(json!({"entry_id":e.id,"date":raw})),
+                Some(day) if day>now=>future.push(json!({"entry_id":e.id,"date":raw})),
+                Some(day) if now-day>max_age_days=>stale.push(json!({"entry_id":e.id,"last_verified":raw,"age_days":now-day})),
+                Some(_)=>{}
+            }
+        }
+    }
+    let catalog_day=date_ordinal(&c.updated_at);
+    let catalog_age= catalog_day.map(|d|now-d);
+    let catalog_invalid=catalog_day.is_none();
+    let catalog_future=catalog_day.is_some_and(|d|d>now);
+    let catalog_stale=catalog_age.is_some_and(|age|age>max_age_days);
+    Ok(json!({"schema_version":1,"as_of":as_of,"max_age_days":max_age_days,"catalog":{"updated_at":c.updated_at,"age_days":catalog_age,"invalid_date":catalog_invalid,"future_date":catalog_future,"stale":catalog_stale},"stale_entries":stale,"missing_verification":missing,"future_dates":future,"invalid_dates":invalid_dates,"counts":{"stale":stale.len(),"missing":missing.len(),"future":future.len(),"invalid":invalid_dates.len()}}))
+}
+
 fn safe_id(s:&str)->bool { !s.is_empty() && s.len()<=80 && s.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_'||b==b'.') }
 
 pub fn migrate_v1(c: Catalog) -> Result<IntelligenceBundle, IntelError> {
@@ -313,6 +351,7 @@ mod advanced_tests {
             last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()
         }]}
     }
+    #[test] fn freshness_dates_validate_leap_days(){assert!(date_ordinal("2024-02-29").is_some());assert!(date_ordinal("2025-02-29").is_none());assert!(date_ordinal("2026-13-01").is_none());}
     #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();

@@ -28,6 +28,9 @@ jobs:
       - name: Validate existing catalog with Rust
         working-directory: shared/rust/tracker-intelligence
         run: cargo run -- validate ../../tracker-db/signatures.json
+      - name: Audit catalog freshness
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo run -- freshness ../../tracker-db/signatures.json "$(date -u +%F)" 180 /tmp/tracker-freshness.json
       - name: Validate source registry
         working-directory: shared/rust/tracker-intelligence
         run: cargo run -- validate-sources ../../tracker-db/source-registry.json
