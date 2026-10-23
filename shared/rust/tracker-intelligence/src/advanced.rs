@@ -5,7 +5,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::{BTreeMap, BTreeSet}, fs, io::Read, path::{Path, PathBuf}};
+use std::{collections::{BTreeMap, BTreeSet}, fs, fs::OpenOptions, io::{Read, Write}, path::{Path, PathBuf}};
 
 fn invalid(s: impl Into<String>) -> IntelError { IntelError::Invalid(s.into()) }
 fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Result<T, IntelError> {
@@ -308,6 +308,29 @@ pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError
     let b=fs::read(root.join("releases").join(&c.release_id).join("catalog.json")).map_err(|e|IntelError::Io(e.to_string()))?;
     if sha256_hex(&b)!=c.catalog_sha256{return Err(invalid("current pointer digest does not match release catalog"))}
     Ok(())
+}
+
+
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
+pub struct ReviewDecision { pub schema_version:u32, pub candidate:Candidate, pub decision:String, pub reviewer:String, pub reason:String, pub reviewed_at:String, pub automatic_promotion:bool }
+fn normalized_candidate_value(kind:&IndicatorKind,value:&str)->String{
+    match kind {IndicatorKind::Domain=>normalize_domain(value).unwrap_or_else(||value.trim().to_ascii_lowercase()),IndicatorKind::IpAddress=>normalize_ip(value).unwrap_or_else(||value.trim().to_ascii_lowercase()),_=>value.trim().to_ascii_lowercase()}
+}
+pub fn record_candidate_review(queue_path:&Path,kind:&IndicatorKind,value:&str,decision:&str,reviewer:&str,reason:&str,reviewed_at:&str,ledger_path:&Path)->Result<ReviewDecision,IntelError>{
+    if !["accept","reject"].contains(&decision){return Err(invalid("decision must be accept or reject"))}
+    if reviewer.trim().is_empty()||reviewer.len()>200{return Err(invalid("reviewer must be 1-200 characters"))}
+    if reason.trim().is_empty()||reason.len()>2000{return Err(invalid("review reason must be 1-2000 characters"))}
+    if date_ordinal(reviewed_at).is_none(){return Err(invalid("reviewed_at must be a valid YYYY-MM-DD date"))}
+    let queue:Vec<Candidate>=read_json(queue_path)?;
+    let target=normalized_candidate_value(kind,value);
+    let candidate=queue.into_iter().find(|c|c.kind==*kind&&normalized_candidate_value(&c.kind,&c.value)==target)
+        .ok_or_else(||invalid("candidate was not found in the review queue"))?;
+    let record=ReviewDecision{schema_version:1,candidate,decision:if decision=="accept"{"accepted_for_catalog_review".into()}else{"rejected".into()},reviewer:reviewer.trim().into(),reason:reason.trim().into(),reviewed_at:reviewed_at.into(),automatic_promotion:false};
+    if let Some(parent)=ledger_path.parent(){fs::create_dir_all(parent).map_err(|e|IntelError::Io(e.to_string()))?;}
+    let mut file=OpenOptions::new().create(true).append(true).open(ledger_path).map_err(|e|IntelError::Io(format!("open review ledger: {e}")))?;
+    let mut line=serde_json::to_vec(&record).map_err(|e|IntelError::Json(e.to_string()))?;line.push(b'\n');
+    file.write_all(&line).map_err(|e|IntelError::Io(format!("append review ledger: {e}")))?;
+    Ok(record)
 }
 
 pub fn detect_regressions(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
