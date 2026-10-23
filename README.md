@@ -59,7 +59,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 
 Requires Python 3.11 or newer for the tracker database validator/tests:
 
-    python shared/scripts/validate-signatures.py
+    python shared/scripts/validate-signatures.py --max-age-days 180
     python shared/scripts/validate-android-backup.py
     python -m unittest discover -s tests -v
 
@@ -76,7 +76,7 @@ The Rust encrypted-profile implementation requires Rust 1.85 or newer:
     cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
 
-The tracker validator checks structure and URL syntax, not whether evidence is true or still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
+The tracker validator checks structure and URL syntax and can enforce an evidence-review age limit (CI uses 180 days); it does not prove that evidence is true or the URL is still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
 
 ## Platform reality
 
