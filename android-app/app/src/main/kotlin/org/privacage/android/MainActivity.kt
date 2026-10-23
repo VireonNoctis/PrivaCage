@@ -97,6 +97,54 @@ class MainActivity : Activity() {
             text = "Refresh device privacy snapshot"
             setOnClickListener { refreshDevicePrivacySnapshot() }
         }, matchWidth())
+
+        root.addView(TextView(this).apply {
+            text = "PRIVACY HARDENING"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "These controls open official Android, Google, and Samsung settings or guidance. PrivaCage does not silently change account settings or claim that a page visit disables collection."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Review Android ad privacy settings"
+            setOnClickListener {
+                openSystemSettings("android.settings.AD_PRIVACY_SETTINGS", "Ad privacy settings")
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Review Google Account data controls"
+            setOnClickListener {
+                openExternalUrl("https://myaccount.google.com/data-and-privacy", "Google Account data controls")
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Review Samsung Customization Service"
+            setOnClickListener {
+                openExternalUrl(
+                    "https://terms.account.samsung.com/contents/legal/gb/en/customizedservicecontent.html",
+                    "Samsung Customization Service privacy information"
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open Android VPN settings (advanced)"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("VPN lockdown is not ready for PrivaCage")
+                    .setMessage(
+                        "PrivaCage currently routes only its configured DNS endpoint, not all device traffic. " +
+                            "Do not select PrivaCage as an always-on lockdown VPN yet: Android may block ordinary app traffic. " +
+                            "This opens VPN settings so you can inspect your device's existing VPN configuration."
+                    )
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Open VPN settings") { _, _ ->
+                        openSystemSettings(Settings.ACTION_VPN_SETTINGS, "VPN settings")
+                    }
+                    .show()
+            }
+        }, matchWidth())
         root.addView(TextView(this).apply { text = "DNS PRIVACY"; textSize = 16f; setPadding(0, dp(18), 0, dp(4)) })
         root.addView(Button(this).apply {
             text = "Remove photo metadata (JPEG)"
@@ -976,6 +1024,15 @@ class MainActivity : Activity() {
             .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, tlsHostname)
             .apply()
         return true
+    }
+
+    private fun openExternalUrl(url: String, label: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            statusText.text = "Opened official $label. Review and change settings on that service's own page."
+        } catch (exception: Exception) {
+            statusText.text = "Could not open $label. Open it manually from the official provider's settings or website."
+        }
     }
 
     private fun openSystemSettings(action: String, label: String) {
