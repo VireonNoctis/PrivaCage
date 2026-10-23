@@ -564,6 +564,11 @@ class MainActivity : Activity() {
                                 }
                                 startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
                             }
+                            .setOnCancelListener {
+                                pendingScrubbedJpeg?.delete()
+                                pendingScrubbedJpeg = null
+                                statusText.text = "Inspection cancelled. The temporary cleaned copy was deleted."
+                            }
                             .show()
                     } else {
                         completedFile?.delete()
