@@ -29,9 +29,10 @@ class TrackerReviewReportTests(unittest.TestCase):
         report = report_module.build_report(document, date(2026, 10, 23), 180, 30)
         states = {entry["id"]: entry["review_state"] for entry in report["entries"]}
         self.assertEqual(states["current"], "current")
-        self.assertEqual(states["soon"], "overdue")
+        self.assertEqual(states["soon"], "due_soon")
         self.assertEqual(states["old"], "overdue")
-        self.assertEqual(report["counts"]["overdue"], 2)
+        self.assertEqual(report["counts"]["overdue"], 1)
+        self.assertEqual(report["counts"]["due_soon"], 1)
 
     def test_repository_report_runs_and_includes_limitations(self):
         result = subprocess.run(
