@@ -277,8 +277,13 @@ mod tests {
     #[test]
     fn rejects_overlong_domain_labels_and_domains() {
         let long_label = format!("{}.example", "a".repeat(64));
-        let overlong_domain = ["a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(63)]
-            .join(".");
+        let overlong_domain = [
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(63),
+        ]
+        .join(".");
         for domain in [long_label, overlong_domain] {
             let json = format!(
                 "{{\"format_version\":1,\"resolver_ipv4\":\"192.0.2.53\",\"blocked_domains\":[\"{domain}\"]}}"
