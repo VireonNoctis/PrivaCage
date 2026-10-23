@@ -41,6 +41,7 @@ class MainActivity : Activity() {
     private lateinit var devicePrivacyText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
+    private var lastImportedTrackerDomains: Set<String> = emptySet()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
     private var pendingScrubbedJpeg: File? = null
@@ -294,6 +295,7 @@ class MainActivity : Activity() {
                                 val currentDomains = domainsInput.text.toString().lineSequence()
                                     .map(String::trim).filter(String::isNotEmpty).toSet()
                                 val newlyAdded = activeDomains - currentDomains
+                                lastImportedTrackerDomains = newlyAdded
                                 domainsInput.setText((currentDomains + activeDomains).sorted().joinToString("\n"))
                                 statusText.text = if (newlyAdded.isEmpty()) {
                                     "All active tracker domains are already in the rule editor. No settings were saved."
@@ -303,6 +305,21 @@ class MainActivity : Activity() {
                             }
                             .show()
                     }
+                }
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Undo last tracker import"
+            setOnClickListener {
+                if (lastImportedTrackerDomains.isEmpty()) {
+                    statusText.text = "There are no newly added tracker domains to undo in this screen session."
+                } else {
+                    val currentDomains = domainsInput.text.toString().lineSequence()
+                        .map(String::trim).filter(String::isNotEmpty).toSet()
+                    val removed = currentDomains intersect lastImportedTrackerDomains
+                    domainsInput.setText((currentDomains - lastImportedTrackerDomains).sorted().joinToString("\n"))
+                    lastImportedTrackerDomains = emptySet()
+                    statusText.text = "Removed ${removed.size} domain(s) added by the last tracker import from the editor. Save configuration only if the remaining rules are correct."
                 }
             }
         }, matchWidth())
