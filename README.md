@@ -8,12 +8,12 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker database validator and Python regression tests passed on the latest tracker-intelligence revision. The Android build and scanner/core test workflow is still running after the recent SDK wildcard implementation; do not treat that revision as build-verified until the workflow finishes. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker database validator and Python regression tests passed, and GitHub Actions successfully built the debug APK and ran DNS core tests, APK scanner tests, privacy-baseline checks, and bundled-catalog inspection for the SDK wildcard revision. The newer local DNS event-history and review-report additions are awaiting their own CI run. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
-| Tracker intelligence format | Initial implementation | Eleven source-backed endpoint records across analytics, behavioral analytics, advertising, and mobile attribution; broad shared domains remain review-only; still small and non-comprehensive |
-| Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), returns allow/block/malformed decisions, supports offline rule previews, and records aggregate per-session outcomes without retaining query names |
+| Tracker intelligence format | Expanded foundation | Fourteen source-backed endpoint records across analytics, behavioral analytics, advertising, crash reporting, and mobile attribution; broad shared domains remain review-only; still small and non-comprehensive |
+| Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), returns allow/block/malformed decisions, supports offline rule previews, and records aggregate outcomes; an explicitly opt-in local event history can store hostnames with best-effort socket-owner attribution |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
@@ -55,6 +55,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
 - `shared/scripts/validate-signatures.py` — standard-library tracker schema and evidence-structure validator.
+- `shared/scripts/tracker-review-report.py` — local evidence freshness report with due-soon/overdue status; does not fetch or certify source truth.
 - `shared/scripts/validate-android-backup.py` — static check for the declared Android backup policy; not an OEM transfer test.
 - `tests/test_validate_signatures.py` and `tests/test_android_backup_policy.py` — regression tests for signature evidence and backup configuration.
 
@@ -63,6 +64,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 Requires Python 3.11 or newer for the tracker database validator/tests:
 
     python shared/scripts/validate-signatures.py --max-age-days 180
+    python shared/scripts/tracker-review-report.py --format markdown
     python shared/scripts/validate-android-backup.py
     python -m unittest discover -s tests -v
 
@@ -83,7 +85,7 @@ The tracker validator checks structure and URL syntax and can enforce an evidenc
 
 ## Platform reality
 
-- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. The editor includes an offline hostname-rule preview and aggregate session counters; counters retain no DNS names and do not prove replies reached requesting apps. A local device snapshot reports exposed location, Wi-Fi, Private DNS, and active-network VPN settings plus PrivaCage's own declared permissions, without reading SSIDs or uploading the snapshot. A separate permission audit checks dangerous permissions declared by launcher-visible apps and reports current grant flags locally; Android package visibility means this is not a complete inventory of system/OEM services. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
+- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. The editor includes an offline hostname-rule preview and aggregate session counters. Optional local DNS event history is disabled by default and can retain hostnames; socket-owner lookup is best-effort and may identify Android's resolver rather than the initiating app. A local device snapshot reports exposed location, Wi-Fi, Private DNS, and active-network VPN settings plus PrivaCage's own declared permissions, without reading SSIDs or uploading the snapshot. A separate permission audit checks dangerous permissions declared by launcher-visible apps and reports current grant flags locally; Android package visibility means this is not a complete inventory of system/OEM services. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
 - Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
 - Wi-Fi and connection privacy: a Wi-Fi operator can usually observe connected-device/network metadata, timing, traffic volume, and destination IPs. HTTPS protects application content in transit; encrypted DNS can hide DNS questions from the local network when correctly configured, while the resolver still sees them. A VPN hides tunneled destinations from the local Wi-Fi operator but shifts visibility and trust to the VPN provider; it does not prove every connection is tunneled.
