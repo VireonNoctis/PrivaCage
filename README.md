@@ -8,7 +8,7 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app now bundles the canonical tracker database, shows each record's evidence, and allows an explicit import of active domain indicators into the local rules. The Android debug APK and DNS core tests passed GitHub Actions on the current app/core implementation. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker database validator and Python regression tests passed on the latest tracker-intelligence revision. The Android build and scanner/core test workflow is still running after the recent SDK wildcard implementation; do not treat that revision as build-verified until the workflow finishes. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
