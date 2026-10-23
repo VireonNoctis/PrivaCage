@@ -48,6 +48,24 @@ class ApkTrackerIndicatorScannerTest {
     }
 
     @Test
+    fun matchesTerminalSdkPackageWildcardAgainstDexDescriptors() {
+        val temp = File.createTempFile("privacage-scanner-test-", ".apk")
+        try {
+            writeArchive(temp, "classes.dex" to "Lcom/vendor/analytics/Client;".toByteArray(Charsets.US_ASCII))
+            val report = ApkTrackerIndicatorScanner().scan(
+                temp,
+                listOf(signature(domains = emptyList(), sdkPatterns = listOf("com.vendor.analytics.**")))
+            )
+
+            assertEquals(1, report.findings.size)
+            assertEquals("SDK package prefix", report.findings.single().indicatorType)
+            assertEquals("com.vendor.analytics.**", report.findings.single().indicator)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    @Test
     fun reportsReviewOnlyMatchesWithoutPromotingThemToActive() {
         val temp = File.createTempFile("privacage-scanner-test-", ".apk")
         try {
