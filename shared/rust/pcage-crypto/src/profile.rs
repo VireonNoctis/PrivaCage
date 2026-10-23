@@ -213,6 +213,22 @@ mod tests {
     }
 
     #[test]
+    fn accepts_and_reemits_dns_over_tls_profile_v2() {
+        let json = br#"{"format_version":2,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"],"dns_over_tls_enabled":true,"dns_over_tls_hostname":"dns.google"}"#;
+        let profile = ProfilePayload::from_json(json).expect("valid v2 profile");
+        assert_eq!(profile.format_version, 2);
+        assert_eq!(profile.dns_over_tls_enabled, Some(true));
+        assert_eq!(profile.dns_over_tls_hostname.as_deref(), Some("dns.google"));
+        assert_eq!(profile.to_json_bytes().expect("serialize v2 profile"), json);
+    }
+
+    #[test]
+    fn rejects_invalid_dns_over_tls_hostname() {
+        let json = br#"{"format_version":2,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"],"dns_over_tls_enabled":true,"dns_over_tls_hostname":"dns..google"}"#;
+        assert_eq!(ProfilePayload::from_json(json), Err(ProfileError::InvalidDnsOverTls));
+    }
+
+    #[test]
     fn rejects_unsupported_profile_version() {
         let invalid = br#"{"format_version":3,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"]}"#;
         assert_eq!(

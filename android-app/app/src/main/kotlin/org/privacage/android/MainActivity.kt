@@ -69,7 +69,7 @@ class MainActivity : Activity() {
             textSize = 13f
         })
         root.addView(Button(this).apply { text = "Open Privacy Dashboard"; setOnClickListener { openSystemSettings(Settings.ACTION_PRIVACY_SETTINGS, "Privacy Dashboard") } }, matchWidth())
-        root.addView(Button(this).apply { text = "Review app permissions"; setOnClickListener { openSystemSettings(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, "App management") } }, matchWidth())
+        root.addView(Button(this).apply { text = "Open app management"; setOnClickListener { openSystemSettings(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, "App management") } }, matchWidth())
         root.addView(Button(this).apply { text = "Location access settings"; setOnClickListener { openSystemSettings(Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location settings") } }, matchWidth())
         root.addView(Button(this).apply { text = "Wi-Fi and network settings"; setOnClickListener { openSystemSettings(Settings.ACTION_WIFI_SETTINGS, "Wi-Fi settings") } }, matchWidth())
         root.addView(TextView(this).apply { text = "DNS PRIVACY"; textSize = 16f; setPadding(0, dp(18), 0, dp(4)) })
@@ -724,7 +724,7 @@ class MainActivity : Activity() {
             DnsOverTlsForwarder.validateHostname(resolverHostnameInput.text.toString())
         } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return null
-        } else resolverHostnameInput.text.toString().trim()
+        } else ""
         val json = JSONObject()
             .put("format_version", PROFILE_FORMAT_VERSION)
             .put("resolver_ipv4", resolver)
@@ -889,7 +889,7 @@ class MainActivity : Activity() {
         }
         val useDot = if (version.toInt() == 1) false else (json.opt("dns_over_tls_enabled") as? Boolean ?: throw IOException("Profile DNS-over-TLS flag is invalid"))
         var tlsHostname = if (version.toInt() == 1) "" else (json.opt("dns_over_tls_hostname") as? String ?: throw IOException("Profile DNS-over-TLS hostname is invalid"))
-        if (useDot) tlsHostname = try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) { throw IOException("Profile DNS-over-TLS hostname is invalid", exception) }
+        if (tlsHostname.isNotEmpty() || useDot) tlsHostname = try { DnsOverTlsForwarder.validateHostname(tlsHostname) } catch (exception: IllegalArgumentException) { throw IOException("Profile DNS-over-TLS hostname is invalid", exception) }
         return ImportedProfile(resolver, domains, useDot, tlsHostname)
     }
 
@@ -937,7 +937,7 @@ class MainActivity : Activity() {
             DnsOverTlsForwarder.validateHostname(resolverHostnameInput.text.toString())
         } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return false
-        } else resolverHostnameInput.text.toString().trim()
+        } else ""
         getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
             .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, resolver)
             .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, domains)
