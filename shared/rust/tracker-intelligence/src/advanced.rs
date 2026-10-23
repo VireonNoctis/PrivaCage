@@ -382,7 +382,7 @@ mod advanced_tests {
         assert_eq!(b.sources.len(),1);assert!(b.sources[0].id.as_deref().unwrap().starts_with("source-"));
         validate_bundle(&b).unwrap();
     }
-    #[test] fn graph_contains_entity_and_sdk_edges(){let mut b=migrate_v1(sample_catalog()).unwrap();b.entities.push(Entity{id:"vendor".into(),name:"Vendor".into(),entity_type:"company".into(),parent_entity_id:None,domains:vec![],evidence_ids:vec![]});b.sdk_fingerprints.push(SdkFingerprint{id:"sdk".into(),name:"SDK".into(),package_ids:vec![],dex_strings:vec![],file_hashes_sha256:vec![],entity_ids:vec!["vendor".into()],evidence_ids:vec![]});let g=correlate_bundle(&b);assert_eq!(g["counts"]["edges"],1);}
+    #[test] fn graph_contains_entity_and_sdk_edges(){let mut b=migrate_v1(sample_catalog()).unwrap();b.entities.push(crate::Entity{id:"vendor".into(),name:"Vendor".into(),entity_type:"company".into(),parent_entity_id:None,domains:vec![],evidence_ids:vec![]});b.sdk_fingerprints.push(crate::SdkFingerprint{id:"sdk".into(),name:"SDK".into(),package_ids:vec![],dex_strings:vec![],file_hashes_sha256:vec![],entity_ids:vec!["vendor".into()],evidence_ids:vec![]});let g=correlate_bundle(&b);assert_eq!(g["counts"]["edges"],1);}
     #[test] fn diff_reports_added_and_changed(){
         let old=migrate_v1(sample_catalog()).unwrap();let mut new=old.clone();
         new.entries[0].name="Renamed".into();
