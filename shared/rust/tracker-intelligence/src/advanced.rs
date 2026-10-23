@@ -101,7 +101,7 @@ pub fn ingest_observations(paths:&[PathBuf])->Result<Vec<Observation>,IntelError
 fn normalize_observation(o:&mut Observation){o.value=match o.kind{IndicatorKind::Domain=>normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase()),_=>o.value.trim().to_ascii_lowercase()};}
 
 pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observation>,Vec<Value>),IntelError>{
-    let p=path.as_ref();let file=fs::File::open(p).map_err(|e|IntelError::Io(format!("open APK: {e}")))?;
+    let p=path.as_ref();let size=fs::metadata(p).map_err(|e|IntelError::Io(format!("stat APK: {e}")))?.len();\n    if size>512*1024*1024{return Err(invalid("APK exceeds the 512 MiB static-scan limit"))}\n    let file=fs::File::open(p).map_err(|e|IntelError::Io(format!("open APK: {e}")))?;
     let mut archive=zip::ZipArchive::new(file).map_err(|e|invalid(format!("APK is not a readable ZIP archive: {e}")))?;
     let apk_bytes=fs::read(p).map_err(|e|IntelError::Io(e.to_string()))?;
     let mut observations=vec![Observation{value:sha256_hex(&apk_bytes),kind:IndicatorKind::FileHashSha256,context:Some(format!("APK SHA-256: {}",p.display()))}];
@@ -182,6 +182,54 @@ pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError
     if sha256_hex(&b)!=c.catalog_sha256{return Err(invalid("current pointer digest does not match release catalog"))}
     Ok(())
 }
+
+pub fn detect_regressions(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
+    let next:BTreeMap<&str,&Entry>=new.entries.iter().map(|e|(e.id.as_str(),e)).collect();
+    let mut regressions=Vec::new();
+    for before in &old.entries {
+        let Some(after)=next.get(before.id.as_str()) else {
+            regressions.push(json!({"severity":"high","entry_id":before.id,"type":"entry_removed","message":"Previously catalogued entry was removed; review whether this is an intentional retirement."}));
+            continue;
+        };
+        let status_rank=|s:&str|match s {"active"=>2,"review"=>1,"deprecated"=>0,_=>-1};
+        if status_rank(&after.status)<status_rank(&before.status) {
+            regressions.push(json!({"severity":"medium","entry_id":before.id,"type":"status_downgrade","before":before.status,"after":after.status}));
+        }
+        let groups=[
+            ("domains",&before.indicators.domains,&after.indicators.domains),
+            ("package_ids",&before.indicators.package_ids,&after.indicators.package_ids),
+            ("certificate_sha256",&before.indicators.certificate_sha256,&after.indicators.certificate_sha256),
+            ("dex_strings",&before.indicators.dex_strings,&after.indicators.dex_strings),
+            ("file_hashes_sha256",&before.indicators.file_hashes_sha256,&after.indicators.file_hashes_sha256),
+        ];
+        for (kind,old_values,new_values) in groups {
+            let removed:Vec<_>=old_values.iter().filter(|v|!new_values.iter().any(|n|n.eq_ignore_ascii_case(v))).cloned().collect();
+            if !removed.is_empty(){regressions.push(json!({"severity":"medium","entry_id":before.id,"type":"indicators_removed","indicator_type":kind,"removed":removed}));}
+        }
+        let lost:Vec<_>=before.evidence.iter().filter(|e|!after.evidence.iter().any(|n|n.url==e.url&&n.description==e.description)).map(|e|e.url.clone()).collect();
+        if !lost.is_empty(){regressions.push(json!({"severity":"low","entry_id":before.id,"type":"evidence_removed","urls":lost}));}
+    }
+    json!({"schema_version":1,"regressions":regressions,"count":regressions.len()})
+}
+
+pub fn list_verified_releases(root:&Path,trusted_key:&str)->Result<Vec<Value>,IntelError>{
+    let dir=root.join("releases");
+    let entries=fs::read_dir(&dir).map_err(|e|IntelError::Io(format!("read release history {}: {e}",dir.display())))?;
+    let mut out=Vec::new();
+    for item in entries {
+        let item=item.map_err(|e|IntelError::Io(e.to_string()))?;
+        if !item.file_type().map_err(|e|IntelError::Io(e.to_string()))?.is_dir(){continue}
+        let id=item.file_name().to_string_lossy().into_owned();
+        if !safe_id(&id){return Err(invalid(format!("unsafe release directory name: {id}")))}
+        let bytes=fs::read(item.path().join("catalog.json")).map_err(|e|IntelError::Io(format!("release {id} catalog: {e}")))?;
+        let manifest:ReleaseManifest=read_json(&item.path().join("manifest.json"))?;
+        verify_release(&bytes,&manifest,trusted_key)?;
+        out.push(json!({"release_id":id,"catalog_sha256":manifest.catalog_sha256,"created_at":manifest.created_at,"verified":true}));
+    }
+    out.sort_by(|a,b|a["created_at"].as_str().cmp(&b["created_at"].as_str()).then(a["release_id"].as_str().cmp(&b["release_id"].as_str())));
+    Ok(out)
+}
+
 pub fn render_csv_matches(matches:&[crate::MatchResult])->String{
     let mut s=String::from("entry_id,name,category,status,identity,evidence_quality,detection_coverage,matched_indicators\n");
     for m in matches {let values=[m.entry_id.clone(),m.name.clone(),m.category.clone(),m.status.clone(),m.confidence.identity.to_string(),m.confidence.evidence_quality.to_string(),m.confidence.detection_coverage.to_string(),m.matched_indicators.join(";")];
@@ -192,10 +240,10 @@ pub fn render_csv_matches(matches:&[crate::MatchResult])->String{
 #[cfg(test)]
 mod advanced_tests {
     use super::*;
-    fn sample_catalog()->Catalog {
+    pub(super) fn sample_catalog()->Catalog {
         Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{
             id:"sample".into(),name:"Sample".into(),category:"analytics".into(),
-            indicators:Default::default(),confidence:"high".into(),status:"active".into(),
+            indicators:crate::Indicators{domains:vec!["analytics.example.org".into()],..Default::default()},confidence:"high".into(),status:"active".into(),
             last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]
         }]}
     }
@@ -210,5 +258,18 @@ mod advanced_tests {
         new.entries[0].name="Renamed".into();
         new.entries.push(Entry{id:"added".into(),name:"Added".into(),category:"analytics".into(),indicators:Default::default(),confidence:"low".into(),status:"review".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/new".into(),description:"new docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]});
         let d=diff_bundles(&old,&new);assert_eq!(d["counts"]["added"],1);assert_eq!(d["counts"]["changed"],1);
+    }
+}
+
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+    #[test] fn detects_removed_indicators() {
+        let old=super::advanced_tests::sample_catalog();
+        let old=migrate_v1(old).unwrap();
+        let mut new=old.clone();
+        new.entries[0].indicators.domains=vec![];
+        let r=detect_regressions(&old,&new);
+        assert!(r["count"].as_u64().unwrap()>0);
     }
 }

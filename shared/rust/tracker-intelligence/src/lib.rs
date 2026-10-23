@@ -103,7 +103,7 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
         let coverage=if expected==0{0}else{((types.len()*100)/expected).min(100) as u8};
         out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
             confidence:ConfidenceAssessment{identity:if e.status=="review"{55}else if e.confidence=="high"{85}else{70},
-            evidence_quality:((e.evidence.len().min(4)*20)+20).min(100) as u8,detection_coverage:coverage,
+            evidence_quality:if e.evidence.is_empty(){0}else{(e.evidence.iter().map(|ev|(if ev.url.starts_with("https://"){1usize}else{0})+(if !ev.description.trim().is_empty(){1usize}else{0})+(if ev.retrieved_at.is_some(){1usize}else{0})+(if ev.source_type.is_some(){1usize}else{0})).sum::<usize>()*100/(e.evidence.len()*4)).min(100) as u8},detection_coverage:coverage,
             behavior:"not established by indicator matching".into(),impact:"unknown without independent evidence".into()},evidence:e.evidence.clone()});
     }
     out.sort_by(|a,b|b.confidence.identity.cmp(&a.confidence.identity).then(a.entry_id.cmp(&b.entry_id)));out
@@ -113,7 +113,7 @@ pub fn discover_candidates(c:&Catalog,observations:&[Observation])->Vec<Candidat
     for o in observations{
         let value=if o.kind==IndicatorKind::Domain{normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else{o.value.trim().to_ascii_lowercase()};
         if value.is_empty()||!seen.insert((o.kind.clone(),value.clone())){continue}
-        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)||domain_matches(v,&value)}else{value==v.to_ascii_lowercase()}));
+        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else{value==v.to_ascii_lowercase()}));
         if !known{out.push(Candidate{value:o.value.clone(),kind:o.kind.clone(),first_seen_context:o.context.clone(),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()})}
     }out
 }
