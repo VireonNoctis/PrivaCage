@@ -450,7 +450,7 @@ mod advanced_tests {
         rollback_release(&root,"release-1",&manifest.signer_public_key_hex).unwrap();
         fs::remove_dir_all(&dir).unwrap();
     }
-    #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
+    #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),17);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();
         assert_eq!(b.schema_version,2);assert_eq!(b.entries.len(),1);

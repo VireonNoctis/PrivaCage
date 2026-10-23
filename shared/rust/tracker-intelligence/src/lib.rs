@@ -96,7 +96,6 @@ fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
     IndicatorKind::Domain=>e.indicators.domains.iter().map(String::as_str).collect(),
     IndicatorKind::IpAddress=>e.indicators.ip_addresses.iter().map(String::as_str).collect(),
     IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().map(String::as_str).collect(),
-    IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().map(String::as_str).collect(),
     IndicatorKind::PackageId=>e.indicators.package_ids.iter().map(String::as_str).collect(),
     IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().map(String::as_str).collect(),
     IndicatorKind::DexString=>e.indicators.dex_strings.iter().map(String::as_str).collect(),
