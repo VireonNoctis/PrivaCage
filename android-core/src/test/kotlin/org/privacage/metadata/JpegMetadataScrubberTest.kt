@@ -27,6 +27,9 @@ class JpegMetadataScrubberTest {
             val result = JpegMetadataScrubber.scrub(input, output)
             assertContentEquals(expected, output.readBytes())
             assertEquals(3, result.metadataSegmentsRemoved)
+            assertEquals(1, result.app1SegmentsRemoved)
+            assertEquals(1, result.app13SegmentsRemoved)
+            assertEquals(1, result.commentSegmentsRemoved)
             assertEquals((exif.size + iptc.size + comment.size).toLong(), result.metadataBytesRemoved)
             assertEquals(expected.size.toLong(), result.outputBytesWritten)
         } finally { input.delete(); output.delete() }
