@@ -219,6 +219,65 @@
           "description": "Mixpanel's official Track Event API documents the event-ingestion endpoint. Mixpanel's official tracking-proxy documentation describes api.mixpanel.com as the default host and api-eu.mixpanel.com/api-in.mixpanel.com for EU/India residency. Regional selection, custom proxies, and SDK changes can alter the observed host; a hostname match does not reveal event contents."
         }
       ]
+    },
+    {
+      "id": "adjust-attribution-links",
+      "name": "Adjust click and impression attribution endpoints",
+      "category": "mobile_attribution",
+      "indicators": {
+        "domains": [
+          "app.adjust.com",
+          "view.adjust.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://help.adjust.com/en/article/links",
+          "description": "Adjust's official link documentation distinguishes app.adjust.com click endpoints from view.adjust.com impression/connected-TV endpoints. These are attribution-link endpoints; a hostname match does not establish which app initiated it or what identifiers were transmitted."
+        }
+      ]
+    },
+    {
+      "id": "bugsnag-crash-reporting",
+      "name": "BugSnag error and session reporting endpoints",
+      "category": "crash_reporting",
+      "indicators": {
+        "domains": [
+          "notify.bugsnag.com",
+          "sessions.bugsnag.com"
+        ]
+      },
+      "confidence": "high",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://docs.bugsnag.com/platforms/android/configuration-options/",
+          "description": "BugSnag's Android configuration documentation identifies notify.bugsnag.com and sessions.bugsnag.com as its default hosted error-report and session endpoints, with custom endpoints available for on-premise deployments. A hostname match does not prove an app uploaded a report or reveal its contents."
+        }
+      ]
+    },
+    {
+      "id": "branch-mobile-linking",
+      "name": "Branch mobile linking and attribution API",
+      "category": "mobile_attribution",
+      "indicators": {
+        "domains": [
+          "api2.branch.io"
+        ]
+      },
+      "confidence": "medium",
+      "status": "review",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://help.branch.io/apidocs/",
+          "description": "Branch's official API reference documents api2.branch.io as the API base URL and describes event tracking and attribution APIs. Because the host serves multiple Branch functions, the indicator remains review-only rather than being treated as a dedicated tracker endpoint."
+        }
+      ]
     }
   ]
 }
