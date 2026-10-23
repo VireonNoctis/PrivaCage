@@ -37,7 +37,7 @@ internal object LocalDnsEventHistory {
             val next = JSONArray()
             val start = maxOf(0, current.length() - (MAX_EVENTS - 1))
             for (index in start until current.length()) {
-                next.put(current.getJSONObject(index))
+                current.optJSONObject(index)?.let(next::put)
             }
             next.put(JSONObject()
                 .put("timestamp", Instant.now().toString())
