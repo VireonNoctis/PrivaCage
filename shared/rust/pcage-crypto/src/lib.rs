@@ -258,8 +258,8 @@ mod tests {
 
     #[test]
     fn rejects_mutation_of_every_authenticated_header_byte() {
-        let original = encrypt(b"header authentication", TEST_PASSPHRASE)
-            .expect("encrypt succeeds");
+        let original =
+            encrypt(b"header authentication", TEST_PASSPHRASE).expect("encrypt succeeds");
         for index in MAGIC_SIZE..HEADER_SIZE {
             let mut modified = original.clone();
             modified[index] ^= 1;
@@ -273,8 +273,7 @@ mod tests {
 
     #[test]
     fn rejects_mutated_ciphertext_and_authentication_tag() {
-        let original = encrypt(b"ciphertext integrity", TEST_PASSPHRASE)
-            .expect("encrypt succeeds");
+        let original = encrypt(b"ciphertext integrity", TEST_PASSPHRASE).expect("encrypt succeeds");
         let ciphertext_len = original.len() - HEADER_SIZE;
         let indexes = [
             HEADER_SIZE,
