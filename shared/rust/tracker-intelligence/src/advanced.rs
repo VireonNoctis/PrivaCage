@@ -237,19 +237,42 @@ pub fn match_bundle_observations(bundle:&IntelligenceBundle,observations:&[Obser
     crate::match_observations(&Catalog{schema_version:1,updated_at:bundle.updated_at.clone(),entries},observations)
 }
 
-pub fn diff_bundles(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
-    let old_map:BTreeMap<&str,&Entry>=old.entries.iter().map(|e|(e.id.as_str(),e)).collect();
-    let new_map:BTreeMap<&str,&Entry>=new.entries.iter().map(|e|(e.id.as_str(),e)).collect();
-    let mut added=Vec::new(); let mut removed=Vec::new(); let mut changed=Vec::new();
-    for (id,entry) in &new_map {
-        match old_map.get(*id) {
-            None => added.push((*entry).clone()),
-            Some(before) if *before != *entry => changed.push(json!({"id":id,"before":before,"after":entry})),
-            Some(_) => {}
-        }
-    }
-    for (id,entry) in &old_map { if !new_map.contains_key(*id) { removed.push((*entry).clone()); } }
-    json!({"schema_version":1,"added":added,"removed":removed,"changed":changed,"counts":{"added":added.len(),"removed":removed.len(),"changed":changed.len()}})
+fn diff_value_records(old:&[Value],new:&[Value])->Value{
+    let old_map:BTreeMap<String,&Value>=old.iter().filter_map(|v|v.get("id").and_then(Value::as_str).map(|id|(id.to_string(),v))).collect();
+    let new_map:BTreeMap<String,&Value>=new.iter().filter_map(|v|v.get("id").and_then(Value::as_str).map(|id|(id.to_string(),v))).collect();
+    let mut added=Vec::new();let mut removed=Vec::new();let mut changed=Vec::new();
+    for (id,value) in &new_map {match old_map.get(id){
+        None=>added.push((*value).clone()),
+        Some(before) if *before!=*value=>changed.push(json!({"id":id,"before":before,"after":value})),
+        Some(_)=>{}
+    }}
+    for (id,value) in &old_map {if !new_map.contains_key(id){removed.push((*value).clone())}}
+    json!({"added":added,"removed":removed,"changed":changed,"counts":{"added":added.len(),"removed":removed.len(),"changed":changed.len()}})
+}
+fn values<T:Serialize>(items:&[T])->Result<Vec<Value>,IntelError>{items.iter().map(|v|serde_json::to_value(v).map_err(|e|IntelError::Json(e.to_string()))).collect()}
+pub fn diff_bundles(old:&IntelligenceBundle,new:&IntelligenceBundle)->Result<Value,IntelError>{
+    validate_bundle(old)?;validate_bundle(new)?;
+    let entries=diff_value_records(&values(&old.entries)?,&values(&new.entries)?);
+    let entities=diff_value_records(&values(&old.entities)?,&values(&new.entities)?);
+    let sdks=diff_value_records(&values(&old.sdk_fingerprints)?,&values(&new.sdk_fingerprints)?);
+    let apps=diff_value_records(&values(&old.app_fingerprints)?,&values(&new.app_fingerprints)?);
+    let counts=json!({
+        "added":entries["counts"]["added"],"removed":entries["counts"]["removed"],"changed":entries["counts"]["changed"],
+        "entities":entities["counts"],"sdk_fingerprints":sdks["counts"],"app_fingerprints":apps["counts"]
+    });
+    Ok(json!({"schema_version":1,"added":entries["added"],"removed":entries["removed"],"changed":entries["changed"],"counts":counts,
+        "collections":{"entries":entries,"entities":entities,"sdk_fingerprints":sdks,"app_fingerprints":apps}}))
+}
+
+pub fn correlate_bundle(bundle:&IntelligenceBundle)->Value{
+    let mut nodes=Vec::new();let mut edges=BTreeSet::<(String,String,String)>::new();
+    for e in &bundle.entities {nodes.push(json!({"id":format!("entity:{}",e.id),"type":"entity","name":e.name}));if let Some(parent)=&e.parent_entity_id{edges.insert((format!("entity:{}",e.id),format!("entity:{parent}"),"parent_entity".into()));}}
+    for s in &bundle.sdk_fingerprints {nodes.push(json!({"id":format!("sdk:{}",s.id),"type":"sdk","name":s.name}));for entity in &s.entity_ids{edges.insert((format!("sdk:{}",s.id),format!("entity:{entity}"),"provided_by".into()));}}
+    for e in &bundle.entries {nodes.push(json!({"id":format!("entry:{}",e.id),"type":"entry","name":e.name,"category":e.category}));for entity in &e.entity_ids{edges.insert((format!("entry:{}",e.id),format!("entity:{entity}"),"associated_entity".into()));}for sdk in &e.sdk_ids{edges.insert((format!("entry:{}",e.id),format!("sdk:{sdk}"),"uses_sdk".into()));}}
+    for app in &bundle.app_fingerprints {nodes.push(json!({"id":format!("app:{}",app.id),"type":"app","name":app.package_id}));for sdk in &app.sdk_ids{edges.insert((format!("app:{}",app.id),format!("sdk:{sdk}"),"contains_sdk_fingerprint".into()));}}
+    nodes.sort_by(|a,b|a["id"].as_str().cmp(&b["id"].as_str()));
+    let edges:Vec<_>=edges.into_iter().map(|(from,to,kind)|json!({"from":from,"to":to,"kind":kind})).collect();
+    json!({"schema_version":1,"nodes":nodes,"edges":edges,"counts":{"nodes":nodes.len(),"edges":edges.len()}})
 }
 
 #[derive(Debug,Serialize,Deserialize)]
@@ -359,11 +382,12 @@ mod advanced_tests {
         assert_eq!(b.sources.len(),1);assert!(b.sources[0].id.as_deref().unwrap().starts_with("source-"));
         validate_bundle(&b).unwrap();
     }
+    #[test] fn graph_contains_entity_and_sdk_edges(){let mut b=migrate_v1(sample_catalog()).unwrap();b.entities.push(Entity{id:"vendor".into(),name:"Vendor".into(),entity_type:"company".into(),parent_entity_id:None,domains:vec![],evidence_ids:vec![]});b.sdk_fingerprints.push(SdkFingerprint{id:"sdk".into(),name:"SDK".into(),package_ids:vec![],dex_strings:vec![],file_hashes_sha256:vec![],entity_ids:vec!["vendor".into()],evidence_ids:vec![]});let g=correlate_bundle(&b);assert_eq!(g["counts"]["edges"],1);}
     #[test] fn diff_reports_added_and_changed(){
         let old=migrate_v1(sample_catalog()).unwrap();let mut new=old.clone();
         new.entries[0].name="Renamed".into();
         new.entries.push(Entry{id:"added".into(),name:"Added".into(),category:"analytics".into(),indicators:Default::default(),confidence:"low".into(),status:"review".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/new".into(),description:"new docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()});
-        let d=diff_bundles(&old,&new);assert_eq!(d["counts"]["added"],1);assert_eq!(d["counts"]["changed"],1);
+        let d=diff_bundles(&old,&new).unwrap();assert_eq!(d["counts"]["added"],1);assert_eq!(d["counts"]["changed"],1);
     }
 }
 

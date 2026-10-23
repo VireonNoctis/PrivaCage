@@ -14,6 +14,7 @@ cargo run -- analyze-v2 /tmp/intelligence-v2.json ip_address 192.0.2.1
 cargo run -- ingest ../../tracker-db/signatures.json /tmp/observations.json /tmp/candidates.json /tmp/ingest-manifest.json ./observations.json ./domains.txt
 cargo run -- scan-apk ../../tracker-db/signatures.json app.apk /tmp/apk-observations.json /tmp/apk-report.json
 cargo run -- diff old-v2.json new-v2.json /tmp/catalog-diff.json
+cargo run -- graph /tmp/intelligence-v2.json /tmp/intelligence-graph.json
 cargo run -- regressions old-v2.json new-v2.json /tmp/regressions.json
 cargo run -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 ```

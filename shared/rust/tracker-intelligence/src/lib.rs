@@ -37,7 +37,7 @@ pub struct Observation { pub value: String, pub kind: IndicatorKind, #[serde(def
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConfidenceAssessment { pub identity: u8, pub evidence_quality: u8, pub detection_coverage: u8, pub behavior: String, pub impact: String }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MatchResult { pub entry_id: String, pub name: String, pub category: String, pub status: String, pub matched_indicators: Vec<String>, pub confidence: ConfidenceAssessment, pub evidence: Vec<Evidence> }
+pub struct MatchResult { pub entry_id: String, pub name: String, #[serde(default)] pub localized_names: BTreeMap<String,String>, pub category: String, pub status: String, pub matched_indicators: Vec<String>, pub confidence: ConfidenceAssessment, pub evidence: Vec<Evidence> }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Candidate { pub value: String, pub kind: IndicatorKind, pub first_seen_context: Option<String>, pub disposition: String }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -105,7 +105,7 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
         let expected=[IndicatorKind::Domain,IndicatorKind::IpAddress,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
             .iter().filter(|k|!indicator_values(e,k).is_empty()).count();
         let coverage=if expected==0{0}else{((types.len()*100)/expected).min(100) as u8};
-        out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
+        out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),localized_names:e.localized_names.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
             confidence:ConfidenceAssessment{identity:if e.status=="review"{55}else if e.confidence=="high"{85}else{70},
             evidence_quality:if e.evidence.is_empty(){0}else{(e.evidence.iter().map(|ev|(if ev.url.starts_with("https://"){1usize}else{0})+(if !ev.description.trim().is_empty(){1usize}else{0})+(if ev.retrieved_at.is_some(){1usize}else{0})+(if ev.source_type.is_some(){1usize}else{0})).sum::<usize>()*100/(e.evidence.len()*4)).min(100) as u8},detection_coverage:coverage,
             behavior:"not established by indicator matching".into(),impact:"unknown without independent evidence".into()},evidence:e.evidence.clone()});
