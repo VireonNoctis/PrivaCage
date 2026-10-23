@@ -33,3 +33,12 @@ Unknown fields are rejected in version 1 so typos cannot silently become ignored
 - High confidence requires human evidence review; the validator cannot assign truth.
 - Retired entries remain available for historical context but must not drive active blocking.
 - Review-status entries must be shown as uncertain and must not silently become hard blocks.
+
+## Matching and interpretation contract
+
+- A domain record identifies a service endpoint, not an SDK installed in a particular app. DNS matches can be caused by browser pages, embedded web content, system components, shared libraries, or unrelated uses of a shared host.
+- Domain matching must use exact-host or DNS-label-boundary suffix semantics. A host such as sub.metrics.example may match metrics.example, but notmetrics.example must not. Never use arbitrary substring matching for hostnames.
+- SDK/package patterns are static indicators. Obfuscation, native code, dynamic loading, custom builds, and first-party proxies can produce false negatives; strings can be unused or bundled without execution.
+- active means an indicator may be offered for explicit user-reviewed rules, not that it is malicious or safe to block globally. review must be excluded from bulk active-domain import. retired is historical and must not drive enforcement.
+- Evidence dates record a human review of the cited source, not automated proof that the endpoint is live. CI freshness checks force re-review but do not validate the source itself.
+- Keep broad shared infrastructure review-only when collateral breakage or service ambiguity is high. Never elevate a record based only on vendor reputation or category.
