@@ -76,13 +76,18 @@ internal class ApkTrackerIndicatorScanner {
         signatures.sortedBy { it.id }.forEach { record ->
             record.domains.forEach { domain -> register(record, "domain", domain, listOf(domain)) }
             record.sdkPatterns.forEach { sdkPattern ->
-                if (sdkPattern.contains('*') || sdkPattern.contains('?')) {
-                    if (!wildcardReported) {
-                        warnings += "Wildcard SDK patterns are not expanded; only literal package/class strings are scanned."
-                        wildcardReported = true
+                when {
+                    sdkPattern.endsWith(".**") || sdkPattern.endsWith(".*") -> {
+                        val prefix = sdkPattern.removeSuffix("**").removeSuffix("*")
+                        register(record, "SDK package prefix", sdkPattern, listOf(prefix, prefix.replace('.', '/')))
                     }
-                } else {
-                    register(record, "SDK pattern", sdkPattern, listOf(sdkPattern, sdkPattern.replace('.', '/')))
+                    sdkPattern.contains('*') || sdkPattern.contains('?') -> {
+                        if (!wildcardReported) {
+                            warnings += "Unsupported SDK wildcard placement was skipped; only literal names and terminal .* or .** package prefixes are supported."
+                            wildcardReported = true
+                        }
+                    }
+                    else -> register(record, "SDK pattern", sdkPattern, listOf(sdkPattern, sdkPattern.replace('.', '/')))
                 }
             }
         }
