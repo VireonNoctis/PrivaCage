@@ -25,7 +25,7 @@ This document is a claim boundary for PrivaCage. A capability is not treated as 
 - **No generic permission shim on stock devices.** An ordinary Android app cannot freely revoke every other app's permissions or intercept every sensor/API call. iOS cannot inspect other apps' binaries or override their permissions outside approved system APIs and entitlements.
 - **No claim of encrypted local preferences.** PCAGE export encryption does not imply that all on-device settings, logs, caches, or crash artifacts are encrypted at rest.
 - **No claim that an imported signature is unquestionably malicious.** Active records are sourced indicators with known service semantics; broad/shared endpoints remain review-only where blocking could break unrelated functionality.
-- **JPEG metadata removal is limited.** The local parser strips APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without re-encoding pixel data. Other APP segments remain, so this is not a guarantee that every metadata type is removed from every JPEG. Files with trailing data after EOI are rejected.
+- **JPEG metadata removal is limited.** The local parser strips APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM segments without re-encoding pixel data. Before offering the output for saving, the app runs a second parser pass and checks that no supported segments remain. This verifies only those segment classes; other APP segments remain and can contain metadata. Files with trailing data after EOI are rejected.
 - **No legal request automation yet.** The legal request assistant is planned, not established as implemented by this branch. Even after it is built, a submitted request will not prove that a company or downstream recipient erased the data.
 
 ## Required checks
