@@ -11,7 +11,10 @@ import java.io.PushbackInputStream
 data class JpegScrubResult(
     val metadataSegmentsRemoved: Int,
     val metadataBytesRemoved: Long,
-    val outputBytesWritten: Long
+    val outputBytesWritten: Long,
+    val app1SegmentsRemoved: Int,
+    val app13SegmentsRemoved: Int,
+    val commentSegmentsRemoved: Int
 )
 
 /**
@@ -42,6 +45,9 @@ object JpegMetadataScrubber {
 
         var removedSegments = 0
         var removedBytes = 0L
+        var app1SegmentsRemoved = 0
+        var app13SegmentsRemoved = 0
+        var commentSegmentsRemoved = 0
         var outputBytes = 0L
         try {
             PushbackInputStream(BufferedInputStream(FileInputStream(inputFile)), MAX_MARKER_FILL + 2).use { input ->
@@ -96,6 +102,11 @@ object JpegMetadataScrubber {
                         if (code == APP1 || code == APP13 || code == COM) {
                             skipExactly(input, payloadLength)
                             removedSegments++
+                            when (code) {
+                                APP1 -> app1SegmentsRemoved++
+                                APP13 -> app13SegmentsRemoved++
+                                COM -> commentSegmentsRemoved++
+                            }
                             removedBytes += prefix.size + 1L + 2L + payloadLength
                         } else {
                             prefix.forEach(::emitByte)
@@ -113,7 +124,14 @@ object JpegMetadataScrubber {
                     if (!sawScan || !sawEnd) throw IOException("JPEG has no complete image scan or end marker.")
                 }
             }
-            return JpegScrubResult(removedSegments, removedBytes, outputBytes)
+            return JpegScrubResult(
+                metadataSegmentsRemoved = removedSegments,
+                metadataBytesRemoved = removedBytes,
+                outputBytesWritten = outputBytes,
+                app1SegmentsRemoved = app1SegmentsRemoved,
+                app13SegmentsRemoved = app13SegmentsRemoved,
+                commentSegmentsRemoved = commentSegmentsRemoved
+            )
         } catch (exception: Exception) {
             outputFile.delete()
             if (exception is IOException) throw exception
