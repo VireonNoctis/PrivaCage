@@ -5,11 +5,13 @@ on:
     paths:
       - "android-app/**"
       - "android-core/**"
+      - "shared/tracker-db/**"
       - ".github/workflows/validate-android-app.yml"
   pull_request:
     paths:
       - "android-app/**"
       - "android-core/**"
+      - "shared/tracker-db/**"
       - ".github/workflows/validate-android-app.yml"
   workflow_dispatch:
 
@@ -39,3 +41,8 @@ jobs:
       - name: Run DNS core unit tests
         working-directory: android-app
         run: gradle --no-daemon :android-core:test
+      - name: Validate and inspect the bundled tracker catalog
+        run: |
+          python shared/scripts/validate-signatures.py
+          unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
+          unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/signatures.json | python -m json.tool > /dev/null

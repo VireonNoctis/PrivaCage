@@ -7,6 +7,12 @@ android {
     namespace = "org.privacage.android"
     compileSdk = 36
 
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../shared/tracker-db")
+        }
+    }
+
     defaultConfig {
         applicationId = "org.privacage.android"
         minSdk = 26

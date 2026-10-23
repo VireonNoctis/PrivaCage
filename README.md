@@ -8,15 +8,15 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android debug APK and DNS core tests passed GitHub Actions on the current app/core implementation. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app now bundles the canonical tracker database, shows each record's evidence, and allows an explicit import of active domain indicators into the local rules. The Android debug APK and DNS core tests passed GitHub Actions on the current app/core implementation. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
-| Tracker intelligence format | Initial implementation | Two official-source analytics endpoint indicators; small and non-comprehensive |
+| Tracker intelligence format | Initial implementation | Two official-source analytics endpoint indicators; bundled in Android app; small and non-comprehensive |
 | Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), and returns allow/block/malformed decisions |
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
-| Tracker list in app | Not yet integrated | User-entered domains are active; the shared tracker database is not loaded by the app |
+| Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
@@ -41,7 +41,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-app/` — early Android app, VPN service adapter, local rule configuration, and Android build workflow.
+- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, and Android build workflow.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, tests, and Gradle configuration.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — small, evidence-backed starter dataset; not yet loaded by the app.
@@ -67,7 +67,7 @@ The tracker validator checks structure and URL syntax, not whether evidence is t
 
 ## Platform reality
 
-- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
+- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
 - Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
 - IP addresses: a remote endpoint ordinarily sees the public source IP of the network path reaching it. A VPN or proxy changes which intermediary sees that address; it shifts trust rather than making a connection inherently anonymous.

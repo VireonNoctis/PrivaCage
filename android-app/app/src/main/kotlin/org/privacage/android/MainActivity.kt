@@ -22,6 +22,14 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        var trackerCatalog: List<TrackerSignature>? = null
+        var trackerCatalogError: String? = null
+        try {
+            trackerCatalog = TrackerSignatureCatalog.load(this)
+        } catch (exception: Exception) {
+            // Surface the failure to the user while preserving manual-rule functionality.
+            trackerCatalogError = exception.message ?: exception.javaClass.simpleName
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(24))
@@ -40,6 +48,83 @@ class MainActivity : Activity() {
         }
         root.addView(resolverInput, matchWidth())
         root.addView(TextView(this).apply {
+            text = "Bundled tracker intelligence (optional)"
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        val activeTrackerCount = trackerCatalog.orEmpty().count { it.status == "active" }
+        val reviewTrackerCount = trackerCatalog.orEmpty().count { it.status == "review" }
+        val retiredTrackerCount = trackerCatalog.orEmpty().count { it.status == "retired" }
+        root.addView(TextView(this).apply {
+            text = if (trackerCatalog == null) {
+                "Catalog unavailable: $trackerCatalogError. Manual domain rules still work."
+            } else {
+                "Bundled records: ${trackerCatalog!!.size}; active: $activeTrackerCount; review: $reviewTrackerCount; retired: $retiredTrackerCount. Nothing is blocked until you import domains and save."
+            }
+            textSize = 13f
+        })
+        val trackerDetails = TextView(this).apply {
+            text = trackerCatalog.orEmpty().joinToString("\n\n") { record ->
+                buildString {
+                    append(record.name)
+                    append(" [")
+                    append(record.status.uppercase())
+                    append(", ")
+                    append(record.confidence)
+                    append(" confidence]\n")
+                    append("Category: ")
+                    append(record.category)
+                    append("\nDomains: ")
+                    append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
+                    append("\nSDK patterns: ")
+                    append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
+                    append("\nLast verified: ")
+                    append(record.lastVerified)
+                    append("\nEvidence:\n")
+                    append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
+                }
+            }
+            textSize = 12f
+            visibility = android.view.View.GONE
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(Button(this).apply {
+            text = "Show tracker records and evidence"
+            setOnClickListener {
+                if (trackerCatalog == null) {
+                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Rebuild with a valid bundled signatures.json."
+                } else {
+                    val expanded = trackerDetails.visibility != android.view.View.VISIBLE
+                    trackerDetails.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.GONE
+                    text = if (expanded) "Hide tracker records and evidence" else "Show tracker records and evidence"
+                }
+            }
+        }, matchWidth())
+        root.addView(trackerDetails, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import active tracker domains"
+            setOnClickListener {
+                val catalog = trackerCatalog
+                if (catalog == null) {
+                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. No domains were imported."
+                } else {
+                    val activeDomains = catalog.filter { it.status == "active" }.flatMap { it.domains }.toSet()
+                    if (activeDomains.isEmpty()) {
+                        statusText.text = "The catalog has no active domain indicators to import. Review-only entries were left untouched."
+                    } else {
+                        val currentDomains = domainsInput.text.toString().lineSequence()
+                            .map(String::trim).filter(String::isNotEmpty).toSet()
+                        val newlyAdded = activeDomains - currentDomains
+                        domainsInput.setText((currentDomains + activeDomains).sorted().joinToString("\n"))
+                        statusText.text = if (newlyAdded.isEmpty()) {
+                            "All active tracker domains are already in the rule editor. Save configuration to retain changes."
+                        } else {
+                            "Added ${newlyAdded.size} active domain indicator(s) to the rule editor. These changes are not saved until you tap Save configuration."
+                        }
+                    }
+                }
+            }
+        }, matchWidth())
+        root.addView(TextView(this).apply {
             text = "Blocked domains (one hostname per line)"
             setPadding(0, dp(16), 0, 0)
         })
@@ -54,7 +139,7 @@ class MainActivity : Activity() {
         }
         root.addView(domainsInput, matchWidth())
         root.addView(TextView(this).apply {
-            text = "No verified tracker list is bundled. Only domains you enter are blocked. TCP DNS, IPv6 DNS, DoH, DoT, and DoQ are outside this version's scope."
+            text = "Blocking is based on hostnames, not per-app proof of tracking. Review-status records are never imported. TCP DNS from apps, IPv6 DNS, DoH, DoT, and DoQ remain outside this version's scope."
             textSize = 13f
             setPadding(0, dp(12), 0, dp(12))
         })
