@@ -1,7 +1,7 @@
 # Tracker signature review — evidence-backed starter catalog
 
 **Reviewed:** 2026-10-23  
-**Scope:** Seven curated endpoint indicators across Analytics, behavioral analytics, and advertising. This is a small starter set, not a comprehensive tracker blocklist.
+**Scope:** Ten curated endpoint indicators across analytics, behavioral analytics, advertising, and mobile attribution. This remains a small starter set, not a comprehensive tracker blocklist.
 
 ## Records
 
@@ -97,3 +97,13 @@
 - **Evidence:** Segment's official engineering article documents Analytics.js track/identify calls sending data to `api.segment.io`.
 - **Source:** https://segment.com/blog/twilio-segment-edge-sdk/
 - **Caveat:** First-party proxies, regional/custom endpoints, and server-side forwarding may not match. A hostname match does not reveal which properties were sent or prove that a particular app collected personal data.
+
+
+### `appsflyer-mobile-attribution`
+
+- **Domain:** `appsflyersdk.com`
+- **Classification:** AppsFlyer mobile SDK communication endpoint
+- **Confidence/status:** Medium / review
+- **Evidence:** AppsFlyer's official iOS troubleshooting guide recommends `appsflyersdk.com` for SDK traffic in the documented TLS configuration.
+- **Source:** https://dev.appsflyer.com/hc/docs/troubleshooting-ios
+- **Why review:** The source supports an association with SDK communication in a described configuration, but does not establish that this hostname is exclusively an attribution endpoint across all SDK versions and deployments. Do not bulk-import it as a blocking rule until scope is reviewed.
