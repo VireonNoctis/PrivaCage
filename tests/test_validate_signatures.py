@@ -103,6 +103,15 @@ class ValidateSignaturesTests(unittest.TestCase):
                 self.assertTrue(any(source["url"].startswith(evidence_prefix) for source in entry["evidence"]))
                 self.assertEqual(entry["status"], "active")
 
+    def test_appsflyer_indicator_remains_review_only(self):
+        database = SCRIPT.parents[1] / "shared" / "tracker-db" / "signatures.json"
+        document = json.loads(database.read_text(encoding="utf-8"))
+        entry = next(item for item in document["entries"] if item["id"] == "appsflyer-mobile-attribution")
+        self.assertEqual(entry["status"], "review")
+        self.assertEqual(entry["confidence"], "medium")
+        self.assertIn("appsflyersdk.com", entry["indicators"]["domains"])
+        self.assertTrue(any(source["url"].startswith("https://dev.appsflyer.com/") for source in entry["evidence"]))
+
     def test_broad_doubleclick_indicator_remains_review_only(self):
         database = SCRIPT.parents[1] / "tracker-db" / "signatures.json"
         document = json.loads(database.read_text(encoding="utf-8"))
