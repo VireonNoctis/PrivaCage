@@ -312,7 +312,27 @@ pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError
 
 
 #[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
-pub struct ReviewDecision { pub schema_version:u32, pub candidate:Candidate, pub decision:String, pub reviewer:String, pub reason:String, pub reviewed_at:String, pub automatic_promotion:bool }
+pub struct ReviewDecision { pub schema_version:u32, pub candidate:Candidate, pub decision:String, pub reviewer:String, pub reason:String, pub reviewed_at:String, pub automatic_promotion:bool, pub previous_record_sha256:Option<String>, pub record_sha256:String }
+fn review_record_digest(record:&ReviewDecision)->Result<String,IntelError>{
+    let mut value=serde_json::to_value(record).map_err(|e|IntelError::Json(e.to_string()))?;
+    let object=value.as_object_mut().ok_or_else(||invalid("review record is not an object"))?;
+    object.remove("record_sha256");
+    let bytes=serde_json::to_vec(&value).map_err(|e|IntelError::Json(e.to_string()))?;
+    Ok(sha256_hex(&bytes))
+}
+fn verify_review_ledger(path:&Path)->Result<Option<String>,IntelError>{
+    if !path.exists(){return Ok(None)}
+    let text=fs::read_to_string(path).map_err(|e|IntelError::Io(format!("read review ledger: {e}")))?;
+    let mut previous:Option<String>=None;
+    for (index,line) in text.lines().enumerate(){
+        if line.trim().is_empty(){continue}
+        let record:ReviewDecision=serde_json::from_str(line).map_err(|e|IntelError::Json(format!("invalid review ledger line {}: {e}",index+1)))?;
+        if record.previous_record_sha256!=previous{return Err(invalid(format!("review ledger chain mismatch at line {}",index+1)))}
+        if review_record_digest(&record)?!=record.record_sha256{return Err(invalid(format!("review ledger hash mismatch at line {}",index+1)))}
+        previous=Some(record.record_sha256);
+    }
+    Ok(previous)
+}
 fn normalized_candidate_value(kind:&IndicatorKind,value:&str)->String{
     match kind {IndicatorKind::Domain=>normalize_domain(value).unwrap_or_else(||value.trim().to_ascii_lowercase()),IndicatorKind::IpAddress=>normalize_ip(value).unwrap_or_else(||value.trim().to_ascii_lowercase()),_=>value.trim().to_ascii_lowercase()}
 }
@@ -325,8 +345,10 @@ pub fn record_candidate_review(queue_path:&Path,kind:&IndicatorKind,value:&str,d
     let target=normalized_candidate_value(kind,value);
     let candidate=queue.into_iter().find(|c|c.kind==*kind&&normalized_candidate_value(&c.kind,&c.value)==target)
         .ok_or_else(||invalid("candidate was not found in the review queue"))?;
-    let record=ReviewDecision{schema_version:1,candidate,decision:if decision=="accept"{"accepted_for_catalog_review".into()}else{"rejected".into()},reviewer:reviewer.trim().into(),reason:reason.trim().into(),reviewed_at:reviewed_at.into(),automatic_promotion:false};
     if let Some(parent)=ledger_path.parent(){fs::create_dir_all(parent).map_err(|e|IntelError::Io(e.to_string()))?;}
+    let previous=verify_review_ledger(ledger_path)?;
+    let mut record=ReviewDecision{schema_version:1,candidate,decision:if decision=="accept"{"accepted_for_catalog_review".into()}else{"rejected".into()},reviewer:reviewer.trim().into(),reason:reason.trim().into(),reviewed_at:reviewed_at.into(),automatic_promotion:false,previous_record_sha256:previous,record_sha256:String::new()};
+    record.record_sha256=review_record_digest(&record)?;
     let mut file=OpenOptions::new().create(true).append(true).open(ledger_path).map_err(|e|IntelError::Io(format!("open review ledger: {e}")))?;
     let mut line=serde_json::to_vec(&record).map_err(|e|IntelError::Json(e.to_string()))?;line.push(b'\n');
     file.write_all(&line).map_err(|e|IntelError::Io(format!("append review ledger: {e}")))?;
@@ -398,6 +420,11 @@ mod advanced_tests {
         }]}
     }
     #[test] fn freshness_dates_validate_leap_days(){assert!(date_ordinal("2024-02-29").is_some());assert!(date_ordinal("2025-02-29").is_none());assert!(date_ordinal("2026-13-01").is_none());}
+    #[test] fn review_ledger_chains_and_detects_edits(){
+        let dir=std::env::temp_dir().join(format!("pcage-review-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&dir).unwrap();
+        let queue=dir.join("queue.json");let ledger=dir.join("reviews.jsonl");let candidate=Candidate{value:"review.example.com".into(),kind:IndicatorKind::Domain,first_seen_context:Some("fixture".into()),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()};fs::write(&queue,serde_json::to_vec(&vec![candidate]).unwrap()).unwrap();
+        let record=record_candidate_review(&queue,&IndicatorKind::Domain,"REVIEW.EXAMPLE.COM","accept","maintainer","confirmed by a primary reference","2026-10-23",&ledger).unwrap();assert!(record.previous_record_sha256.is_none());assert!(!record.record_sha256.is_empty());\n        let raw=fs::read_to_string(&ledger).unwrap().replace("confirmed by a primary reference","edited reason");fs::write(&ledger,raw).unwrap();assert!(verify_review_ledger(&ledger).is_err());fs::remove_dir_all(&dir).unwrap();
+    }
     #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),14);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();
