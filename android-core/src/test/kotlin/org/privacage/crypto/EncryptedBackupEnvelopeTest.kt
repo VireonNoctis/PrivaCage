@@ -12,6 +12,25 @@ class EncryptedBackupEnvelopeTest {
     private val passphrase = "correct horse battery staple".toCharArray()
 
     @Test
+    fun decryptsSharedRustInteroperabilityVector() {
+        val envelopeHex = requireNotNull(javaClass.getResourceAsStream("/pcage-v1-envelope.hex"))
+            .bufferedReader(Charsets.US_ASCII).use { it.readText() }
+            .filterNot(Char::isWhitespace)
+        val envelope = envelopeHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val expectedPlaintext = requireNotNull(javaClass.getResourceAsStream("/pcage-v1-plaintext.json"))
+            .use { it.readBytes() }
+        val passphrase = "correct horse battery staple".toCharArray()
+        try {
+            val plaintext = EncryptedBackupEnvelope.decrypt(envelope, passphrase)
+            assertContentEquals(expectedPlaintext, plaintext)
+            plaintext.fill(0)
+        } finally {
+            passphrase.fill(0.toChar())
+            envelope.fill(0)
+        }
+    }
+
+    @Test
     fun roundTripsBinaryPayload() {
         val plaintext = byteArrayOf(0, 1, 2, 3, 0, -1, 42)
         val encrypted = EncryptedBackupEnvelope.encrypt(plaintext, passphrase)

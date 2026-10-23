@@ -1,6 +1,6 @@
 # Encrypted profile format v1
 
-This document specifies the portable `.pcage` binary envelope used for Android profile export/import. It is intended to be implementable by future Rust, Swift, and Windows clients without changing the format.
+This document specifies the portable `.pcage` binary envelope used for Android profile export/import. The Kotlin/JVM and Rust implementations both decrypt the shared known-answer vector at `shared/crypto/test-vectors/`. Swift and Windows clients can implement the same wire format without changing it.
 
 ## Security scope
 
@@ -29,7 +29,7 @@ The authenticated additional data (AAD) is bytes 0 through 35 inclusive. No KDF 
 - Randomness: OS cryptographic random generator for the salt and nonce; both are independently sampled on each export.
 - Resource limits: plaintext at most 1,048,576 bytes; envelope at most 1,048,628 bytes. Android only imports profile payloads whose JSON schema and domain rules validate.
 
-The Android implementation uses Bouncy Castle 1.86 for Argon2id and the platform JCA provider for AES-GCM. The binary version and algorithm parameters must not be silently changed. A future incompatible format must use a new magic/version and separately reviewed tests.
+The Android implementation uses Bouncy Castle 1.86 for Argon2id and the platform JCA provider for AES-GCM. The Rust implementation uses the RustCrypto argon2 and aes-gcm crates plus zeroize for derived-key cleanup. The binary version and algorithm parameters must not be silently changed. A future incompatible format must use a new magic/version and separately reviewed tests.
 
 ## Profile plaintext schema
 
@@ -43,7 +43,7 @@ The plaintext is UTF-8 JSON with exactly these fields:
 }
 ```
 
-The IP in this example is documentation-only, not a recommended DNS resolver. Production import rejects unknown/missing fields, non-numeric IPv4 resolver addresses, empty rule lists, duplicate/non-normalized domains, and invalid hostnames. The example values are illustrative only.
+The IP in this example is documentation-only, not a recommended DNS resolver. Production import rejects unknown/missing fields, non-numeric IPv4 resolver addresses, empty rule lists, duplicate/non-normalized domains, and invalid hostnames. The Rust core now includes a typed profile parser/serializer with explicit validation for these constraints; platform callers still must validate before applying settings. The example values are illustrative only.
 
 ## Implementation requirements for other platforms
 
@@ -55,3 +55,10 @@ The IP in this example is documentation-only, not a recommended DNS resolver. Pr
 6. Do not log passphrases, derived keys, plaintext profile bytes, or DNS query names.
 7. Clear temporary password/key/plaintext buffers on a best-effort basis.
 8. Do not claim a file authenticates who created it. V1 proves only that the contents authenticate under the key derived from the supplied passphrase.
+
+
+## Cross-language known-answer vector
+
+The files shared/crypto/test-vectors/pcage-v1-envelope.hex and pcage-v1-plaintext.json are a deterministic test-only vector. The passphrase is correct horse battery staple, salt is 000102030405060708090a0b0c0d0e0f, and nonce is 101112131415161718191a1b. It exercises the exact 8-byte magic, 16-byte salt, 12-byte nonce, Argon2id parameters, AAD header, and AES-GCM ciphertext/tag encoding.
+
+The shared encrypted fixture is generated from the stated passphrase, salt, nonce, header AAD, and plaintext using Argon2id v1.3 plus AES-256-GCM. Both implementations decrypt this same fixture. The fixed salt and nonce MUST NOT be copied into production encryption. Production APIs intentionally generate fresh random salt and nonce values and do not expose a caller-controlled deterministic mode. Passing this vector proves compatibility for the vector; it is not a substitute for an independent audit or fuzzing.

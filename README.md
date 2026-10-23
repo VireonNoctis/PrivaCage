@@ -17,7 +17,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, and user-selected IPv4 resolver |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
-| Encrypted profile transfer | First Android implementation | Password-encrypted settings file (Argon2id + AES-256-GCM); no account, remote sync, or live DNS encryption |
+| Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust decrypt a shared test vector. No account, remote sync, or live DNS encryption |
 | APK static analysis | Planned | Findings indicate capability or signatures, not proof of execution |
 | Android permission auditing | Planned | Ordinary apps cannot freely revoke other apps' permissions |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
@@ -41,10 +41,13 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
+- `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, and Android build workflow.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
+- `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
+- `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
 - `shared/scripts/validate-signatures.py` — standard-library validator.
@@ -64,6 +67,11 @@ The Android app requires JDK 17, Android SDK platform 36, and Gradle 8.14 or com
     gradle :android-core:test
 
 The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
+
+The Rust encrypted-profile implementation requires Rust 1.85 or newer:
+
+    cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
 
 The tracker validator checks structure and URL syntax, not whether evidence is true or still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
 
