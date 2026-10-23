@@ -242,7 +242,10 @@ mod tests {
     #[test]
     fn rejects_invalid_dns_over_tls_hostname() {
         let json = br#"{"format_version":2,"resolver_ipv4":"192.0.2.53","blocked_domains":["ads.example"],"dns_over_tls_enabled":true,"dns_over_tls_hostname":"dns..google"}"#;
-        assert_eq!(ProfilePayload::from_json(json), Err(ProfileError::InvalidDnsOverTls));
+        assert_eq!(
+            ProfilePayload::from_json(json),
+            Err(ProfileError::InvalidDnsOverTls)
+        );
     }
 
     #[test]
