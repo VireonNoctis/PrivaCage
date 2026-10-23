@@ -1,5 +1,5 @@
 use crate::{
-    build_release, discover_candidates, match_observations, normalize_domain, sha256_hex,
+    build_release, normalize_domain, sha256_hex,
     verify_release, AppFingerprint, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, SdkFingerprint, Entity, IntelError,
 };
