@@ -162,6 +162,39 @@
       "review_required": true,
       "license_status": "not_assessed",
       "last_verified": null
+    },
+    {
+      "id": "reference-015",
+      "name": "firebase.google.com/docs/analytics/android/get-started",
+      "url": "https://firebase.google.com/docs/analytics/android/get-started",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-016",
+      "name": "dev.adjust.com/en/sdk/android/",
+      "url": "https://dev.adjust.com/en/sdk/android/",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "reference-017",
+      "name": "dev.appsflyer.com/hc/docs/android-sdk-reference",
+      "url": "https://dev.appsflyer.com/hc/docs/android-sdk-reference",
+      "source_type": "reference_documentation",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "not_assessed",
+      "last_verified": null
     }
   ]
 }

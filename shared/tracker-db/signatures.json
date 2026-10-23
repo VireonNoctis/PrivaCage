@@ -297,6 +297,67 @@
           "description": "Sentry's official self-hosted reverse-proxy documentation identifies organization-specific hosts such as o123456789.ingest.de.sentry.io and the /api/<project-id>/envelope/ endpoint as SDK event-ingestion paths. The catalog stores the parent domain only as a review indicator because regional and organization-specific hosts vary and sentry.io also covers unrelated Sentry services."
         }
       ]
+    },
+    {
+      "id": "firebase-analytics-android-sdk",
+      "name": "Firebase Analytics Android SDK",
+      "category": "analytics",
+      "indicators": {
+        "domains": [],
+        "sdk_patterns": [
+          "com.google.firebase.analytics.FirebaseAnalytics"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://firebase.google.com/docs/analytics/android/get-started",
+          "description": "Official Firebase Android Analytics setup identifies FirebaseAnalytics and documents app usage and behavior analytics."
+        }
+      ]
+    },
+    {
+      "id": "adjust-android-attribution-sdk",
+      "name": "Adjust Android Attribution SDK",
+      "category": "attribution",
+      "indicators": {
+        "domains": [],
+        "sdk_patterns": [
+          "com.adjust.sdk.Adjust",
+          "com.adjust.sdk.AdjustConfig"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://dev.adjust.com/en/sdk/android/",
+          "description": "Official Adjust Android integration guide documents attribution and event recording and shows imports for Adjust and AdjustConfig."
+        }
+      ]
+    },
+    {
+      "id": "appsflyer-android-attribution-sdk",
+      "name": "AppsFlyer Android Attribution SDK",
+      "category": "attribution",
+      "indicators": {
+        "domains": [],
+        "sdk_patterns": [
+          "com.appsflyer.AppsFlyerLib"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-23",
+      "evidence": [
+        {
+          "url": "https://dev.appsflyer.com/hc/docs/android-sdk-reference",
+          "description": "Official AppsFlyer Android SDK reference lists AppsFlyerLib in the com.appsflyer package hierarchy."
+        }
+      ]
     }
   ]
 }
