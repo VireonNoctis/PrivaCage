@@ -91,6 +91,7 @@ class ValidateSignaturesTests(unittest.TestCase):
             "microsoft-clarity-collection": ("www.clarity.ms", "https://learn.microsoft.com/"),
             "posthog-hosted-event-capture": ("us.i.posthog.com", "https://posthog.com/docs/"),
             "google-ads-measurement-endpoints": ("googleadservices.com", "https://developers.google.com/"),
+            "pinterest-tag-conversion": ("ct.pinterest.com", "https://developers.pinterest.com/docs/"),
         }
         for entry_id, (domain, evidence_prefix) in expected.items():
             with self.subTest(entry_id=entry_id):
