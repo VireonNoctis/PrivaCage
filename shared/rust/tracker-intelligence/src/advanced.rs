@@ -1,7 +1,7 @@
 use crate::{
     build_release, normalize_domain, sha256_hex,
-    verify_release, AppFingerprint, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
-    Observation, ReleaseManifest, SdkFingerprint, Entity, IntelError,
+    verify_release, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
+    Observation, ReleaseManifest, IntelError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -30,7 +30,7 @@ pub fn migrate_v1(c: Catalog) -> Result<IntelligenceBundle, IntelError> {
     for e in &bundle.entries {
         for ev in &e.evidence {
             let key=(ev.url.clone(),ev.description.clone());
-            if !sources.contains_key(&key) {let idx=bundle.sources.len();sources.insert(key,idx);bundle.sources.push(ev.clone());}
+            if !sources.contains_key(&key) {let idx=bundle.sources.len();sources.insert(key,idx);let mut source=ev.clone();source.id=Some(format!("source-{idx:05}"));bundle.sources.push(source);}
         }
     }
     validate_bundle(&bundle)?;
