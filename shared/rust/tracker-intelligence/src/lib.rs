@@ -5,7 +5,7 @@ use std::{collections::{BTreeMap, BTreeSet}, fs, path::Path};
 pub mod advanced;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Evidence { pub url: String, pub description: String, #[serde(default)] pub retrieved_at: Option<String>, #[serde(default)] pub source_type: Option<String> }
+pub struct Evidence { #[serde(default)] pub id: Option<String>, pub url: String, pub description: String, #[serde(default)] pub retrieved_at: Option<String>, #[serde(default)] pub source_type: Option<String> }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Indicators {
     #[serde(default)] pub domains: Vec<String>, #[serde(default)] pub package_ids: Vec<String>,
@@ -149,7 +149,7 @@ pub fn verify_release(bytes:&[u8],m:&ReleaseManifest,trusted_key:&str)->Result<(
 
 #[cfg(test)] mod tests{
 use super::*;
-fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]}]}}
+fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]}]}}
 #[test]fn domain_boundaries(){assert!(domain_matches("x.collector.example.com.","collector.example.com"));assert!(!domain_matches("notcollector.example.com","collector.example.com"));assert!(!domain_matches("collector.example.com.attacker.test","collector.example.com"));}
 #[test]fn duplicate_ids_rejected(){let mut c=sample();c.entries.push(c.entries[0].clone());assert!(validate_catalog(&c).is_err());}
 #[test]fn match_does_not_claim_runtime(){let c=sample();let r=match_observations(&c,&[Observation{value:"x.collector.example.com".into(),kind:IndicatorKind::Domain,context:None}]);assert_eq!(r.len(),1);assert!(r[0].confidence.behavior.contains("not established"));}

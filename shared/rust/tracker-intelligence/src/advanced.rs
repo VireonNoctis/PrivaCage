@@ -23,8 +23,9 @@ fn safe_id(s:&str)->bool { !s.is_empty() && s.len()<=80 && s.bytes().all(|b|b.is
 
 pub fn migrate_v1(c: Catalog) -> Result<IntelligenceBundle, IntelError> {
     pcage_tracker_intelligence::validate_catalog(&c)?;
+    let updated_at=if c.updated_at.is_empty(){"1970-01-01".to_string()}else{c.updated_at.clone()};
     let entries=c.entries;
-    let mut bundle=IntelligenceBundle{schema_version:2,updated_at:if c.updated_at.is_empty(){"1970-01-01".into()}else{c.updated_at},entities:vec![],sdk_fingerprints:vec![],sources:vec![],entries,app_fingerprints:vec![]};
+    let mut bundle=IntelligenceBundle{schema_version:2,updated_at,entities:vec![],sdk_fingerprints:vec![],sources:vec![],entries,app_fingerprints:vec![]};
     let mut sources=BTreeMap::<(String,String),usize>::new();
     for e in &bundle.entries {
         for ev in &e.evidence {
@@ -133,11 +134,17 @@ fn extract_ascii_strings(bytes:&[u8])->Vec<String>{
 }
 
 pub fn diff_bundles(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
-    let old_map:BTreeMap<_,_>=old.entries.iter().map(|e|(e.id.as_str(),e)).collect();
-    let new_map:BTreeMap<_,_>=new.entries.iter().map(|e|(e.id.as_str(),e)).collect();
-    let added:Vec<_>=new_map.iter().filter(|(id,_)|!old_map.contains_key(**id)).map(|(_,e)|*e).collect();
-    let removed:Vec<_>=old_map.iter().filter(|(id,_)|!new_map.contains_key(**id)).map(|(_,e)|*e).collect();
-    let changed:Vec<_>=new_map.iter().filter_map(|(id,n)|old_map.get(**id).filter(|o|*o!=*n).map(|o|json!({"id":id,"before":o,"after":n}))).collect();
+    let old_map:BTreeMap<&str,&Entry>=old.entries.iter().map(|e|(e.id.as_str(),e)).collect();
+    let new_map:BTreeMap<&str,&Entry>=new.entries.iter().map(|e|(e.id.as_str(),e)).collect();
+    let mut added=Vec::new(); let mut removed=Vec::new(); let mut changed=Vec::new();
+    for (id,entry) in &new_map {
+        match old_map.get(*id) {
+            None => added.push((*entry).clone()),
+            Some(before) if *before != *entry => changed.push(json!({"id":id,"before":before,"after":entry})),
+            Some(_) => {}
+        }
+    }
+    for (id,entry) in &old_map { if !new_map.contains_key(*id) { removed.push((*entry).clone()); } }
     json!({"schema_version":1,"added":added,"removed":removed,"changed":changed,"counts":{"added":added.len(),"removed":removed.len(),"changed":changed.len()}})
 }
 
@@ -180,4 +187,28 @@ pub fn render_csv_matches(matches:&[pcage_tracker_intelligence::MatchResult])->S
     for m in matches {let values=[m.entry_id.clone(),m.name.clone(),m.category.clone(),m.status.clone(),m.confidence.identity.to_string(),m.confidence.evidence_quality.to_string(),m.confidence.detection_coverage.to_string(),m.matched_indicators.join(";")];
         s.push_str(&values.iter().map(|v|format!("\"{}\"",v.replace('"',"''"))).collect::<Vec<_>>().join(","));s.push('\n');
     }s
+}
+
+#[cfg(test)]
+mod advanced_tests {
+    use super::*;
+    fn sample_catalog()->Catalog {
+        Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{
+            id:"sample".into(),name:"Sample".into(),category:"analytics".into(),
+            indicators:Default::default(),confidence:"high".into(),status:"active".into(),
+            last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]
+        }]}
+    }
+    #[test] fn migration_keeps_entry_and_assigns_source_ids(){
+        let b=migrate_v1(sample_catalog()).unwrap();
+        assert_eq!(b.schema_version,2);assert_eq!(b.entries.len(),1);
+        assert_eq!(b.sources.len(),1);assert!(b.sources[0].id.as_deref().unwrap().starts_with("source-"));
+        validate_bundle(&b).unwrap();
+    }
+    #[test] fn diff_reports_added_and_changed(){
+        let old=migrate_v1(sample_catalog()).unwrap();let mut new=old.clone();
+        new.entries[0].name="Renamed".into();
+        new.entries.push(Entry{id:"added".into(),name:"Added".into(),category:"analytics".into(),indicators:Default::default(),confidence:"low".into(),status:"review".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/new".into(),description:"new docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]});
+        let d=diff_bundles(&old,&new);assert_eq!(d["counts"]["added"],1);assert_eq!(d["counts"]["changed"],1);
+    }
 }
