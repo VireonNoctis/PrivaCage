@@ -1,6 +1,6 @@
 use crate::{
     build_release, normalize_domain, normalize_ip, sha256_hex,
-    verify_release, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
+    verify_release, Candidate, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, IntelError,
 };
 use serde::{Deserialize, Serialize};
