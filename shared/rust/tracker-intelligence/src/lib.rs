@@ -10,14 +10,14 @@ pub struct Evidence { #[serde(default)] pub id: Option<String>, pub url: String,
 pub struct Indicators {
     #[serde(default)] pub domains: Vec<String>, #[serde(default)] pub package_ids: Vec<String>,
     #[serde(default)] pub certificate_sha256: Vec<String>, #[serde(default)] pub dex_strings: Vec<String>,
-    #[serde(default)] pub file_hashes_sha256: Vec<String>,
+    #[serde(default)] pub file_hashes_sha256: Vec<String>, #[serde(default)] pub ip_addresses: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Entry {
     pub id: String, pub name: String, pub category: String, #[serde(default)] pub indicators: Indicators,
     #[serde(default)] pub confidence: String, #[serde(default)] pub status: String,
     #[serde(default)] pub last_verified: Option<String>, #[serde(default)] pub evidence: Vec<Evidence>,
-    #[serde(default)] pub entity_ids: Vec<String>, #[serde(default)] pub sdk_ids: Vec<String>,
+    #[serde(default)] pub entity_ids: Vec<String>, #[serde(default)] pub sdk_ids: Vec<String>, #[serde(default)] pub localized_names: BTreeMap<String,String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Catalog { pub schema_version: u32, #[serde(default)] pub updated_at: String, #[serde(default)] pub entries: Vec<Entry> }
@@ -31,7 +31,7 @@ pub struct AppFingerprint { pub id: String, pub package_id: String, #[serde(defa
 pub struct IntelligenceBundle { pub schema_version: u32, pub updated_at: String, #[serde(default)] pub entities: Vec<Entity>, #[serde(default)] pub sdk_fingerprints: Vec<SdkFingerprint>, #[serde(default)] pub sources: Vec<Evidence>, #[serde(default)] pub entries: Vec<Entry>, #[serde(default)] pub app_fingerprints: Vec<AppFingerprint> }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
-pub enum IndicatorKind { Domain, PackageId, CertificateSha256, DexString, FileHashSha256 }
+pub enum IndicatorKind { Domain, IpAddress, PackageId, CertificateSha256, DexString, FileHashSha256 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Observation { pub value: String, pub kind: IndicatorKind, #[serde(default)] pub context: Option<String> }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,9 +62,11 @@ pub fn validate_catalog(c:&Catalog)->Result<(),IntelError>{
         if e.evidence.is_empty(){return Err(IntelError::Invalid(format!("{} has no evidence",e.id)))}
         for ev in &e.evidence { if !(ev.url.starts_with("https://")||ev.url.starts_with("http://"))||ev.description.trim().is_empty(){return Err(IntelError::Invalid(format!("invalid evidence on {}",e.id)))} }
         for d in &e.indicators.domains {if normalize_domain(d).is_none(){return Err(IntelError::Invalid(format!("invalid domain {d}")))}}
+        for ip in &e.indicators.ip_addresses {if normalize_ip(ip).is_none(){return Err(IntelError::Invalid(format!("invalid IP address {ip}")))}}
         for h in e.indicators.file_hashes_sha256.iter().chain(e.indicators.certificate_sha256.iter()) {if h.len()!=64||!h.bytes().all(|b|b.is_ascii_hexdigit()){return Err(IntelError::Invalid(format!("invalid SHA-256 on {}",e.id)))}}
     } Ok(())
 }
+pub fn normalize_ip(s:&str)->Option<String>{ s.trim().parse::<std::net::IpAddr>().ok().map(|ip|ip.to_string()) }
 pub fn normalize_domain(s:&str)->Option<String>{
     let d=s.trim().trim_end_matches('.').to_ascii_lowercase();
     if d.is_empty()||d.len()>253||d.contains("://")||d.contains('/') {return None}
@@ -79,6 +81,7 @@ pub fn domain_matches(observed:&str,indicator:&str)->bool{
 }
 fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
     IndicatorKind::Domain=>e.indicators.domains.iter().map(String::as_str).collect(),
+    IndicatorKind::IpAddress=>e.indicators.ip_addresses.iter().map(String::as_str).collect(),
     IndicatorKind::PackageId=>e.indicators.package_ids.iter().map(String::as_str).collect(),
     IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().map(String::as_str).collect(),
     IndicatorKind::DexString=>e.indicators.dex_strings.iter().map(String::as_str).collect(),
@@ -86,6 +89,7 @@ fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
 }}
 fn matched(o:&Observation,v:&str)->bool{match o.kind{
     IndicatorKind::Domain=>domain_matches(&o.value,v),
+    IndicatorKind::IpAddress=>normalize_ip(&o.value).is_some()&&normalize_ip(&o.value)==normalize_ip(v),
     IndicatorKind::DexString=>o.value.contains(v),
     _=>o.value.eq_ignore_ascii_case(v),
 }}
@@ -98,7 +102,7 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
             hits.insert(format!("{:?}:{}",o.kind,o.value));types.insert(o.kind.clone());
         }}
         if hits.is_empty(){continue}
-        let expected=[IndicatorKind::Domain,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
+        let expected=[IndicatorKind::Domain,IndicatorKind::IpAddress,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
             .iter().filter(|k|!indicator_values(e,k).is_empty()).count();
         let coverage=if expected==0{0}else{((types.len()*100)/expected).min(100) as u8};
         out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
@@ -111,9 +115,9 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
 pub fn discover_candidates(c:&Catalog,observations:&[Observation])->Vec<Candidate>{
     let mut seen=BTreeSet::new();let mut out=Vec::new();
     for o in observations{
-        let value=if o.kind==IndicatorKind::Domain{normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else{o.value.trim().to_ascii_lowercase()};
+        let value=if o.kind==IndicatorKind::Domain{normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else{o.value.trim().to_ascii_lowercase()};
         if value.is_empty()||!seen.insert((o.kind.clone(),value.clone())){continue}
-        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else{value==v.to_ascii_lowercase()}));
+        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&value).is_some()&&normalize_ip(&value)==normalize_ip(v)}else{value==v.to_ascii_lowercase()}));
         if !known{out.push(Candidate{value:o.value.clone(),kind:o.kind.clone(),first_seen_context:o.context.clone(),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()})}
     }out
 }
@@ -149,7 +153,8 @@ pub fn verify_release(bytes:&[u8],m:&ReleaseManifest,trusted_key:&str)->Result<(
 
 #[cfg(test)] mod tests{
 use super::*;
-fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]}]}}
+fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()}]}}
+#[test]fn ip_addresses_are_parsed_and_matched(){let mut c=sample();c.entries[0].indicators.ip_addresses=vec!["2001:db8::1".into()];assert_eq!(normalize_ip("2001:0db8:0:0:0:0:0:1").as_deref(),Some("2001:db8::1"));let r=match_observations(&c,&[Observation{value:"2001:0db8:0:0:0:0:0:1".into(),kind:IndicatorKind::IpAddress,context:None}]);assert_eq!(r.len(),1);}
 #[test]fn domain_boundaries(){assert!(domain_matches("x.collector.example.com.","collector.example.com"));assert!(!domain_matches("notcollector.example.com","collector.example.com"));assert!(!domain_matches("collector.example.com.attacker.test","collector.example.com"));}
 #[test]fn duplicate_ids_rejected(){let mut c=sample();c.entries.push(c.entries[0].clone());assert!(validate_catalog(&c).is_err());}
 #[test]fn match_does_not_claim_runtime(){let c=sample();let r=match_observations(&c,&[Observation{value:"x.collector.example.com".into(),kind:IndicatorKind::Domain,context:None}]);assert_eq!(r.len(),1);assert!(r[0].confidence.behavior.contains("not established"));}

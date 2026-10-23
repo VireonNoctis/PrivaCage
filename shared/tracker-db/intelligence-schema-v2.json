@@ -210,7 +210,7 @@
           "minLength": 1
         },
         "indicators": {
-          "type": "object"
+          "$ref": "#/$defs/indicators"
         },
         "status": {
           "enum": [
@@ -251,6 +251,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "localized_names": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -287,6 +293,50 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "indicators": {
+      "type": "object",
+      "properties": {
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ip_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "package_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "certificate_sha256": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Fa-f0-9]{64}$"
+          }
+        },
+        "dex_strings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file_hashes_sha256": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Fa-f0-9]{64}$"
           }
         }
       },

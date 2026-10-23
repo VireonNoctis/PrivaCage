@@ -1,5 +1,5 @@
 use crate::{
-    build_release, normalize_domain, sha256_hex,
+    build_release, normalize_domain, normalize_ip, sha256_hex,
     verify_release, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, IntelError,
 };
@@ -51,15 +51,17 @@ pub fn validate_bundle(b:&IntelligenceBundle)->Result<(),IntelError>{
     }
     let entities:BTreeSet<_>=b.entities.iter().map(|x|x.id.as_str()).collect();
     let sdks:BTreeSet<_>=b.sdk_fingerprints.iter().map(|x|x.id.as_str()).collect();
-    let source_keys:BTreeSet<_>=b.sources.iter().map(|x|format!("{}\n{}",x.url,x.description)).collect();
+    let source_ids:BTreeSet<_>=b.sources.iter().filter_map(|x|x.id.as_deref()).collect();
     for e in &b.entities {
         if e.name.trim().is_empty(){return Err(invalid(format!("entity {} has empty name",e.id)))}
         if let Some(p)=&e.parent_entity_id {if !entities.contains(p.as_str()){return Err(invalid(format!("entity {} references missing parent {p}",e.id)))}}
-        for s in &e.evidence_ids {if !b.sources.iter().any(|x|x.url==*s){return Err(invalid(format!("entity {} references unknown evidence id {s}",e.id)))}}
+        for s in &e.evidence_ids {if !source_ids.contains(s.as_str()){return Err(invalid(format!("entity {} references unknown evidence id {s}",e.id)))}}
+        for d in &e.domains {if normalize_domain(d).is_none(){return Err(invalid(format!("entity {} has invalid domain {d}",e.id)))}}
     }
     for s in &b.sdk_fingerprints {
         if s.name.trim().is_empty(){return Err(invalid(format!("SDK {} has empty name",s.id)))}
         for e in &s.entity_ids {if !entities.contains(e.as_str()){return Err(invalid(format!("SDK {} references missing entity {e}",s.id)))}}
+        for id in &s.evidence_ids {if !source_ids.contains(id.as_str()){return Err(invalid(format!("SDK {} references unknown evidence id {id}",s.id)))}}
         for h in &s.file_hashes_sha256 {validate_hash(h)?;}
     }
     for e in &b.entries {
@@ -69,13 +71,14 @@ pub fn validate_bundle(b:&IntelligenceBundle)->Result<(),IntelError>{
         for id in &e.sdk_ids {if !sdks.contains(id.as_str()){return Err(invalid(format!("entry {} references missing SDK {id}",e.id)))}}
         for h in e.indicators.file_hashes_sha256.iter().chain(e.indicators.certificate_sha256.iter()){validate_hash(h)?;}
         for d in &e.indicators.domains {if normalize_domain(d).is_none(){return Err(invalid(format!("entry {} has invalid domain {d}",e.id)))}}
+        for ip in &e.indicators.ip_addresses {if normalize_ip(ip).is_none(){return Err(invalid(format!("entry {} has invalid IP {ip}",e.id)))}}
     }
     for a in &b.app_fingerprints {
         if a.package_id.trim().is_empty(){return Err(invalid(format!("app fingerprint {} has empty package id",a.id)))}
         if let Some(h)=&a.signing_certificate_sha256 {validate_hash(h)?;}
         for id in &a.sdk_ids {if !sdks.contains(id.as_str()){return Err(invalid(format!("app {} references missing SDK {id}",a.id)))}}
+        for id in &a.evidence_ids {if !source_ids.contains(id.as_str()){return Err(invalid(format!("app {} references unknown evidence id {id}",a.id)))}}
     }
-    let _=source_keys;
     Ok(())
 }
 fn validate_hash(s:&str)->Result<(),IntelError>{if s.len()!=64||!s.bytes().all(|b|b.is_ascii_hexdigit()){Err(invalid(format!("invalid SHA-256: {s}")))}else{Ok(())}}
@@ -98,7 +101,7 @@ pub fn ingest_observations(paths:&[PathBuf])->Result<Vec<Observation>,IntelError
     }
     Ok(out)
 }
-fn normalize_observation(o:&mut Observation){o.value=match o.kind{IndicatorKind::Domain=>normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase()),_=>o.value.trim().to_ascii_lowercase()};}
+fn normalize_observation(o:&mut Observation){o.value=match o.kind{IndicatorKind::Domain=>normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase()),IndicatorKind::IpAddress=>normalize_ip(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase()),_=>o.value.trim().to_ascii_lowercase()};}
 
 pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observation>,Vec<Value>),IntelError>{
     let p=path.as_ref();
@@ -142,6 +145,25 @@ fn extract_ascii_strings(bytes:&[u8])->Vec<String>{
     }
     if out.len()<100_000&&!too_long&&cur.len()>=8{out.push(String::from_utf8_lossy(&cur).into_owned())}
     out
+}
+
+
+pub fn match_bundle_observations(bundle:&IntelligenceBundle,observations:&[Observation])->Vec<crate::MatchResult>{
+    let mut entries=bundle.entries.clone();
+    for sdk in &bundle.sdk_fingerprints {
+        let evidence=bundle.sources.iter().filter(|s|s.id.as_ref().is_some_and(|id|sdk.evidence_ids.contains(id))).cloned().collect();
+        entries.push(Entry{id:format!("sdk:{}",sdk.id),name:sdk.name.clone(),category:"sdk_fingerprint".into(),
+            indicators:crate::Indicators{package_ids:sdk.package_ids.clone(),dex_strings:sdk.dex_strings.clone(),file_hashes_sha256:sdk.file_hashes_sha256.clone(),..Default::default()},
+            confidence:"medium".into(),status:"active".into(),last_verified:None,evidence,entity_ids:sdk.entity_ids.clone(),sdk_ids:vec![sdk.id.clone()],localized_names:BTreeMap::new()});
+    }
+    for app in &bundle.app_fingerprints {
+        let evidence=bundle.sources.iter().filter(|s|s.id.as_ref().is_some_and(|id|app.evidence_ids.contains(id))).cloned().collect();
+        let mut certs=Vec::new();if let Some(cert)=&app.signing_certificate_sha256{certs.push(cert.clone())}
+        entries.push(Entry{id:format!("app:{}",app.id),name:app.package_id.clone(),category:"app_fingerprint".into(),
+            indicators:crate::Indicators{package_ids:vec![app.package_id.clone()],certificate_sha256:certs,..Default::default()},
+            confidence:"medium".into(),status:"active".into(),last_verified:None,evidence,entity_ids:vec![],sdk_ids:app.sdk_ids.clone(),localized_names:BTreeMap::new()});
+    }
+    crate::match_observations(&Catalog{schema_version:1,updated_at:bundle.updated_at.clone(),entries},observations)
 }
 
 pub fn diff_bundles(old:&IntelligenceBundle,new:&IntelligenceBundle)->Value{
@@ -255,7 +277,7 @@ mod advanced_tests {
         Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{
             id:"sample".into(),name:"Sample".into(),category:"analytics".into(),
             indicators:crate::Indicators{domains:vec!["analytics.example.org".into()],..Default::default()},confidence:"high".into(),status:"active".into(),
-            last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]
+            last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/docs".into(),description:"public docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()
         }]}
     }
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
@@ -267,7 +289,7 @@ mod advanced_tests {
     #[test] fn diff_reports_added_and_changed(){
         let old=migrate_v1(sample_catalog()).unwrap();let mut new=old.clone();
         new.entries[0].name="Renamed".into();
-        new.entries.push(Entry{id:"added".into(),name:"Added".into(),category:"analytics".into(),indicators:Default::default(),confidence:"low".into(),status:"review".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/new".into(),description:"new docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![]});
+        new.entries.push(Entry{id:"added".into(),name:"Added".into(),category:"analytics".into(),indicators:Default::default(),confidence:"low".into(),status:"review".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.org/new".into(),description:"new docs".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()});
         let d=diff_bundles(&old,&new);assert_eq!(d["counts"]["added"],1);assert_eq!(d["counts"]["changed"],1);
     }
 }
