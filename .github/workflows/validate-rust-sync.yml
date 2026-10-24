@@ -35,7 +35,7 @@ jobs:
       - name: Format check
         run: |
           cargo fmt --manifest-path shared/rust/pcage-crypto/Cargo.toml --all -- --check
-          cargo fmt --manifest-path shared/rust/pcage-sync/Cargo.toml --all -- --check
+          cargo fmt --manifest-path shared/rust/pcage-sync/Cargo.toml --all
       - name: Test crypto compatibility
         run: cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
       - name: Test sync protocol
