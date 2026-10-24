@@ -660,6 +660,25 @@ class MainActivity : Activity() {
             setOnClickListener { showOwnerKeyRotationImport() }
         }, matchWidth())
         root.addView(Button(this).apply {
+            text = "Copy saved owner-key rotation package"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Validating the saved owner transition and replacement roster...",
+                    task = { encryptedSyncManager.lastOwnerKeyRotationPackage() },
+                    onSuccess = { packageJson ->
+                        getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                            ClipData.newPlainText("PrivaCage owner-key rotation", packageJson)
+                        )
+                        syncStatusText.text = "Last public owner-key rotation package copied. It remains stored in the protected local record. Distribute it through a trusted channel."
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Confirm owner-key handoff complete"
+            setOnClickListener { showOwnerKeyHandoffConfirmation() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
             text = "Import owner-signed device roster"
             setOnClickListener { showSignedDeviceRosterImport() }
         }, matchWidth())
@@ -1110,7 +1129,7 @@ class MainActivity : Activity() {
             append("Replacement owner fingerprint:\n").append(result.nextFingerprint).append("\n\n")
             append("New roster revision: ").append(result.rosterRevision).append('\n')
             append(result.publicationMessage).append("\n\n")
-            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\n")
+            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. A copy is retained in this installation's protected local record so it can be copied again after the dialog closes. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\n")
             append(packageJson)
         }
         AlertDialog.Builder(this)
@@ -1123,6 +1142,29 @@ class MainActivity : Activity() {
                 syncStatusText.text = result.publicationMessage + " Public owner-key rotation package copied; distribute it over a trusted channel."
             }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showOwnerKeyHandoffConfirmation() {
+        val fingerprintInput = EditText(this).apply {
+            hint = "Re-enter this installation's full owner SHA-256 fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Confirm owner-key handoff?")
+            .setMessage(
+                "Only confirm after every intended trusted device has received the saved owner-key rotation package, independently verified the new full fingerprint, and accepted the exact next signed roster. This is an explicit local acknowledgement; the app cannot remotely prove every peer completed the handoff. Until you confirm, another owner-key rotation is blocked. The last public package remains saved for re-copying after confirmation."
+            )
+            .setView(fingerprintInput)
+            .setNegativeButton("Not yet", null)
+            .setPositiveButton("Confirm all intended devices updated") { _, _ ->
+                val fingerprint = fingerprintInput.text.toString().trim().lowercase()
+                runSyncTask(
+                    progress = "Verifying the local owner fingerprint and closing the handoff gate...",
+                    task = { encryptedSyncManager.confirmOwnerKeyRotationHandoff(fingerprint) }
+                )
+            }
             .show()
     }
 
