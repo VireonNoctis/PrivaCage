@@ -310,6 +310,127 @@ impl KeyRotation {
 }
 
 
+/// Owner-key transitions require both the current owner and the replacement key to sign
+/// the same domain-separated statement. A caller must also independently confirm the new
+/// fingerprint and verify the next roster before changing its locally pinned owner.
+const OWNER_ROTATION_DOMAIN: &str = "PrivaCage owner-key rotation v1\n";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UnsignedOwnerKeyRotation {
+    pub version: u8,
+    pub space_id: String,
+    pub previous_owner_card: IdentityCard,
+    pub next_owner_card: IdentityCard,
+    pub previous_roster_revision: u64,
+    pub next_roster_revision: u64,
+    pub issued_at_unix: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct OwnerKeyRotation {
+    pub unsigned: UnsignedOwnerKeyRotation,
+    pub previous_signature_hex: String,
+    pub next_signature_hex: String,
+}
+
+impl OwnerKeyRotation {
+    pub fn verify(
+        &self,
+        expected_previous_owner: &IdentityCard,
+        expected_space_id: &str,
+        expected_previous_revision: u64,
+        expected_next_owner_fingerprint: &str,
+        now_unix: u64,
+    ) -> Result<(), SyncError> {
+        let unsigned = &self.unsigned;
+        unsigned.previous_owner_card.verify().map_err(|_| SyncError::InvalidRoster)?;
+        unsigned.next_owner_card.verify().map_err(|_| SyncError::InvalidRoster)?;
+        if unsigned.version != 1
+            || unsigned.previous_owner_card != *expected_previous_owner
+            || unsigned.space_id != expected_space_id
+            || !valid_space_id(&unsigned.space_id)
+            || unsigned.previous_roster_revision == 0
+            || unsigned.previous_roster_revision != expected_previous_revision
+            || unsigned.next_roster_revision != unsigned.previous_roster_revision.checked_add(1).ok_or(SyncError::InvalidRoster)?
+            || unsigned.issued_at_unix == 0
+            || unsigned.issued_at_unix > now_unix.saturating_add(300)
+            || unsigned.next_owner_card.fingerprint_sha256 != expected_next_owner_fingerprint
+            || unsigned.next_owner_card.fingerprint_sha256 == unsigned.previous_owner_card.fingerprint_sha256
+            || Some(unsigned.next_owner_card.key_epoch) != unsigned.previous_owner_card.key_epoch.checked_add(1)
+        {
+            return Err(SyncError::InvalidRoster);
+        }
+        for signature in [&self.previous_signature_hex, &self.next_signature_hex] {
+            if signature.len() != 128
+                || !signature.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(SyncError::InvalidRoster);
+            }
+        }
+        let bytes = owner_rotation_signing_bytes(unsigned)?;
+        let previous_key = VerifyingKey::from_bytes(&unhex::<32>(&unsigned.previous_owner_card.signing_public_key_hex)?)
+            .map_err(|_| SyncError::InvalidRoster)?;
+        let next_key = VerifyingKey::from_bytes(&unhex::<32>(&unsigned.next_owner_card.signing_public_key_hex)?)
+            .map_err(|_| SyncError::InvalidRoster)?;
+        let previous_signature = Signature::from_bytes(&unhex::<64>(&self.previous_signature_hex)?);
+        let next_signature = Signature::from_bytes(&unhex::<64>(&self.next_signature_hex)?);
+        previous_key.verify(&bytes, &previous_signature).map_err(|_| SyncError::InvalidSignature)?;
+        next_key.verify(&bytes, &next_signature).map_err(|_| SyncError::InvalidSignature)?;
+        Ok(())
+    }
+}
+
+impl DeviceIdentity {
+    pub fn rotate_owner_key(
+        &self,
+        space_id: &str,
+        previous_roster_revision: u64,
+        issued_at_unix: u64,
+    ) -> Result<(Self, OwnerKeyRotation), SyncError> {
+        if !valid_space_id(space_id) || previous_roster_revision == 0 || issued_at_unix == 0 {
+            return Err(SyncError::InvalidInput("invalid owner-key rotation context"));
+        }
+        let next_revision = previous_roster_revision.checked_add(1)
+            .ok_or(SyncError::InvalidInput("owner roster revision overflow"))?;
+        let next_epoch = self.card.key_epoch.checked_add(1)
+            .ok_or(SyncError::InvalidInput("owner key epoch overflow"))?;
+        let next = Self::generate(next_epoch)?;
+        let unsigned = UnsignedOwnerKeyRotation {
+            version: 1,
+            space_id: space_id.to_owned(),
+            previous_owner_card: self.card.clone(),
+            next_owner_card: next.card.clone(),
+            previous_roster_revision,
+            next_roster_revision: next_revision,
+            issued_at_unix,
+        };
+        let bytes = owner_rotation_signing_bytes(&unsigned)?;
+        let transition = OwnerKeyRotation {
+            unsigned,
+            previous_signature_hex: hex(&self.signing.sign(&bytes).to_bytes()),
+            next_signature_hex: hex(&next.signing.sign(&bytes).to_bytes()),
+        };
+        transition.verify(&self.card, space_id, previous_roster_revision, &next.card.fingerprint_sha256, issued_at_unix)?;
+        Ok((next, transition))
+    }
+}
+
+fn owner_rotation_signing_bytes(rotation: &UnsignedOwnerKeyRotation) -> Result<Vec<u8>, SyncError> {
+    let encoded = serde_json::to_vec(rotation).map_err(|_| SyncError::SerializationFailure)?;
+    let mut bytes = Vec::with_capacity(OWNER_ROTATION_DOMAIN.len() + encoded.len());
+    bytes.extend_from_slice(OWNER_ROTATION_DOMAIN.as_bytes());
+    bytes.extend_from_slice(&encoded);
+    Ok(bytes)
+}
+
+fn valid_space_id(value: &str) -> bool {
+    (8..=80).contains(&value.len())
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+
 const MAX_ROSTER_MEMBERS: usize = 128;
 const ROSTER_SIGNING_DOMAIN: &str = "PrivaCage signed device roster v1\n";
 
@@ -604,6 +725,39 @@ mod tests {
             ],
         ).unwrap();
         roster.verify(&owner.card.fingerprint_sha256, 1, 1_800_000_010).unwrap();
+    }
+
+    #[test]
+    fn owner_key_rotation_requires_old_and_new_key_signatures_and_advances_one_roster_revision() {
+        let old = DeviceIdentity::from_seeds([61; 32], [62; 32], 4).unwrap();
+        let (next, transition) = old.rotate_owner_key("device-space-0001", 7, 1_800_000_000).unwrap();
+        transition.verify(&old.card, "device-space-0001", 7, &next.card.fingerprint_sha256, 1_800_000_100).unwrap();
+        assert_eq!(transition.unsigned.previous_roster_revision, 7);
+        assert_eq!(transition.unsigned.next_roster_revision, 8);
+        assert_eq!(next.card.key_epoch, old.card.key_epoch + 1);
+    }
+
+    #[test]
+    fn owner_key_rotation_rejects_wrong_pin_space_revision_or_new_fingerprint() {
+        let old = DeviceIdentity::from_seeds([63; 32], [64; 32], 2).unwrap();
+        let (next, transition) = old.rotate_owner_key("device-space-0001", 3, 1_800_000_000).unwrap();
+        assert!(transition.verify(&old.card, "device-space-0002", 3, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
+        assert!(transition.verify(&old.card, "device-space-0001", 2, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
+        assert!(transition.verify(&old.card, "device-space-0001", 3, &"00".repeat(32), 1_800_000_100).is_err());
+        assert!(transition.verify(&next.card, "device-space-0001", 3, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
+    }
+
+    #[test]
+    fn owner_key_rotation_rejects_either_signature_tampering_and_future_timestamps() {
+        let old = DeviceIdentity::from_seeds([65; 32], [66; 32], 8).unwrap();
+        let (next, transition) = old.rotate_owner_key("device-space-0001", 12, 1_800_000_000).unwrap();
+        let mut bad_old_signature = transition.clone();
+        bad_old_signature.previous_signature_hex.replace_range(0..2, "00");
+        assert!(bad_old_signature.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
+        let mut bad_new_signature = transition.clone();
+        bad_new_signature.next_signature_hex.replace_range(0..2, "00");
+        assert!(bad_new_signature.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
+        assert!(transition.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_799_999_000).is_err());
     }
 
     #[test] fn fingerprint_tampering_is_detected() {
