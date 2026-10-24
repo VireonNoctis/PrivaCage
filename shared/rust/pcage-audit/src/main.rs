@@ -1,10 +1,5 @@
 use pcage_audit::{MAX_CHECKPOINT_BYTES, verify_checkpoint_json};
-use std::{
-    env,
-    fs::File,
-    io::Read,
-    process,
-};
+use std::{env, fs::File, io::Read, process};
 
 fn run() -> Result<(), String> {
     let mut args = env::args_os();
