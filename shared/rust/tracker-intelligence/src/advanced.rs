@@ -407,6 +407,105 @@ pub fn list_verified_releases(root:&Path,trusted_key:&str)->Result<Vec<Value>,In
     Ok(out)
 }
 
+
+fn html_escape(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        .replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+/// Render a self-contained, offline HTML report for a validated v2 intelligence bundle.
+pub fn render_dashboard(bundle: &IntelligenceBundle) -> Result<String, IntelError> {
+    validate_bundle(bundle)?;
+    let mut html = String::from(r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light"><title>PrivaCage Tracker Intelligence</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#e8eef5;background:#0b1017}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top left,#192a3a,transparent 48%),#0b1017}
+main{max-width:1200px;margin:auto;padding:clamp(18px,4vw,42px)}
+header{border-bottom:1px solid #2b3a49;padding-bottom:22px}.eyebrow{color:#91d1bf;text-transform:uppercase;letter-spacing:.16em;font-size:.72rem}
+h1{font-size:clamp(1.8rem,4vw,3rem);letter-spacing:-.045em;margin:.5rem 0}
+p,.muted{color:#a7b6c5;line-height:1.55}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}
+.stat{border:1px solid #2b3a49;border-radius:12px;padding:16px;background:#111a24}.stat strong{display:block;font-size:1.65rem}.stat span{font-size:.78rem;color:#9eafbf}
+.panel{border:1px solid #2b3a49;border-radius:12px;overflow:hidden;background:#111a24}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:820px}
+th,td{text-align:left;vertical-align:top;padding:13px 14px;border-bottom:1px solid #273543;font-size:.86rem}
+th{background:#15212d;color:#aebdca;text-transform:uppercase;letter-spacing:.08em;font-size:.7rem}
+.name{font-weight:650}.sub{display:block;font-size:.76rem;color:#9baebe;margin-top:4px}
+.pill{display:inline-block;border:1px solid #415264;border-radius:99px;padding:3px 8px;font-size:.7rem;text-transform:uppercase}
+.active{color:#9ee0c9;border-color:#316b5a}.review{color:#f3d28b;border-color:#75603a}
+.indicators{white-space:pre-wrap;overflow-wrap:anywhere;max-width:390px}.evidence a{display:block;color:#a6cfff;overflow-wrap:anywhere;margin:5px 0}
+details summary{cursor:pointer;color:#a6cfff}.foot{font-size:.8rem;margin-top:16px}
+@media(max-width:650px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style></head><body><main>
+<header><div class="eyebrow">Local report · no network requests</div>
+<h1>Tracker intelligence</h1>
+<p>Evidence-backed indicators from the supplied schema-v2 bundle. A match is not proof of execution, data collection, exfiltration, or malicious intent.</p>
+<div class="muted">Schema version: 2 · Updated: "#);
+    html.push_str(&html_escape(&bundle.updated_at));
+    html.push_str("</div></header><section class=\"stats\" aria-label=\"Catalog summary\">");
+    for (label, count) in [
+        ("Entries", bundle.entries.len()),
+        ("Entities", bundle.entities.len()),
+        ("SDK fingerprints", bundle.sdk_fingerprints.len()),
+        ("Evidence sources", bundle.sources.len()),
+    ] {
+        html.push_str("<div class=\"stat\"><strong>");
+        html.push_str(&count.to_string());
+        html.push_str("</strong><span>");
+        html.push_str(label);
+        html.push_str("</span></div>");
+    }
+    html.push_str("</section><section class=\"panel\"><div class=\"table-wrap\"><table><thead><tr><th>Entry</th><th>Status</th><th>Indicators</th><th>Confidence</th><th>Evidence</th></tr></thead><tbody>");
+    for entry in &bundle.entries {
+        let indicators = &entry.indicators;
+        let mut lines = Vec::new();
+        for (label, values) in [
+            ("Domains", &indicators.domains),
+            ("IP addresses", &indicators.ip_addresses),
+            ("SDK patterns", &indicators.sdk_patterns),
+            ("Package IDs", &indicators.package_ids),
+            ("Certificate SHA-256", &indicators.certificate_sha256),
+            ("DEX strings", &indicators.dex_strings),
+            ("File SHA-256", &indicators.file_hashes_sha256),
+        ] {
+            if !values.is_empty() {
+                lines.push(format!("{}: {}", label, values.join(", ")));
+            }
+        }
+        if lines.is_empty() { lines.push("No direct indicators".to_string()); }
+        html.push_str("<tr><td><span class=\"name\">");
+        html.push_str(&html_escape(&entry.name));
+        html.push_str("</span><span class=\"sub\">");
+        html.push_str(&html_escape(&entry.id));
+        html.push_str(" · ");
+        html.push_str(&html_escape(&entry.category));
+        html.push_str("</span></td><td><span class=\"pill ");
+        html.push_str(&html_escape(&entry.status));
+        html.push_str("\">");
+        html.push_str(&html_escape(&entry.status));
+        html.push_str("</span></td><td class=\"indicators\">");
+        html.push_str(&html_escape(&lines.join("\n")));
+        html.push_str("</td><td>");
+        html.push_str(&html_escape(if entry.confidence.is_empty() { "unspecified" } else { &entry.confidence }));
+        html.push_str("</td><td class=\"evidence\"><details><summary>");
+        html.push_str(&format!("{} evidence item(s)", entry.evidence.len()));
+        html.push_str("</summary>");
+        for evidence in &entry.evidence {
+            html.push_str("<p>");
+            html.push_str(&html_escape(&evidence.description));
+            html.push_str("</p><a rel=\"noopener noreferrer\" href=\"");
+            html.push_str(&html_escape(&evidence.url));
+            html.push_str("\">");
+            html.push_str(&html_escape(&evidence.url));
+            html.push_str("</a>");
+        }
+        html.push_str("</details></td></tr>");
+    }
+    html.push_str("</tbody></table></div></section><p class=\"foot\">This file contains the catalog snapshot at generation time. Evidence URLs are user-initiated links; the report makes no background network requests and does not update itself.</p></main></body></html>");
+    Ok(html)
+}
+
 pub fn render_csv_matches(matches:&[crate::MatchResult])->String{
     let mut s=String::from("entry_id,name,category,status,identity,evidence_quality,detection_coverage,matched_indicators\n");
     for m in matches {let values=[m.entry_id.clone(),m.name.clone(),m.category.clone(),m.status.clone(),m.confidence.identity.to_string(),m.confidence.evidence_quality.to_string(),m.confidence.detection_coverage.to_string(),m.matched_indicators.join(";")];
@@ -449,6 +548,17 @@ mod advanced_tests {
         assert_eq!(list_verified_releases(&root,&manifest.signer_public_key_hex).unwrap().len(),1);
         rollback_release(&root,"release-1",&manifest.signer_public_key_hex).unwrap();
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test] fn dashboard_is_self_contained_and_escapes_untrusted_text() {
+        let mut bundle = migrate_v1(sample_catalog()).unwrap();
+        bundle.entries[0].name = "<script>alert(1)</script>".into();
+        let html = render_dashboard(&bundle).unwrap();
+        assert!(html.contains("PrivaCage Tracker Intelligence"));
+        assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+        assert!(!html.contains("<script>alert(1)</script>"));
+        assert!(html.contains("analytics.example.org"));
+        assert!(html.contains("public docs"));
     }
     #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),17);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){

@@ -39,3 +39,5 @@ jobs:
         run: |
           cargo run -- migrate-v1 ../../tracker-db/signatures.json /tmp/intelligence-v2.json
           cargo run -- validate-v2 /tmp/intelligence-v2.json
+          cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html
+          grep -q 'PrivaCage Tracker Intelligence' /tmp/intelligence-dashboard.html

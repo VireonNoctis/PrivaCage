@@ -16,6 +16,7 @@ cargo run -- ingest ../../tracker-db/signatures.json /tmp/observations.json /tmp
 cargo run -- scan-apk ../../tracker-db/signatures.json app.apk /tmp/apk-observations.json /tmp/apk-report.json
 cargo run -- diff old-v2.json new-v2.json /tmp/catalog-diff.json
 cargo run -- graph /tmp/intelligence-v2.json /tmp/intelligence-graph.json
+cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html>
 cargo run -- regressions old-v2.json new-v2.json /tmp/regressions.json
 cargo run -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 cargo run -- review-candidate /tmp/candidates.json domain collector.example.net accept reviewer-id "confirmed by primary documentation" 2026-10-23 ./review-ledger.jsonl
