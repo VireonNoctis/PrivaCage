@@ -80,9 +80,16 @@ internal object LocalAuditCheckpointSigner {
         eventCount: Int,
         createdAt: Instant = Instant.now()
     ): SignedAuditCheckpoint {
+        if (eventCount !in 0..MAX_EVENT_COUNT) {
+            throw IOException("Audit checkpoint event count must be between 0 and $MAX_EVENT_COUNT.")
+        }
         val keyPair = loadOrCreateKeyPair()
         val createdAtText = createdAt.toString()
         val payloadBytes = payloadJson.toByteArray(StandardCharsets.UTF_8)
+        if (payloadBytes.size > MAX_PAYLOAD_BYTES) {
+            payloadBytes.fill(0)
+            throw IOException("Audit checkpoint payload exceeds the 1 MiB size limit.")
+        }
         try {
             val payloadSha256 = AuditIntegrityChain.sha256Hex(payloadBytes)
             val publicKeySha256 = AuditIntegrityChain.sha256Hex(keyPair.public.encoded)
@@ -110,10 +117,19 @@ internal object LocalAuditCheckpointSigner {
                 .put("event_count", eventCount)
                 .put("signature_base64", Base64.encodeToString(signatureBytes, Base64.NO_WRAP))
                 .put("payload_json", payloadJson)
-            signatureBytes.fill(0)
-            signingBytes.fill(0)
+            val checkpointJson = envelope.toString(2) + "\n"
+            val checkpointBytes = checkpointJson.toByteArray(StandardCharsets.UTF_8)
+            try {
+                if (checkpointBytes.size > MAX_CHECKPOINT_BYTES) {
+                    throw IOException("Signed audit checkpoint exceeds the 2 MiB output limit.")
+                }
+            } finally {
+                checkpointBytes.fill(0)
+                signatureBytes.fill(0)
+                signingBytes.fill(0)
+            }
             return SignedAuditCheckpoint(
-                json = envelope.toString(2) + "\n",
+                json = checkpointJson,
                 createdAt = createdAtText,
                 publicKeySha256 = publicKeySha256,
                 payloadSha256 = payloadSha256
@@ -156,13 +172,20 @@ internal object LocalAuditCheckpointSigner {
         val publicKeySha256 = requiredString(envelope, "signer_public_key_sha256")
         val signatureBase64 = requiredString(envelope, "signature_base64")
         val payloadJson = requiredString(envelope, "payload_json")
-        if (payloadJson.toByteArray(StandardCharsets.UTF_8).size > MAX_PAYLOAD_BYTES) {
+        if (payloadJson.length > MAX_PAYLOAD_BYTES) {
             throw IOException("The embedded audit payload exceeds the 1 MiB size limit.")
+        }
+        val payloadSizeProbe = payloadJson.toByteArray(StandardCharsets.UTF_8)
+        try {
+            if (payloadSizeProbe.size > MAX_PAYLOAD_BYTES) {
+                throw IOException("The embedded audit payload exceeds the 1 MiB size limit.")
+            }
+        } finally {
+            payloadSizeProbe.fill(0)
         }
         val publicKeyBase64 = requiredString(envelope, "signer_public_key_x509_base64")
         if (publicKeyBase64.length > 512) throw IOException("The checkpoint public key exceeds the size limit.")
-        val signatureBytesText = signatureBase64
-        if (signatureBytesText.length > 256) throw IOException("The checkpoint signature exceeds the size limit.")
+        if (signatureBase64.length > 256) throw IOException("The checkpoint signature exceeds the size limit.")
         val publicKeyBytes = try {
             Base64.decode(publicKeyBase64, Base64.NO_WRAP)
         } catch (exception: Exception) {
@@ -385,6 +408,10 @@ internal object LocalAuditCheckpointSigner {
             if (ownersRedacted && ownerLabel != "[REDACTED]") {
                 throw IOException("Checkpoint event $index contains a socket-owner label despite claiming it was redacted.")
             }
+            if (!ownersRedacted && (ownerLabel.isEmpty() || ownerLabel.length > 4096 || ownerLabel.any(Char::isISOControl))) {
+                throw IOException("Checkpoint event $index contains an invalid or oversized socket-owner label.")
+            }
+            if (!hostnamesRedacted) validateHostname(hostname, index + 1)
             records += AuditChainRecord(
                 timestamp = timestampText,
                 localDate = localDateText,
@@ -401,6 +428,18 @@ internal object LocalAuditCheckpointSigner {
     private fun requiredString(value: JSONObject, key: String): String {
         return value.opt(key) as? String
             ?: throw IOException("Checkpoint field '$key' is missing or is not a string.")
+    }
+
+    private fun validateHostname(hostname: String, eventNumber: Int) {
+        if (hostname.isEmpty() || hostname.length > 253 ||
+            hostname != hostname.lowercase(java.util.Locale.ROOT) ||
+            hostname.split('.').any { label ->
+                label.isEmpty() || label.length > 63 || label.first() == '-' || label.last() == '-' ||
+                    label.any { it !in 'a'..'z' && it !in '0'..'9' && it != '-' }
+            }
+        ) {
+            throw IOException("Checkpoint event $eventNumber contains an invalid normalized hostname.")
+        }
     }
 
     private fun requiredInt(value: JSONObject, key: String): Int {
