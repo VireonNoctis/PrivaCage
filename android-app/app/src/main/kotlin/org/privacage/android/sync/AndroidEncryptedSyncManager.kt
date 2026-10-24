@@ -93,7 +93,6 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         record.put(KEY_REVOKED_CARDS, revokedCards)
         appendRosterHistory(record, "peer_trusted", fingerprint, "Peer fingerprint was independently confirmed.")
         store.saveRecord(record)
-        val localFingerprint = JSONObject(record.getString(KEY_CARD_JSON)).getString("fingerprint_sha256")
         if (record.optString(KEY_ROSTER_OWNER, "") == localFingerprint) {
             try {
                 createSignedDeviceRoster()
@@ -270,7 +269,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         record.put(KEY_ROSTER_PUBLISH_PENDING, false)
         appendRosterHistory(record, "roster_published", null, "Published owner-signed roster revision " + (oldRevision + 1L) + " to the relay.", oldRevision + 1L)
         store.saveRecord(record)
-        roster.toString()
+        return roster.toString()
     }
 
     @Synchronized
@@ -431,7 +430,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             revision
         )
         store.saveRecord(record)
-        "Verified owner-signed roster revision " + revision + ". Active peers: " + trusted.length() +
+        return "Verified owner-signed roster revision " + revision + ". Active peers: " + trusted.length() +
             "; revoked entries: " + revokedCount +
             if (pendingRotationAuthorized) ". The staged replacement identity is now active; update the relay credential if member mode is enabled."
             else ". Relay administrator membership is separate."
@@ -537,7 +536,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             "Generated a replacement identity and a previous-key-signed transition. Existing identity remains active until a newer owner-signed roster authorizes the replacement."
         )
         store.saveRecord(record)
-        JSONObject()
+        return JSONObject()
             .put("previous_card", previousCard)
             .put("next_card", nextCard)
             .put("rotation", rotation)
@@ -624,7 +623,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 throw IOException("The rotation was verified and saved, but publishing the new roster failed. Retry roster publication; the old identity remains trusted.", exception)
             }
         }
-        "Verified key continuity from $previousFingerprint to $nextFingerprint. The replacement card is trusted and both identities remain active until the new device activates; a newer owner-signed roster was published where this installation is the owner."
+        return "Verified key continuity from $previousFingerprint to $nextFingerprint. The replacement card is trusted and both identities remain active until the new device activates; a newer owner-signed roster was published where this installation is the owner."
     }
 
     @Synchronized
