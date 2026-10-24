@@ -1,4 +1,4 @@
-use pcage_audit::{verify_checkpoint_json, MAX_CHECKPOINT_BYTES};
+use pcage_audit::{MAX_CHECKPOINT_BYTES, verify_checkpoint_json};
 use std::{
     env,
     fs::File,
@@ -9,9 +9,9 @@ use std::{
 fn run() -> Result<(), String> {
     let mut args = env::args_os();
     let program = args.next().unwrap_or_default();
-    let path = args.next().ok_or_else(|| {
-        format!("Usage: {} <checkpoint.json>", program.to_string_lossy())
-    })?;
+    let path = args
+        .next()
+        .ok_or_else(|| format!("Usage: {} <checkpoint.json>", program.to_string_lossy()))?;
     if args.next().is_some() {
         return Err("provide exactly one checkpoint file".to_owned());
     }
@@ -24,8 +24,8 @@ fn run() -> Result<(), String> {
     if bytes.len() > MAX_CHECKPOINT_BYTES {
         return Err("checkpoint exceeds the 2 MiB input limit".to_owned());
     }
-    let input = std::str::from_utf8(&bytes)
-        .map_err(|_| "checkpoint is not valid UTF-8 JSON".to_owned())?;
+    let input =
+        std::str::from_utf8(&bytes).map_err(|_| "checkpoint is not valid UTF-8 JSON".to_owned())?;
     let report = verify_checkpoint_json(input).map_err(|error| error.to_string())?;
     println!("{}", report.render());
     Ok(())
