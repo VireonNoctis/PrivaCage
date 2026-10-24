@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::{BTreeMap, BTreeSet}, fs, path::Path};
 pub mod advanced;
+pub mod apk;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Evidence { #[serde(default)] pub id: Option<String>, pub url: String, pub description: String, #[serde(default)] pub retrieved_at: Option<String>, #[serde(default)] pub source_type: Option<String> }

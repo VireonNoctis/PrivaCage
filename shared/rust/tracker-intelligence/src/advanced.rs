@@ -311,6 +311,33 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
     let apk_bytes=fs::read(p).map_err(|e|IntelError::Io(e.to_string()))?;
     let mut observations=vec![Observation{value:sha256_hex(&apk_bytes),kind:IndicatorKind::FileHashSha256,context:Some(format!("APK SHA-256: {}",p.display()))}];
     let mut reports=Vec::new();
+    let manifest_report = match archive.by_name("AndroidManifest.xml") {
+        Ok(mut entry) if entry.size() <= 8 * 1024 * 1024 => {
+            let mut bytes = Vec::new();
+            match entry.read_to_end(&mut bytes) {
+                Ok(_) => match crate::apk::parse_binary_android_manifest(&bytes) {
+                    Ok(report) => report,
+                    Err(error) => json!({"status":"unparsed","error":error.to_string()}),
+                },
+                Err(error) => json!({"status":"unreadable","error":error.to_string()}),
+            }
+        }
+        Ok(_) => json!({"status":"too_large","error":"AndroidManifest.xml exceeds the 8 MiB parsing limit"}),
+        Err(_) => json!({"status":"missing","error":"AndroidManifest.xml was not found in the ZIP archive"}),
+    };
+    if let Some(package_id) = manifest_report.get("package_id").and_then(Value::as_str) {
+        observations.push(Observation{value:package_id.to_string(),kind:IndicatorKind::PackageId,context:Some("AndroidManifest.xml package attribute".into())});
+    }
+    let signing_report = match crate::apk::signing_certificate_fingerprints(&apk_bytes) {
+        Ok((fingerprints, scheme)) => {
+            for fingerprint in &fingerprints {
+                observations.push(Observation{value:fingerprint.clone(),kind:IndicatorKind::CertificateSha256,context:Some("APK signing block certificate fingerprint; extracted, not signature-verified".into())});
+            }
+            json!({"status":"parsed","scheme":scheme,"certificate_sha256":fingerprints,"signature_verified":false})
+        }
+        Err(error) => json!({"status":"unparsed","error":error.to_string(),"signature_verified":false}),
+    };
+    reports.push(json!({"apk_metadata":{"manifest":manifest_report,"signing":signing_report}}));
     for i in 0..archive.len(){
         let mut entry=archive.by_index(i).map_err(|e|invalid(format!("read APK entry: {e}")))?;
         let name=entry.name().to_string();
