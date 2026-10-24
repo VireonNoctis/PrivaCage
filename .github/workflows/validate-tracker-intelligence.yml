@@ -1,0 +1,44 @@
+name: Validate Rust tracker intelligence
+on:
+  push:
+    paths:
+      - "shared/rust/tracker-intelligence/**"
+      - "shared/tracker-db/**"
+      - ".github/workflows/validate-tracker-intelligence.yml"
+  pull_request:
+    paths:
+      - "shared/rust/tracker-intelligence/**"
+      - "shared/tracker-db/**"
+      - ".github/workflows/validate-tracker-intelligence.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rust-intelligence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shared/rust/tracker-intelligence
+      - name: Test Rust intelligence engine
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo test
+      - name: Validate existing catalog with Rust
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo run -- validate ../../tracker-db/signatures.json
+      - name: Audit catalog freshness
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo run -- freshness ../../tracker-db/signatures.json "$(date -u +%F)" 180 /tmp/tracker-freshness.json
+      - name: Validate source registry
+        working-directory: shared/rust/tracker-intelligence
+        run: cargo run -- validate-sources ../../tracker-db/source-registry.json
+      - name: Migration round-trip validation
+        working-directory: shared/rust/tracker-intelligence
+        run: |
+          cargo run -- migrate-v1 ../../tracker-db/signatures.json /tmp/intelligence-v2.json
+          cargo run -- validate-v2 /tmp/intelligence-v2.json
+          cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html
+          grep -q 'PrivaCage Tracker Intelligence' /tmp/intelligence-dashboard.html
+          cargo run -- serve-dashboard /tmp/intelligence-v2.json 0.0.0.0:8787 2>/tmp/should-not-bind.log && exit 1 || grep -q 'loopback address' /tmp/should-not-bind.log

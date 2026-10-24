@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrivaCage Source Registry v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "updated_at",
+    "policy",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "automatic_fetching",
+        "automatic_promotion",
+        "unknown_source_default",
+        "required_review",
+        "license_review_required"
+      ],
+      "properties": {
+        "automatic_fetching": {
+          "const": false
+        },
+        "automatic_promotion": {
+          "const": false
+        },
+        "unknown_source_default": {
+          "const": "untrusted"
+        },
+        "required_review": {
+          "const": true
+        },
+        "license_review_required": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "url",
+        "source_type",
+        "trust_tier",
+        "ingest_mode",
+        "review_required",
+        "license_status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "source_type": {
+          "enum": [
+            "reference_documentation",
+            "official_advisory",
+            "research_paper",
+            "community_database",
+            "user_submission",
+            "other"
+          ]
+        },
+        "trust_tier": {
+          "enum": [
+            "untrusted",
+            "reference",
+            "trusted"
+          ]
+        },
+        "ingest_mode": {
+          "enum": [
+            "manual_import",
+            "manual_review",
+            "disabled"
+          ]
+        },
+        "review_required": {
+          "const": true
+        },
+        "license_status": {
+          "enum": [
+            "not_assessed",
+            "approved",
+            "restricted",
+            "unknown"
+          ]
+        },
+        "last_verified": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

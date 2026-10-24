@@ -22,8 +22,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: android-validation-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
