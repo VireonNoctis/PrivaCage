@@ -46,10 +46,12 @@ class MainActivity : Activity() {
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
     private lateinit var vpnStateText: TextView
+    private lateinit var dnsDiagnosticText: TextView
     private var vpnStateReceiverRegistered = false
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == PrivacyDnsVpnService.ACTION_STATE_CHANGED) refreshVpnState()
+            if (intent.action == PrivacyDnsVpnService.ACTION_DIAGNOSTIC_RESULT) refreshDnsRouteDiagnostic()
         }
     }
     private lateinit var devicePrivacyText: TextView
@@ -434,6 +436,26 @@ class MainActivity : Activity() {
             setOnClickListener { refreshDnsStats() }
         }, matchWidth())
 
+        root.addView(TextView(this).apply {
+            text = "DNS ROUTE DIAGNOSTICS"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Runs one user-triggered DNS A query for example.com through the configured protected upstream resolver. It does not save the query name to local DNS event history. Android's visible non-VPN network snapshot can identify validated or captive-portal states, but it does not prove which route every app uses."
+            textSize = 12f
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Run DNS route diagnostic"
+            setOnClickListener { runDnsRouteDiagnostic() }
+        }, matchWidth())
+        dnsDiagnosticText = TextView(this).apply {
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+            text = "No DNS route diagnostic has been run."
+        }
+        root.addView(dnsDiagnosticText, matchWidth())
+
         root.addView(CheckBox(this).apply {
             text = "Enable local DNS event history (saves queried hostnames on this device)"
             isChecked = prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)
@@ -709,7 +731,9 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        val filter = IntentFilter(PrivacyDnsVpnService.ACTION_STATE_CHANGED)
+        val filter = IntentFilter(PrivacyDnsVpnService.ACTION_STATE_CHANGED).apply {
+            addAction(PrivacyDnsVpnService.ACTION_DIAGNOSTIC_RESULT)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(vpnStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -733,6 +757,7 @@ class MainActivity : Activity() {
         if (::statsText.isInitialized) refreshDnsStats()
         if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
         if (::vpnStateText.isInitialized) refreshVpnState()
+        if (::dnsDiagnosticText.isInitialized) refreshDnsRouteDiagnostic()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -2169,6 +2194,83 @@ class MainActivity : Activity() {
                 append("\n\nA prior app process recorded this state, so it is treated as stopped.")
             }
             append("\n\nCoverage note: this status reflects PrivaCage's own service lifecycle only. It does not prove every DNS route or every app is filtered.")
+        }
+    }
+
+    private fun runDnsRouteDiagnostic() {
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val session = VpnSessionStatus.resolve(
+            state = prefs.getString(VpnSessionStatus.KEY_STATE, null),
+            message = prefs.getString(VpnSessionStatus.KEY_MESSAGE, null),
+            processId = prefs.getString(VpnSessionStatus.KEY_PROCESS_ID, null),
+            currentProcessId = PrivacyDnsVpnService.PROCESS_SESSION_ID
+        )
+        if (session.state != VpnSessionStatus.STATE_ACTIVE) {
+            dnsDiagnosticText.text = "Cannot test the configured resolver path until PrivaCage DNS filtering is active. Enable filtering, confirm the service reports ACTIVE, then run the diagnostic."
+            return
+        }
+        if (prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_STATUS, "") == "running") {
+            dnsDiagnosticText.text = "A DNS route diagnostic is already running."
+            return
+        }
+        dnsDiagnosticText.text = "Running one DNS A query for example.com through the configured upstream. Sampling Android-visible network and captive-portal state before and after the query..."
+        try {
+            startService(
+                Intent(this, PrivacyDnsVpnService::class.java)
+                    .setAction(PrivacyDnsVpnService.ACTION_RUN_DIAGNOSTIC)
+            )
+            statusText.text = "DNS route diagnostic started. The query name is not added to local DNS event history."
+        } catch (exception: Exception) {
+            dnsDiagnosticText.text = "Could not request the DNS route diagnostic (${exception.javaClass.simpleName}). No result is available."
+        }
+    }
+
+    private fun refreshDnsRouteDiagnostic() {
+        if (!::dnsDiagnosticText.isInitialized) return
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val state = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_STATUS, "").orEmpty()
+        if (state.isBlank()) {
+            dnsDiagnosticText.text = "No DNS route diagnostic has been run. Tap Run DNS route diagnostic while the PrivaCage service is ACTIVE. The fixed probe is example.com (A); raw DNS packets are not saved."
+            return
+        }
+        val startReport = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_NETWORK_START, "").orEmpty()
+        val endReport = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_NETWORK_END, "").orEmpty()
+        val message = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_MESSAGE, "No diagnostic message was recorded.").orEmpty()
+        dnsDiagnosticText.text = buildString {
+            append("Status: ")
+            append(
+                when (state) {
+                    "running" -> "RUNNING"
+                    "success" -> "RESOLVED"
+                    "response_only" -> "RESPONDER REACHED; LOOKUP NOT RESOLVED"
+                    else -> "FAILED"
+                }
+            )
+            append("\n").append(message)
+            val started = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_STARTED_AT, "").orEmpty()
+            val completed = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_COMPLETED_AT, "").orEmpty()
+            if (started.isNotBlank()) append("\nStarted: ").append(started)
+            if (completed.isNotBlank()) append("\nCompleted: ").append(completed)
+            if (state != "running" && prefs.getBoolean(PrivacyDnsVpnService.KEY_DIAGNOSTIC_RESPONSE_RECEIVED, false)) {
+                append("\nLatency: ").append(prefs.getLong(PrivacyDnsVpnService.KEY_DIAGNOSTIC_LATENCY_MILLIS, 0L)).append(" ms")
+                val code = prefs.getInt(PrivacyDnsVpnService.KEY_DIAGNOSTIC_RESPONSE_CODE, -1)
+                if (code >= 0) append("\nDNS response code: ").append(code)
+                val answers = prefs.getInt(PrivacyDnsVpnService.KEY_DIAGNOSTIC_ANSWER_COUNT, -1)
+                if (answers >= 0) append("\nAnswer records: ").append(answers)
+            }
+            if (startReport.isNotBlank()) append("\n\nNetwork snapshot at probe start:\n").append(startReport)
+            if (endReport.isNotBlank()) append("\n\nNetwork snapshot at probe completion:\n").append(endReport)
+            if (prefs.getBoolean(PrivacyDnsVpnService.KEY_DIAGNOSTIC_NETWORK_CHANGED, false)) {
+                append("\n\nWarning: Android-visible non-VPN network state changed during the probe. Repeat the test after the connection settles.")
+            } else if (state != "running" && endReport.isNotBlank()) {
+                val current = DnsNetworkSnapshot.capture(this@MainActivity)
+                val previousSignature = prefs.getString(PrivacyDnsVpnService.KEY_DIAGNOSTIC_NETWORK_END_SIGNATURE, "").orEmpty()
+                if (previousSignature.isNotBlank() && current.fingerprint != previousSignature) {
+                    append("\n\nThe current network snapshot differs from the last probe. Rerun the diagnostic for the current connection.")
+                }
+            }
+            append("\n\nScope: this tests one fixed A query and the configured upstream only. Network snapshots do not prove every app's route, and IPv6 DNS, DNS-over-TCP from apps, DoH and DoQ remain outside the current filter.")
+            append("\nNo query history is added by this diagnostic.")
         }
     }
 

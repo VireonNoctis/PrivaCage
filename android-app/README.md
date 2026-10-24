@@ -20,6 +20,9 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - Local-only settings in Android SharedPreferences.
 - Preflight disclosure before Android VPN consent, including the possibility of replacing the currently active VPN, the chosen upstream DNS transport, and the supported routing scope.
 - A local VPN lifecycle status panel that follows service start, establishment, shutdown, revocation, and errors. Active/starting status from a previous app process is treated as stale rather than live.
+- A user-triggered DNS route diagnostic that sends one fixed `example.com` A query through the configured upstream transport, protected from VPN routing and using the configured DNS-over-TLS certificate checks when enabled.
+- Before/after snapshots of Android-visible non-VPN networks, recording only transport category, Android validation/captive-portal state, and the number of DNS servers exposed; no network IDs, IP addresses, SSIDs, or DNS server addresses are recorded by this snapshot.
+- The probe result distinguishes a valid resolver response from a successful name resolution, records elapsed time and DNS response code, and does not add its hostname to local DNS event history.
 - Explicit `VpnService.prepare()` consent.
 - A `VpnService` with a virtual DNS address and a route only to that address.
 - A blocking TUN read/write loop that processes supported IPv4 UDP DNS packets and returns responses.
@@ -54,5 +57,6 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 - Catalog parsing is strict and fails visibly in the UI if its schema is invalid; manual rules remain usable. The catalog is bundled at build time, not remotely updated.
 - Platform/device policy can prevent VPN or foreground-service startup. Failures stop the service; DNS query names are not logged.
 - The lifecycle panel reports PrivaCage's recorded service state, not a DNS leak test. It cannot prove all apps use the virtual DNS endpoint, and it does not cover IPv6 DNS, DNS-over-TCP from apps, DNS-over-HTTPS, DNS-over-QUIC, or HTTPS payloads.
+- DNS route diagnostics are an explicit one-query test of the configured resolver path, not a comprehensive leak test. The response demonstrates only that a matching DNS response came back through that transport at the time tested. Android network capability snapshots can identify a system-detected captive portal or lack of validation but do not prove which route every app uses. Wi-Fi-to-mobile handovers and captive-portal behavior still need emulator/physical-device testing.
 
 - JPEG scrubber limits: JPEG only; APP1, APP13, and COM markers are removed. Other APP markers remain, so vendor-specific metadata may survive. Files with trailing data after EOI are rejected.

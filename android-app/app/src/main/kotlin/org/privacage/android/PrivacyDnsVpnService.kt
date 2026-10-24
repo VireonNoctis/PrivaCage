@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import org.privacage.dns.DnsPacketProcessor
+import org.privacage.dns.DnsRouteDiagnostic
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsTunnelEngine
 import org.privacage.dns.DnsTunnelResult
@@ -27,13 +28,21 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.UUID
 
 class PrivacyDnsVpnService : VpnService() {
     @Volatile private var running = false
     @Volatile private var tunnel: ParcelFileDescriptor? = null
+    @Volatile private var diagnosticForwarder: DnsUpstreamTransport? = null
+    private val diagnosticRunning = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RUN_DIAGNOSTIC) {
+            runDnsRouteDiagnostic()
+            return START_NOT_STICKY
+        }
         if (intent?.action != ACTION_START) {
             stopSelf(startId)
             return START_NOT_STICKY
@@ -52,24 +61,24 @@ class PrivacyDnsVpnService : VpnService() {
             require(domains.isNotEmpty()) { "At least one blocked domain must be configured" }
 
             val policy = DnsPolicyEngine(domains)
-            val resolver = InetSocketAddress(InetAddress.getByName(resolverText), DNS_PORT)
-            val forwarder: DnsUpstreamTransport = if (prefs.getBoolean(KEY_DOT_ENABLED, false)) {
-                val hostname = prefs.getString(KEY_DOT_HOSTNAME, "").orEmpty()
-                require(hostname.isNotBlank()) { "DNS-over-TLS requires a certificate hostname" }
-                DnsOverTlsForwarder(
-                    resolverAddress = InetAddress.getByName(resolverText),
-                    tlsHostname = hostname,
-                    socketProtector = TcpSocketProtector { socket: Socket -> protect(socket) },
-                    policyEngine = policy
-                )
-            } else {
-                UdpDnsForwarder(
-                    resolver,
-                    UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
-                    policy,
-                    tcpSocketProtector = TcpSocketProtector { socket: Socket -> protect(socket) }
-                )
-            }
+            val resolverAddress = InetAddress.getByName(resolverText)
+            val dnsOverTlsEnabled = prefs.getBoolean(KEY_DOT_ENABLED, false)
+            val dnsOverTlsHostname = prefs.getString(KEY_DOT_HOSTNAME, "").orEmpty()
+            val forwarder = createForwarder(
+                resolverAddress,
+                dnsOverTlsEnabled,
+                dnsOverTlsHostname,
+                policy
+            )
+            // The one-shot diagnostic tests upstream reachability independently of the user's
+            // blocklist, while using the same resolver, transport, certificate checks and
+            // protected sockets as live filtering.
+            val diagnosticTransport = createForwarder(
+                resolverAddress,
+                dnsOverTlsEnabled,
+                dnsOverTlsHostname,
+                DnsPolicyEngine(emptySet())
+            )
             val engine = DnsTunnelEngine(DnsPacketProcessor(policy), forwarder)
             val descriptor = Builder()
                 .setSession("PrivaCage DNS filtering")
@@ -81,6 +90,7 @@ class PrivacyDnsVpnService : VpnService() {
                 .establish() ?: throw IOException("Android refused to establish the VPN interface")
 
             tunnel = descriptor
+            diagnosticForwarder = diagnosticTransport
             running = true
             persistStats(engine.stats.snapshot())
             startVpnForeground()
@@ -97,6 +107,7 @@ class PrivacyDnsVpnService : VpnService() {
         } catch (exception: Exception) {
             Log.e(TAG, "DNS VPN could not start", exception)
             running = false
+            diagnosticForwarder = null
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
             publishState(
@@ -183,6 +194,7 @@ class PrivacyDnsVpnService : VpnService() {
         } finally {
             persistStats(engine.stats.snapshot())
             running = false
+            diagnosticForwarder = null
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
             if (failureMessage != null) {
@@ -193,6 +205,119 @@ class PrivacyDnsVpnService : VpnService() {
             }
             stopSelf()
         }
+    }
+
+    private fun createForwarder(
+        resolverAddress: InetAddress,
+        dnsOverTlsEnabled: Boolean,
+        dnsOverTlsHostname: String,
+        policyEngine: DnsPolicyEngine
+    ): DnsUpstreamTransport {
+        return if (dnsOverTlsEnabled) {
+            require(dnsOverTlsHostname.isNotBlank()) { "DNS-over-TLS requires a certificate hostname" }
+            DnsOverTlsForwarder(
+                resolverAddress = resolverAddress,
+                tlsHostname = dnsOverTlsHostname,
+                socketProtector = TcpSocketProtector { socket: Socket -> protect(socket) },
+                policyEngine = policyEngine
+            )
+        } else {
+            UdpDnsForwarder(
+                resolver = InetSocketAddress(resolverAddress, DNS_PORT),
+                socketProtector = UdpSocketProtector { socket: DatagramSocket -> protect(socket) },
+                policyEngine = policyEngine,
+                tcpSocketProtector = TcpSocketProtector { socket: Socket -> protect(socket) }
+            )
+        }
+    }
+
+    private fun runDnsRouteDiagnostic() {
+        val transport = diagnosticForwarder
+        if (!running || transport == null) {
+            persistDiagnosticFailure(
+                "PrivaCage DNS filtering is not active. Enable it before testing the configured resolver path."
+            )
+            sendDiagnosticResultBroadcast()
+            stopSelf()
+            return
+        }
+        if (!diagnosticRunning.compareAndSet(false, true)) return
+
+        Thread({
+            try {
+                val networkAtStart = DnsNetworkSnapshot.capture(this)
+                val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                preferences.edit()
+                    .putString(KEY_DIAGNOSTIC_STATUS, "running")
+                    .putString(KEY_DIAGNOSTIC_MESSAGE, "Sending one DNS A query for example.com through the configured upstream transport.")
+                    .putString(KEY_DIAGNOSTIC_STARTED_AT, Instant.now().toString())
+                    .putString(KEY_DIAGNOSTIC_NETWORK_START, networkAtStart.report)
+                    .putString(KEY_DIAGNOSTIC_NETWORK_START_SIGNATURE, networkAtStart.fingerprint)
+                    .remove(KEY_DIAGNOSTIC_COMPLETED_AT)
+                    .remove(KEY_DIAGNOSTIC_NETWORK_END)
+                    .remove(KEY_DIAGNOSTIC_NETWORK_END_SIGNATURE)
+                    .putBoolean(KEY_DIAGNOSTIC_NETWORK_CHANGED, false)
+                    .apply()
+                sendDiagnosticResultBroadcast()
+
+                val result = DnsRouteDiagnostic.run(transport)
+                val networkAtEnd = DnsNetworkSnapshot.capture(this)
+                val networkChanged = networkAtStart.fingerprint != networkAtEnd.fingerprint
+                val resultStatus = when {
+                    !result.validDnsResponse -> "failed"
+                    result.resolved -> "success"
+                    else -> "response_only"
+                }
+                preferences.edit()
+                    .putString(KEY_DIAGNOSTIC_STATUS, resultStatus)
+                    .putString(KEY_DIAGNOSTIC_MESSAGE, result.message)
+                    .putString(KEY_DIAGNOSTIC_COMPLETED_AT, Instant.now().toString())
+                    .putBoolean(KEY_DIAGNOSTIC_RESPONSE_RECEIVED, result.responseReceived)
+                    .putBoolean(KEY_DIAGNOSTIC_VALID_RESPONSE, result.validDnsResponse)
+                    .putBoolean(KEY_DIAGNOSTIC_RESOLVED, result.resolved)
+                    .putLong(KEY_DIAGNOSTIC_LATENCY_MILLIS, result.elapsedMillis)
+                    .putInt(KEY_DIAGNOSTIC_RESPONSE_CODE, result.responseCode ?: -1)
+                    .putInt(KEY_DIAGNOSTIC_ANSWER_COUNT, result.answerCount ?: -1)
+                    .putString(KEY_DIAGNOSTIC_NETWORK_END, networkAtEnd.report)
+                    .putString(KEY_DIAGNOSTIC_NETWORK_END_SIGNATURE, networkAtEnd.fingerprint)
+                    .putBoolean(KEY_DIAGNOSTIC_NETWORK_CHANGED, networkChanged)
+                    .apply()
+            } catch (exception: Exception) {
+                Log.e(TAG, "DNS route diagnostic could not complete", exception)
+                persistDiagnosticFailure(
+                    "DNS route diagnostic could not complete (${exception.javaClass.simpleName})."
+                )
+            } finally {
+                diagnosticRunning.set(false)
+                sendDiagnosticResultBroadcast()
+            }
+        }, "PrivaCage-DNS-Diagnostic").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun persistDiagnosticFailure(message: String) {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).edit()
+            .putString(KEY_DIAGNOSTIC_STATUS, "failed")
+            .putString(KEY_DIAGNOSTIC_MESSAGE, message)
+            .putString(KEY_DIAGNOSTIC_COMPLETED_AT, Instant.now().toString())
+            .putBoolean(KEY_DIAGNOSTIC_RESPONSE_RECEIVED, false)
+            .putBoolean(KEY_DIAGNOSTIC_VALID_RESPONSE, false)
+            .putBoolean(KEY_DIAGNOSTIC_RESOLVED, false)
+            .putLong(KEY_DIAGNOSTIC_LATENCY_MILLIS, 0L)
+            .putInt(KEY_DIAGNOSTIC_RESPONSE_CODE, -1)
+            .putInt(KEY_DIAGNOSTIC_ANSWER_COUNT, -1)
+            .remove(KEY_DIAGNOSTIC_NETWORK_START)
+            .remove(KEY_DIAGNOSTIC_NETWORK_START_SIGNATURE)
+            .remove(KEY_DIAGNOSTIC_NETWORK_END)
+            .remove(KEY_DIAGNOSTIC_NETWORK_END_SIGNATURE)
+            .putBoolean(KEY_DIAGNOSTIC_NETWORK_CHANGED, false)
+            .apply()
+    }
+
+    private fun sendDiagnosticResultBroadcast() {
+        sendBroadcast(Intent(ACTION_DIAGNOSTIC_RESULT).setPackage(packageName))
     }
 
     private fun publishState(state: String, message: String) {
@@ -260,6 +385,7 @@ class PrivacyDnsVpnService : VpnService() {
     private fun stopVpn() {
         val hadTunnel = running || tunnel != null
         running = false
+        diagnosticForwarder = null
         closeTunnel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         if (hadTunnel) {
@@ -299,6 +425,23 @@ class PrivacyDnsVpnService : VpnService() {
         const val KEY_STATS_UPSTREAM_FAILURES = "dns_stats_upstream_failures"
         const val ACTION_START = "org.privacage.android.action.START_DNS_VPN"
         const val ACTION_STATE_CHANGED = "org.privacage.android.action.DNS_VPN_STATE_CHANGED"
+        const val ACTION_RUN_DIAGNOSTIC = "org.privacage.android.action.RUN_DNS_DIAGNOSTIC"
+        const val ACTION_DIAGNOSTIC_RESULT = "org.privacage.android.action.DNS_DIAGNOSTIC_RESULT"
+        const val KEY_DIAGNOSTIC_STATUS = "dns_diagnostic_status"
+        const val KEY_DIAGNOSTIC_MESSAGE = "dns_diagnostic_message"
+        const val KEY_DIAGNOSTIC_STARTED_AT = "dns_diagnostic_started_at"
+        const val KEY_DIAGNOSTIC_COMPLETED_AT = "dns_diagnostic_completed_at"
+        const val KEY_DIAGNOSTIC_RESPONSE_RECEIVED = "dns_diagnostic_response_received"
+        const val KEY_DIAGNOSTIC_VALID_RESPONSE = "dns_diagnostic_valid_response"
+        const val KEY_DIAGNOSTIC_RESOLVED = "dns_diagnostic_resolved"
+        const val KEY_DIAGNOSTIC_LATENCY_MILLIS = "dns_diagnostic_latency_ms"
+        const val KEY_DIAGNOSTIC_RESPONSE_CODE = "dns_diagnostic_response_code"
+        const val KEY_DIAGNOSTIC_ANSWER_COUNT = "dns_diagnostic_answer_count"
+        const val KEY_DIAGNOSTIC_NETWORK_START = "dns_diagnostic_network_start"
+        const val KEY_DIAGNOSTIC_NETWORK_START_SIGNATURE = "dns_diagnostic_network_start_signature"
+        const val KEY_DIAGNOSTIC_NETWORK_END = "dns_diagnostic_network_end"
+        const val KEY_DIAGNOSTIC_NETWORK_END_SIGNATURE = "dns_diagnostic_network_end_signature"
+        const val KEY_DIAGNOSTIC_NETWORK_CHANGED = "dns_diagnostic_network_changed"
         internal val PROCESS_SESSION_ID: String = UUID.randomUUID().toString()
         private const val TAG = "PrivaCageDnsVpn"
         private const val CHANNEL_ID = "privacage_dns_filtering"
