@@ -91,6 +91,31 @@ class LocalAuditExporterTest {
     }
 
     @Test
+    fun exportContainsChainHashesForTheRedactedOutputRecords() {
+        val result = LocalAuditExporter.prepare(
+            listOf(
+                event("private.example", "UID 10123: secret.package", timestamp = "2026-10-24T09:00:00Z"),
+                event("public.example", "Android resolver", action = "BLOCKED", timestamp = "2026-10-24T10:00:00Z")
+            ),
+            request(),
+            generatedAt
+        )
+        val expected = AuditIntegrityChain.create(
+            listOf(
+                AuditChainInput("2026-10-24T09:00:00Z", "2026-10-24", "FORWARDED", "[REDACTED]", "[REDACTED]"),
+                AuditChainInput("2026-10-24T10:00:00Z", "2026-10-24", "BLOCKED", "[REDACTED]", "[REDACTED]")
+            )
+        )
+
+        assertEquals(expected.last().recordSha256, result.chainHeadSha256)
+        assertTrue(result.json.contains("\"chain_head_sha256\": \"" + expected.last().recordSha256 + "\""))
+        assertTrue(result.json.contains("\"previous_record_sha256\": \"" + expected.first().previousRecordSha256 + "\""))
+        assertTrue(result.json.contains("\"record_sha256\": \"" + expected.last().recordSha256 + "\""))
+        assertFalse(result.json.contains("private.example"))
+        assertFalse(result.json.contains("secret.package"))
+    }
+
+    @Test
     fun rejectsEmptyCategorySelection() {
         assertFailsWith<IllegalArgumentException> {
             LocalAuditExporter.prepare(emptyList(), request(categories = emptySet()), generatedAt)

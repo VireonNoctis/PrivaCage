@@ -64,6 +64,12 @@ Explain VPN replacement behavior and data handling before consent. Report actual
 
 **Limits:** this is not a complete system audit log. It cannot export events PrivaCage never recorded, and socket-owner labels are not reliable attribution. JSON is unencrypted and may be copied to cloud storage if the user selects a synced destination.
 
+### Signed audit checkpoints
+
+**Implemented Android slice (24 October 2026):** each exported event is linked to its predecessor with a canonical SHA-256 record hash. A signed checkpoint records the exact payload digest, chain head, record count, device-clock timestamp and signer public-key fingerprint. The P-256 signing private key remains in Android Keystore; a local verifier checks the signature, payload digest, per-record chain and match to the currently stored local signer key. Verification never auto-creates a replacement key when the key is absent.
+
+**Limits:** signatures do not establish human identity, correct time, complete observation, or that events were not omitted before the checkpoint. The public-key fingerprint must be trusted independently. Keystore hardware backing is not guaranteed, and checkpoint JSON is not encrypted.
+
 ### Offline breach-exposure lookup
 Use a sourced, appropriately licensed local dataset with an explicit refresh date and coverage limitations. Do not send a raw email address to a third-party lookup service by default.
 

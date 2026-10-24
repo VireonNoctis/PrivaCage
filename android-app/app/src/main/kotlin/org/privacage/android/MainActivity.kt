@@ -26,6 +26,7 @@ import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.audit.AuditExportRequest
+import org.privacage.audit.AuditExportResult
 import org.privacage.audit.LocalAuditExporter
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
@@ -66,6 +67,8 @@ class MainActivity : Activity() {
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
     private var pendingAuditExport: ByteArray? = null
+    private var pendingAuditExportFileName: String? = null
+    private var pendingAuditExportIsSignedCheckpoint = false
     private var auditExportStartDate = LocalDate.now().minusDays(6)
     private var auditExportEndDate = LocalDate.now()
     private lateinit var auditExportStartButton: Button
@@ -560,6 +563,14 @@ class MainActivity : Activity() {
             text = "Preview redacted audit export"
             setOnClickListener { previewLocalAuditExport() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Create signed audit checkpoint"
+            setOnClickListener { previewSignedAuditCheckpoint() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Verify signed audit checkpoint"
+            setOnClickListener { chooseAuditCheckpointForVerification() }
+        }, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "ENCRYPTED DEVICE SYNC"
@@ -832,6 +843,7 @@ class MainActivity : Activity() {
             }
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_AUDIT_EXPORT -> writeLocalAuditExport(resultCode, data?.data)
+            REQUEST_AUDIT_CHECKPOINT_VERIFY -> verifyAuditCheckpoint(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
             REQUEST_APK_DIFF_BASELINE -> auditApkDiffBaseline(resultCode, data?.data)
@@ -850,6 +862,8 @@ class MainActivity : Activity() {
         pendingImportBackup = null
         pendingAuditExport?.fill(0)
         pendingAuditExport = null
+        pendingAuditExportFileName = null
+        pendingAuditExportIsSignedCheckpoint = false
         pendingMetadataInput?.delete()
         pendingMetadataInput = null
         pendingScrubbedMedia?.delete()
@@ -2111,12 +2125,12 @@ class MainActivity : Activity() {
         ).show()
     }
 
-    private fun previewLocalAuditExport() {
+    private fun prepareLocalAuditExport(): AuditExportResult? {
         val categories = buildSet {
             if (auditExportBlockedCheck.isChecked) add("BLOCKED")
             if (auditExportForwardedCheck.isChecked) add("FORWARDED")
         }
-        val prepared = try {
+        return try {
             LocalAuditExporter.prepare(
                 events = LocalDnsEventHistory.readForExport(this),
                 request = AuditExportRequest(
@@ -2129,17 +2143,58 @@ class MainActivity : Activity() {
             )
         } catch (exception: Exception) {
             statusText.text = "Could not prepare audit export: " + (exception.message ?: exception.javaClass.simpleName)
-            return
+            null
         }
+    }
 
+    private fun previewLocalAuditExport() {
+        val prepared = prepareLocalAuditExport() ?: return
         pendingAuditExport?.fill(0)
         pendingAuditExport = prepared.json.toByteArray(StandardCharsets.UTF_8)
+        pendingAuditExportFileName = "privacage-audit-" + LocalDate.now() + ".json"
+        pendingAuditExportIsSignedCheckpoint = false
+        showAuditExportPreview("Review audit export", prepared.previewText)
+    }
+
+    private fun previewSignedAuditCheckpoint() {
+        val prepared = prepareLocalAuditExport() ?: return
+        try {
+            val checkpoint = LocalAuditCheckpointSigner.sign(
+                context = this,
+                payloadJson = prepared.json,
+                chainHeadSha256 = prepared.chainHeadSha256,
+                eventCount = prepared.eventCount
+            )
+            pendingAuditExport?.fill(0)
+            pendingAuditExport = checkpoint.json.toByteArray(StandardCharsets.UTF_8)
+            pendingAuditExportFileName = "privacage-audit-checkpoint-" + LocalDate.now() + ".json"
+            pendingAuditExportIsSignedCheckpoint = true
+            val message = prepared.previewText +
+                "\n\nSIGNED CHECKPOINT\n" +
+                "Signature: ECDSA with SHA-256\n" +
+                "Signer public-key SHA-256: " + checkpoint.publicKeySha256 + "\n" +
+                "Payload SHA-256: " + checkpoint.payloadSha256 + "\n" +
+                "Chain head SHA-256: " + prepared.chainHeadSha256 + "\n\n" +
+                "The private key is kept in Android Keystore and is not included in the file. Hardware-backed storage is not guaranteed. This file is not encrypted, the creation time is from the device clock, and the embedded public key does not identify a person. Keep a copy of the fingerprint through a separate trusted channel if you need to recognize this signer later."
+            showAuditExportPreview("Review signed audit checkpoint", message)
+        } catch (exception: Exception) {
+            pendingAuditExport?.fill(0)
+            pendingAuditExport = null
+            pendingAuditExportFileName = null
+            pendingAuditExportIsSignedCheckpoint = false
+            statusText.text = "Could not sign audit checkpoint: " + (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    private fun showAuditExportPreview(title: String, message: String) {
         AlertDialog.Builder(this)
-            .setTitle("Review audit export")
-            .setMessage(prepared.previewText)
+            .setTitle(title)
+            .setMessage(message)
             .setNegativeButton("Cancel and discard") { _, _ ->
                 pendingAuditExport?.fill(0)
                 pendingAuditExport = null
+                pendingAuditExportFileName = null
+                pendingAuditExportIsSignedCheckpoint = false
                 statusText.text = "Audit export discarded; no file was saved."
             }
             .setPositiveButton("Choose save location") { _, _ ->
@@ -2148,6 +2203,8 @@ class MainActivity : Activity() {
             .setOnCancelListener {
                 pendingAuditExport?.fill(0)
                 pendingAuditExport = null
+                pendingAuditExportFileName = null
+                pendingAuditExportIsSignedCheckpoint = false
                 statusText.text = "Audit export discarded; no file was saved."
             }
             .show()
@@ -2161,7 +2218,7 @@ class MainActivity : Activity() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
-            putExtra(Intent.EXTRA_TITLE, "privacage-audit-" + LocalDate.now() + ".json")
+            putExtra(Intent.EXTRA_TITLE, pendingAuditExportFileName ?: ("privacage-audit-" + LocalDate.now() + ".json"))
         }
         try {
             startActivityForResult(intent, REQUEST_AUDIT_EXPORT)
@@ -2174,7 +2231,10 @@ class MainActivity : Activity() {
 
     private fun writeLocalAuditExport(resultCode: Int, uri: Uri?) {
         val bytes = pendingAuditExport
+        val signedCheckpoint = pendingAuditExportIsSignedCheckpoint
         pendingAuditExport = null
+        pendingAuditExportFileName = null
+        pendingAuditExportIsSignedCheckpoint = false
         if (resultCode != RESULT_OK || uri == null) {
             bytes?.fill(0)
             statusText.text = "Audit export cancelled; no file was saved."
@@ -2188,12 +2248,56 @@ class MainActivity : Activity() {
                 stream.write(content)
                 stream.flush()
             }
-            statusText.text = "Audit export saved. The JSON is unencrypted; check the destination and any cloud-sync behavior."
+            statusText.text = if (signedCheckpoint) {
+                "Signed audit checkpoint saved. It is not encrypted; retain the signer fingerprint separately if you need to trust this key later."
+            } else {
+                "Audit export saved. The JSON is unencrypted; check the destination and any cloud-sync behavior."
+            }
         } catch (exception: Exception) {
             statusText.text = "Could not write the audit export. Choose a writable destination and preview again."
         } finally {
             bytes?.fill(0)
         }
+    }
+
+    private fun chooseAuditCheckpointForVerification() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        try {
+            startActivityForResult(intent, REQUEST_AUDIT_CHECKPOINT_VERIFY)
+        } catch (exception: Exception) {
+            statusText.text = "Could not open the checkpoint picker."
+        }
+    }
+
+    private fun verifyAuditCheckpoint(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            statusText.text = "Checkpoint verification cancelled."
+            return
+        }
+        statusText.text = "Verifying checkpoint signature, payload digest and event chain locally..."
+        Thread({
+            var bytes: ByteArray? = null
+            var message: String
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("The selected checkpoint could not be opened.")
+                bytes = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
+                message = LocalAuditCheckpointSigner.verify(
+                    this,
+                    String(bytes ?: throw IOException("Checkpoint bytes are missing."), StandardCharsets.UTF_8)
+                ).render()
+            } catch (exception: Exception) {
+                message = "Checkpoint verification failed: " + (exception.message ?: exception.javaClass.simpleName)
+            } finally {
+                bytes?.fill(0)
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) statusText.text = message
+            }
+        }, "PrivaCage-audit-checkpoint-verify").start()
     }
 
     private fun refreshDnsStats() {
@@ -2695,6 +2799,8 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_DIFF_BASELINE = 4115
         private const val REQUEST_APK_DIFF_CANDIDATE = 4116
         private const val REQUEST_AUDIT_EXPORT = 4117
+        private const val REQUEST_AUDIT_CHECKPOINT_VERIFY = 4118
+        private const val MAX_AUDIT_CHECKPOINT_BYTES = 512 * 1024
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113

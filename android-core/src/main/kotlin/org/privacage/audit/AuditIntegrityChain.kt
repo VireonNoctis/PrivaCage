@@ -86,12 +86,12 @@ object AuditIntegrityChain {
         for ((index, record) in records.withIndex()) {
             if (record.previousRecordSha256 != previous) {
                 return AuditChainVerification(
-                    false, index, previous, "previous-hash mismatch at record \${index + 1}"
+                    false, index, previous, "previous-hash mismatch at record " + (index + 1)
                 )
             }
             if (!sha256Pattern.matches(record.recordSha256)) {
                 return AuditChainVerification(
-                    false, index, previous, "record \${index + 1} has an invalid hash encoding"
+                    false, index, previous, "record " + (index + 1) + " has an invalid hash encoding"
                 )
             }
             val input = AuditChainInput(
@@ -104,7 +104,7 @@ object AuditIntegrityChain {
             val calculated = recordDigest(previous, input)
             if (calculated != record.recordSha256) {
                 return AuditChainVerification(
-                    false, index, previous, "record hash mismatch at record \${index + 1}"
+                    false, index, previous, "record hash mismatch at record " + (index + 1)
                 )
             }
             previous = calculated
