@@ -1106,11 +1106,11 @@ class MainActivity : Activity() {
     private fun showOwnerKeyRotationPackage(result: OwnerRotationResult) {
         val packageJson = result.packageJson
         val message = buildString {
-            append("Previous owner fingerprint:\\n").append(result.previousFingerprint).append("\\n\\n")
-            append("Replacement owner fingerprint:\\n").append(result.nextFingerprint).append("\\n\\n")
-            append("New roster revision: ").append(result.rosterRevision).append("\\n")
-            append(result.publicationMessage).append("\\n\\n")
-            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\\n")
+            append("Previous owner fingerprint:\n").append(result.previousFingerprint).append("\n\n")
+            append("Replacement owner fingerprint:\n").append(result.nextFingerprint).append("\n\n")
+            append("New roster revision: ").append(result.rosterRevision).append('\n')
+            append(result.publicationMessage).append("\n\n")
+            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\n")
             append(packageJson)
         }
         AlertDialog.Builder(this)
@@ -1136,7 +1136,7 @@ class MainActivity : Activity() {
         }
         val fingerprintInput = EditText(this).apply {
             hint = "Independently confirmed new owner SHA-256 fingerprint"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_FLAG_NO_SUGGESTIONS
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine(true)
         }
         val fields = LinearLayout(this).apply {
