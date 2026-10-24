@@ -116,11 +116,13 @@ object AuditIntegrityChain {
         return AuditChainVerification(true, records.size, previous)
     }
 
-    fun sha256Hex(bytes: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    fun sha256Hex(bytes: ByteArray): String =
+        toHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+
+    private fun toHex(bytes: ByteArray): String {
         val digits = "0123456789abcdef"
-        return buildString(64) {
-            for (byte in digest) {
+        return buildString(bytes.size * 2) {
+            for (byte in bytes) {
                 val value = byte.toInt() and 0xff
                 append(digits[value ushr 4])
                 append(digits[value and 0x0f])
@@ -192,6 +194,6 @@ object AuditIntegrityChain {
             digest.update('\n'.code.toByte())
             bytes.fill(0)
         }
-        return sha256Hex(digest.digest())
+        return toHex(digest.digest())
     }
 }
