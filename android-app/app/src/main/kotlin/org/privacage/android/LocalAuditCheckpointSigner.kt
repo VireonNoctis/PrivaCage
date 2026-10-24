@@ -11,13 +11,18 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
 import java.security.KeyPair
+import java.security.AlgorithmParameters
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.Signature
+import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import java.security.spec.X509EncodedKeySpec
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 internal data class SignedAuditCheckpoint(
     val json: String,
@@ -58,6 +63,15 @@ internal data class AuditCheckpointVerification(
 internal object LocalAuditCheckpointSigner {
     private const val KEY_ALIAS = "org.privacage.audit.checkpoint.p256.v1"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+    private const val MAX_CHECKPOINT_BYTES = 2 * 1024 * 1024
+    private const val MAX_PAYLOAD_BYTES = 1024 * 1024
+    private const val MAX_EVENT_COUNT = 100
+
+    private val envelopeKeys = setOf(
+        "format", "schema_version", "signature_algorithm", "created_at",
+        "signer_public_key_x509_base64", "signer_public_key_sha256", "payload_sha256",
+        "chain_head_sha256", "event_count", "signature_base64", "payload_json"
+    )
 
     fun sign(
         context: Context,
@@ -110,13 +124,25 @@ internal object LocalAuditCheckpointSigner {
     }
 
     fun verify(context: Context, checkpointJson: String): AuditCheckpointVerification {
+        if (checkpointJson.length > MAX_CHECKPOINT_BYTES) {
+            throw IOException("The selected checkpoint exceeds the 2 MiB size limit.")
+        }
+        val checkpointBytes = checkpointJson.toByteArray(StandardCharsets.UTF_8)
+        try {
+            if (checkpointBytes.size > MAX_CHECKPOINT_BYTES) {
+                throw IOException("The selected checkpoint exceeds the 2 MiB size limit.")
+            }
+        } finally {
+            checkpointBytes.fill(0)
+        }
         val envelope = try {
             JSONObject(checkpointJson)
         } catch (exception: Exception) {
             throw IOException("The selected checkpoint is not valid JSON.", exception)
         }
+        requireOnlyKeys(envelope, envelopeKeys, "checkpoint")
         if (requiredString(envelope, "format") != AuditIntegrityChain.CHECKPOINT_FORMAT ||
-            envelope.optInt("schema_version", -1) != AuditIntegrityChain.CHECKPOINT_SCHEMA_VERSION
+            requiredInt(envelope, "schema_version") != AuditIntegrityChain.CHECKPOINT_SCHEMA_VERSION
         ) {
             throw IOException("Unsupported PrivaCage audit checkpoint format.")
         }
@@ -130,8 +156,15 @@ internal object LocalAuditCheckpointSigner {
         val publicKeySha256 = requiredString(envelope, "signer_public_key_sha256")
         val signatureBase64 = requiredString(envelope, "signature_base64")
         val payloadJson = requiredString(envelope, "payload_json")
+        if (payloadJson.toByteArray(StandardCharsets.UTF_8).size > MAX_PAYLOAD_BYTES) {
+            throw IOException("The embedded audit payload exceeds the 1 MiB size limit.")
+        }
+        val publicKeyBase64 = requiredString(envelope, "signer_public_key_x509_base64")
+        if (publicKeyBase64.length > 512) throw IOException("The checkpoint public key exceeds the size limit.")
+        val signatureBytesText = signatureBase64
+        if (signatureBytesText.length > 256) throw IOException("The checkpoint signature exceeds the size limit.")
         val publicKeyBytes = try {
-            Base64.decode(requiredString(envelope, "signer_public_key_x509_base64"), Base64.NO_WRAP)
+            Base64.decode(publicKeyBase64, Base64.NO_WRAP)
         } catch (exception: Exception) {
             throw IOException("The checkpoint public key is not valid Base64.", exception)
         }
@@ -142,12 +175,17 @@ internal object LocalAuditCheckpointSigner {
         } finally {
             publicKeyBytes.fill(0)
         }
+        if (!isP256PublicKey(publicKey)) {
+            throw IOException("The checkpoint signer must use the P-256 elliptic curve.")
+        }
         if (AuditIntegrityChain.sha256Hex(publicKey.encoded) != publicKeySha256) {
             throw IOException("The checkpoint public-key fingerprint does not match its key bytes.")
         }
 
-        val eventCount = envelope.optInt("event_count", -1)
-        if (eventCount < 0) throw IOException("The checkpoint event count is missing or invalid.")
+        val eventCount = requiredInt(envelope, "event_count")
+        if (eventCount !in 0..MAX_EVENT_COUNT) {
+            throw IOException("The checkpoint event count is outside the supported 0..100 range.")
+        }
         val payloadBytes = payloadJson.toByteArray(StandardCharsets.UTF_8)
         val payloadHashValid = try {
             AuditIntegrityChain.sha256Hex(payloadBytes) == payloadSha256
@@ -200,15 +238,101 @@ internal object LocalAuditCheckpointSigner {
         outerEventCount: Int
     ): org.privacage.audit.AuditChainVerification {
         val payload = JSONObject(payloadJson)
+        requireOnlyKeys(
+            payload,
+            setOf(
+                "schema_version", "source", "generated_at", "filter_timezone", "date_range",
+                "selected_categories", "integrity", "redactions", "records_read",
+                "records_skipped_invalid", "records_excluded_by_filters", "event_count", "events"
+            ),
+            "audit payload"
+        )
+        if (requiredInt(payload, "schema_version") != 1 ||
+            requiredString(payload, "source") != "optional_local_dns_event_history"
+        ) {
+            throw IOException("Unsupported audit payload schema or source.")
+        }
+        val generatedAt = requiredString(payload, "generated_at")
+        if (Instant.parse(generatedAt).toString() != generatedAt) {
+            throw IOException("Audit payload generation time is not canonical.")
+        }
+        val timezoneId = requiredString(payload, "filter_timezone")
+        val zoneId = try {
+            ZoneId.of(timezoneId)
+        } catch (exception: Exception) {
+            throw IOException("Audit payload time zone is invalid.", exception)
+        }
+        val dateRange = payload.optJSONObject("date_range")
+            ?: throw IOException("Audit payload date range is missing.")
+        requireOnlyKeys(dateRange, setOf("start_inclusive", "end_inclusive"), "date range")
+        val startDate = try {
+            LocalDate.parse(requiredString(dateRange, "start_inclusive"))
+        } catch (exception: Exception) {
+            throw IOException("Audit payload start date is invalid.", exception)
+        }
+        val endDate = try {
+            LocalDate.parse(requiredString(dateRange, "end_inclusive"))
+        } catch (exception: Exception) {
+            throw IOException("Audit payload end date is invalid.", exception)
+        }
+        if (startDate.isAfter(endDate)) throw IOException("Audit payload date range is reversed.")
+
+        val selectedCategories = payload.optJSONArray("selected_categories")
+            ?: throw IOException("Audit payload selected categories are missing.")
+        if (selectedCategories.length() == 0) throw IOException("Audit payload selected categories are empty.")
+        val categoryList = (0 until selectedCategories.length()).map { index ->
+            selectedCategories.opt(index) as? String
+                ?: throw IOException("Audit payload selected category is not a string.")
+        }
+        if (categoryList.any { it !in setOf("BLOCKED", "FORWARDED") } ||
+            categoryList != categoryList.distinct().sorted()
+        ) {
+            throw IOException("Audit payload selected categories are unsupported, duplicated, or unsorted.")
+        }
+
+        val redactions = payload.optJSONObject("redactions")
+            ?: throw IOException("Audit payload redaction metadata is missing.")
+        requireOnlyKeys(
+            redactions,
+            setOf("queried_hostnames", "socket_owner_labels", "device_identifiers", "internal_file_paths", "packet_payloads"),
+            "redaction metadata"
+        )
+        val hostnamesRedacted = requiredBoolean(redactions, "queried_hostnames")
+        val ownersRedacted = requiredBoolean(redactions, "socket_owner_labels")
+        if (!requiredBoolean(redactions, "device_identifiers") ||
+            !requiredBoolean(redactions, "internal_file_paths") ||
+            !requiredBoolean(redactions, "packet_payloads")
+        ) {
+            throw IOException("Audit payload makes a false fixed-redaction claim.")
+        }
+
+        val recordsRead = requiredInt(payload, "records_read")
+        val recordsSkipped = requiredInt(payload, "records_skipped_invalid")
+        val recordsExcluded = requiredInt(payload, "records_excluded_by_filters")
+        if (recordsRead !in 0..MAX_EVENT_COUNT ||
+            recordsSkipped !in 0..MAX_EVENT_COUNT ||
+            recordsExcluded !in 0..MAX_EVENT_COUNT ||
+            recordsSkipped + recordsExcluded + outerEventCount != recordsRead
+        ) {
+            throw IOException("Audit payload record counters do not account for the bounded history.")
+        }
+
         val events = payload.optJSONArray("events")
             ?: throw IOException("Checkpoint payload does not include an events array.")
         val integrity = payload.optJSONObject("integrity")
             ?: throw IOException("Checkpoint payload does not include chain metadata.")
+        requireOnlyKeys(
+            integrity,
+            setOf("algorithm", "genesis_sha256", "chain_head_sha256", "record_count"),
+            "integrity metadata"
+        )
         val innerHead = requiredString(integrity, "chain_head_sha256")
         val innerAlgorithm = requiredString(integrity, "algorithm")
-        if (innerAlgorithm != AuditIntegrityChain.ALGORITHM || innerHead != outerHeadSha256 ||
-            integrity.optInt("record_count", -1) != outerEventCount ||
-            payload.optInt("event_count", -1) != outerEventCount ||
+        if (innerAlgorithm != AuditIntegrityChain.ALGORITHM ||
+            requiredString(integrity, "genesis_sha256") != AuditIntegrityChain.GENESIS_SHA256 ||
+            innerHead != outerHeadSha256 ||
+            requiredInt(integrity, "record_count") != outerEventCount ||
+            requiredInt(payload, "event_count") != outerEventCount ||
             events.length() != outerEventCount
         ) {
             return org.privacage.audit.AuditChainVerification(
@@ -220,12 +344,53 @@ internal object LocalAuditCheckpointSigner {
         for (index in 0 until events.length()) {
             val item = events.optJSONObject(index)
                 ?: throw IOException("Checkpoint event $index is not an object.")
+            requireOnlyKeys(
+                item,
+                setOf(
+                    "timestamp", "local_date", "category", "queried_hostname", "socket_owner_label",
+                    "previous_record_sha256", "record_sha256"
+                ),
+                "audit event"
+            )
+            val timestampText = requiredString(item, "timestamp")
+            val timestamp = try {
+                Instant.parse(timestampText)
+            } catch (exception: Exception) {
+                throw IOException("Checkpoint event $index has an invalid timestamp.", exception)
+            }
+            if (timestamp.toString() != timestampText) {
+                throw IOException("Checkpoint event $index timestamp is not canonical.")
+            }
+            val localDateText = requiredString(item, "local_date")
+            val localDate = try {
+                LocalDate.parse(localDateText)
+            } catch (exception: Exception) {
+                throw IOException("Checkpoint event $index has an invalid local date.", exception)
+            }
+            if (localDate.toString() != localDateText ||
+                localDate.isBefore(startDate) || localDate.isAfter(endDate) ||
+                timestamp.atZone(zoneId).toLocalDate() != localDate
+            ) {
+                throw IOException("Checkpoint event $index date is inconsistent with the timestamp or filter range.")
+            }
+            val category = requiredString(item, "category")
+            if (category !in categoryList) {
+                throw IOException("Checkpoint event $index category was not selected for export.")
+            }
+            val hostname = requiredString(item, "queried_hostname")
+            if (hostnamesRedacted && hostname != "[REDACTED]") {
+                throw IOException("Checkpoint event $index contains a hostname despite claiming it was redacted.")
+            }
+            val ownerLabel = requiredString(item, "socket_owner_label")
+            if (ownersRedacted && ownerLabel != "[REDACTED]") {
+                throw IOException("Checkpoint event $index contains a socket-owner label despite claiming it was redacted.")
+            }
             records += AuditChainRecord(
-                timestamp = requiredString(item, "timestamp"),
-                localDate = requiredString(item, "local_date"),
-                category = requiredString(item, "category"),
-                queriedHostname = requiredString(item, "queried_hostname"),
-                socketOwnerLabel = requiredString(item, "socket_owner_label"),
+                timestamp = timestampText,
+                localDate = localDateText,
+                category = category,
+                queriedHostname = hostname,
+                socketOwnerLabel = ownerLabel,
                 previousRecordSha256 = requiredString(item, "previous_record_sha256"),
                 recordSha256 = requiredString(item, "record_sha256")
             )
@@ -236,6 +401,45 @@ internal object LocalAuditCheckpointSigner {
     private fun requiredString(value: JSONObject, key: String): String {
         return value.opt(key) as? String
             ?: throw IOException("Checkpoint field '$key' is missing or is not a string.")
+    }
+
+    private fun requiredInt(value: JSONObject, key: String): Int {
+        val raw = value.opt(key)
+        return when (raw) {
+            is Int -> raw
+            is Long -> if (raw in 0L..Int.MAX_VALUE.toLong()) raw.toInt()
+                else throw IOException("Checkpoint integer field '$key' is out of range.")
+            else -> throw IOException("Checkpoint field '$key' must be an integer JSON number.")
+        }.also {
+            if (it < 0) throw IOException("Checkpoint field '$key' must not be negative.")
+        }
+    }
+
+    private fun requiredBoolean(value: JSONObject, key: String): Boolean =
+        value.opt(key) as? Boolean
+            ?: throw IOException("Checkpoint field '$key' must be a JSON boolean.")
+
+    private fun requireOnlyKeys(value: JSONObject, allowed: Set<String>, label: String) {
+        val keys = value.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key !in allowed) throw IOException("Unsupported field '$key' in $label.")
+        }
+    }
+
+    private fun isP256PublicKey(publicKey: java.security.PublicKey): Boolean {
+        val actual = (publicKey as? ECPublicKey)?.params ?: return false
+        val expected = try {
+            AlgorithmParameters.getInstance("EC").apply {
+                init(ECGenParameterSpec("secp256r1"))
+            }.getParameterSpec(ECParameterSpec::class.java)
+        } catch (_: Exception) {
+            return false
+        }
+        return actual.curve == expected.curve &&
+            actual.generator == expected.generator &&
+            actual.order == expected.order &&
+            actual.cofactor == expected.cofactor
     }
 
     private fun loadOrCreateKeyPair(): KeyPair {
