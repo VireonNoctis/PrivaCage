@@ -2,6 +2,8 @@ package org.privacage.android
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.provider.Settings
 import android.net.Uri
@@ -22,6 +24,7 @@ import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
 import org.privacage.metadata.JpegMetadataScrubber
+import org.privacage.android.sync.AndroidEncryptedSyncManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -45,6 +48,14 @@ class MainActivity : Activity() {
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
     private var pendingScrubbedJpeg: File? = null
+    private var pendingSyncRecoveryExport: ByteArray? = null
+    private var pendingSyncRecoveryImport: ByteArray? = null
+    private lateinit var syncStatusText: TextView
+    private lateinit var syncPeerCardInput: EditText
+    private lateinit var syncRelayUrlInput: EditText
+    private lateinit var syncSpaceIdInput: EditText
+    private lateinit var syncCapabilityInput: EditText
+    private val encryptedSyncManager by lazy { AndroidEncryptedSyncManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -448,6 +459,169 @@ class MainActivity : Activity() {
                     .show()
             }
         }, matchWidth())
+
+        root.addView(TextView(this).apply {
+            text = "ENCRYPTED DEVICE SYNC"
+            textSize = 16f
+            setPadding(0, dp(20), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Send only the selected DNS settings profile to a device you have explicitly verified. Private identity material and relay capabilities are encrypted at rest with Android Keystore. Relay metadata remains visible to the relay operator. This is an early Android integration; it does not sync every app setting."
+            textSize = 13f
+        })
+        syncStatusText = TextView(this).apply {
+            text = "No sync operation has been run."
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(syncStatusText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Create or validate local sync identity"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Creating or validating the device identity...",
+                    task = { encryptedSyncManager.createIdentity().toString() },
+                    onSuccess = { cardJson ->
+                        syncStatusText.text = "Device identity is protected locally. Review and copy the public card below."
+                        showLocalDeviceCard(cardJson)
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Show / copy my public device card"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Loading the local device card...",
+                    task = { encryptedSyncManager.localCardJson() },
+                    onSuccess = { cardJson -> showLocalDeviceCard(cardJson) }
+                )
+            }
+        }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Peer public device card (paste from the other device)"
+            setPadding(0, dp(12), 0, 0)
+        })
+        syncPeerCardInput = EditText(this).apply {
+            hint = "Paste the complete public device card JSON"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP
+            minLines = 3
+            maxLines = 6
+        }
+        root.addView(syncPeerCardInput, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Verify peer card and review fingerprint"
+            setOnClickListener {
+                val pastedCard = syncPeerCardInput.text.toString().trim()
+                runSyncTask(
+                    progress = "Validating the peer card cryptographically...",
+                    task = { encryptedSyncManager.verifyPeerCard(pastedCard).toString() },
+                    onSuccess = { verifiedCardJson ->
+                        syncPeerCardInput.setText(verifiedCardJson)
+                        showPeerTrustConfirmation(verifiedCardJson)
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Relay URL (HTTPS only)"
+            setPadding(0, dp(12), 0, 0)
+        })
+        syncRelayUrlInput = EditText(this).apply {
+            hint = "https://your-relay.example"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        root.addView(syncRelayUrlInput, matchWidth())
+        root.addView(TextView(this).apply { text = "Relay space ID" })
+        syncSpaceIdInput = EditText(this).apply {
+            hint = "device-space-0001"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        root.addView(syncSpaceIdInput, matchWidth())
+        root.addView(TextView(this).apply { text = "Relay space capability (secret; saved encrypted)" })
+        syncCapabilityInput = EditText(this).apply {
+            hint = "64 lowercase hexadecimal characters"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        root.addView(syncCapabilityInput, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Save HTTPS relay configuration"
+            setOnClickListener {
+                val url = syncRelayUrlInput.text.toString().trim()
+                val space = syncSpaceIdInput.text.toString().trim()
+                val capability = syncCapabilityInput.text.toString().trim()
+                runSyncTask(
+                    progress = "Validating and encrypting relay configuration...",
+                    task = {
+                        encryptedSyncManager.saveRelayConfiguration(url, space, capability)
+                        "Relay configuration saved in the protected local record. Remote relays must use valid HTTPS."
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Send current settings to trusted device"
+            setOnClickListener {
+                val profile = currentProfilePayload() ?: return@setOnClickListener
+                val profileJson = String(profile, StandardCharsets.UTF_8)
+                profile.fill(0)
+                val recipientCard = syncPeerCardInput.text.toString().trim()
+                runSyncTask(
+                    progress = "Encrypting the settings profile and sending it to the relay...",
+                    task = { encryptedSyncManager.sendProfile(profileJson, recipientCard) }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Check relay for received settings"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Checking the encrypted inbox...",
+                    task = {
+                        val received = encryptedSyncManager.receiveProfile { payload ->
+                            val bytes = payload.toByteArray(StandardCharsets.UTF_8)
+                            try {
+                                parseProfilePayload(bytes)
+                            } finally {
+                                bytes.fill(0)
+                            }
+                        }
+                        JSONObject()
+                            .put("status", received.status)
+                            .put("message", received.message)
+                            .put("profile_json", received.profileJson ?: JSONObject.NULL)
+                            .put("sender_fingerprint", received.senderFingerprint ?: JSONObject.NULL)
+                            .toString()
+                    },
+                    onSuccess = { resultJson ->
+                        val result = JSONObject(resultJson)
+                        syncStatusText.text = result.optString("message", "Sync receive operation finished.")
+                        when (result.optString("status")) {
+                            "pending" -> showReceivedProfile(
+                                result.getString("profile_json"),
+                                result.optString("sender_fingerprint", "")
+                            )
+                            "untrusted" -> syncStatusText.text = result.optString("message") +
+                                "\nSender fingerprint: " + result.optString("sender_fingerprint") +
+                                "\nObtain that device's public card through a separate trusted channel, verify the fingerprint, and trust it before retrying."
+                        }
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Export encrypted device recovery bundle"
+            setOnClickListener { promptExportSyncRecoveryBundle() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import device recovery bundle"
+            setOnClickListener { chooseSyncRecoveryBundle() }
+        }, matchWidth())
+
         statusText = TextView(this).apply {
             text = "Not connected (service state is not inferred by this screen)."
             setPadding(0, dp(12), 0, 0)
@@ -455,6 +629,21 @@ class MainActivity : Activity() {
         root.addView(statusText, matchWidth())
         refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+        try {
+            val savedSyncConfig = encryptedSyncManager.storedConfigurationForUi()
+            if (savedSyncConfig == null) {
+                syncStatusText.text = "No local sync identity exists yet. Nothing has been uploaded."
+            } else {
+                syncRelayUrlInput.setText(savedSyncConfig.optString("relay_url", ""))
+                syncSpaceIdInput.setText(savedSyncConfig.optString("space_id", ""))
+                syncCapabilityInput.setText(savedSyncConfig.optString("capability_token", ""))
+                syncStatusText.text = "Protected sync record loaded. Trusted devices: " +
+                    savedSyncConfig.optInt("trusted_count", 0) + ". No network request was made."
+            }
+        } catch (exception: Exception) {
+            syncStatusText.text = "Could not load protected sync configuration: " +
+                (exception.message ?: "storage error") + " No stored sync record was overwritten."
+        }
         refreshDevicePrivacySnapshot()
     }
 
@@ -477,6 +666,8 @@ class MainActivity : Activity() {
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
             REQUEST_JPEG_SCRUB_INPUT -> scrubSelectedJpeg(resultCode, data?.data)
             REQUEST_JPEG_SCRUB_OUTPUT -> saveScrubbedJpeg(resultCode, data?.data)
+            REQUEST_SYNC_RECOVERY_EXPORT -> writeSyncRecoveryBundle(resultCode, data?.data)
+            REQUEST_SYNC_RECOVERY_IMPORT -> readSyncRecoveryBundle(resultCode, data?.data)
         }
     }
 
@@ -487,7 +678,338 @@ class MainActivity : Activity() {
         pendingImportBackup = null
         pendingScrubbedJpeg?.delete()
         pendingScrubbedJpeg = null
+        pendingSyncRecoveryExport?.fill(0)
+        pendingSyncRecoveryExport = null
+        pendingSyncRecoveryImport?.fill(0)
+        pendingSyncRecoveryImport = null
         super.onDestroy()
+    }
+
+
+    private fun <T : Any> runSyncTask(
+        progress: String,
+        task: () -> T,
+        onSuccess: (T) -> Unit = { value -> syncStatusText.text = value.toString() }
+    ) {
+        syncStatusText.text = progress
+        Thread({
+            var result: T? = null
+            var failure: Exception? = null
+            try {
+                result = task()
+            } catch (exception: Exception) {
+                failure = exception
+            }
+            val completed = result
+            val error = failure
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    if (completed is ByteArray) completed.fill(0)
+                    return@runOnUiThread
+                }
+                if (error != null) {
+                    syncStatusText.text = "Sync operation failed: " + (error.message ?: error.javaClass.simpleName)
+                } else if (completed != null) {
+                    onSuccess(completed)
+                }
+            }
+        }, "PrivaCage-encrypted-sync").start()
+    }
+
+    private fun showLocalDeviceCard(cardJson: String) {
+        val card = try {
+            JSONObject(cardJson)
+        } catch (exception: Exception) {
+            syncStatusText.text = "The device card could not be displayed because its JSON is invalid."
+            return
+        }
+        val fingerprint = card.optString("fingerprint_sha256", "unavailable")
+        AlertDialog.Builder(this)
+            .setTitle("Public device card")
+            .setMessage(
+                "SHA-256 fingerprint:\n" + fingerprint +
+                    "\n\nShare this public card with the other device. Before trusting another card, compare its complete fingerprint through a separate trusted channel. The card contains public keys, not your private identity material.\n\n" +
+                    card.toString(2)
+            )
+            .setPositiveButton("Copy public card") { _, _ ->
+                val clipboard = getSystemService(ClipboardManager::class.java)
+                clipboard.setPrimaryClip(ClipData.newPlainText("PrivaCage public device card", card.toString()))
+                syncStatusText.text = "Public device card copied. It contains public keys only; share it through a channel you trust."
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showPeerTrustConfirmation(cardJson: String) {
+        val card = JSONObject(cardJson)
+        val fingerprint = card.optString("fingerprint_sha256", "unavailable")
+        val fingerprintInput = EditText(this).apply {
+            hint = "Re-enter the full 64-character SHA-256 fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "Device: " + card.optString("device_id") +
+                    "\nKey epoch: " + card.optLong("key_epoch", 0L) +
+                    "\n\nFull SHA-256 fingerprint:\n" + fingerprint +
+                    "\n\nCompare every character with the device owner through a separate trusted channel, for example in person. A card received only from the relay is not sufficient."
+                textSize = 14f
+            }, matchWidth())
+            addView(fingerprintInput, matchWidth())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Verify this device fingerprint")
+            .setMessage("Enter the fingerprint you independently compared. The device is not trusted unless the full fingerprint matches.")
+            .setView(fields)
+            .setPositiveButton("Confirm fingerprint and trust device") { _, _ ->
+                val confirmedFingerprint = fingerprintInput.text.toString().trim().lowercase()
+                if (confirmedFingerprint != fingerprint.lowercase()) {
+                    syncStatusText.text = "Fingerprint mismatch. The device was not trusted. Compare the full fingerprint through a separate trusted channel."
+                } else {
+                    runSyncTask(
+                        progress = "Saving the explicitly verified device card...",
+                        task = { encryptedSyncManager.trustPeerCard(card.toString()) },
+                        onSuccess = { savedFingerprint ->
+                            syncStatusText.text = "Trusted device saved: " + savedFingerprint
+                        }
+                    )
+                }
+            }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
+    private fun showReceivedProfile(profileJson: String, senderFingerprint: String) {
+        val profileBytes = profileJson.toByteArray(StandardCharsets.UTF_8)
+        val imported = try {
+            parseProfilePayload(profileBytes)
+        } catch (exception: Exception) {
+            syncStatusText.text = "Received profile did not pass local validation. It was not applied."
+            return
+        } finally {
+            profileBytes.fill(0)
+        }
+        val dnsTlsSummary = if (imported.dnsOverTlsEnabled) {
+            "enabled (" + imported.dnsOverTlsHostname + ")"
+        } else {
+            "disabled"
+        }
+        val message = "Trusted sender fingerprint:\n" + senderFingerprint +
+            "\n\nResolver: " + imported.resolverIpv4 +
+            "\nBlocked domain rules: " + imported.blockedDomains.size +
+            "\nDNS-over-TLS: " + dnsTlsSummary +
+            "\n\nApplying replaces the saved resolver and domain rules. It does not start or restart DNS filtering. Review the settings before continuing."
+        AlertDialog.Builder(this)
+            .setTitle("Review received settings")
+            .setMessage(message)
+            .setPositiveButton("Apply these settings") { _, _ ->
+                getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
+                    .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
+                    .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
+                    .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
+                    .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
+                    .apply()
+                resolverInput.setText(imported.resolverIpv4)
+                domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
+                dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
+                resolverHostnameInput.setText(imported.dnsOverTlsHostname)
+                statusText.text = "Received DNS profile applied to local settings. Restart active DNS filtering to apply it."
+                runSyncTask(
+                    progress = "Finalizing local receive history...",
+                    task = {
+                        encryptedSyncManager.clearPendingProfile()
+                        "Received profile applied. The encrypted pending copy was cleared."
+                    }
+                )
+            }
+            .setNegativeButton("Keep pending", null)
+            .show()
+    }
+
+    private fun promptExportSyncRecoveryBundle() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        val passphraseInput = EditText(this).apply {
+            hint = "Recovery passphrase (12+ characters)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val confirmInput = EditText(this).apply {
+            hint = "Confirm recovery passphrase"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        fields.addView(passphraseInput, matchWidth())
+        fields.addView(confirmInput, matchWidth())
+        AlertDialog.Builder(this)
+            .setTitle("Create device recovery bundle")
+            .setMessage(
+                "This bundle can restore the device's private sync identity. Use a strong unique passphrase and keep both the file and passphrase offline and separate. Never upload the recovery bundle to the sync relay."
+            )
+            .setView(fields)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Encrypt recovery bundle") { _, _ ->
+                val passphrase = passphraseInput.text.toString()
+                val confirmation = confirmInput.text.toString()
+                passphraseInput.text.clear()
+                confirmInput.text.clear()
+                if (passphrase.length < AndroidEncryptedSyncManager.RECOVERY_PASSPHRASE_MIN_LENGTH) {
+                    syncStatusText.text = "Recovery passphrase must be at least " +
+                        AndroidEncryptedSyncManager.RECOVERY_PASSPHRASE_MIN_LENGTH + " characters."
+                } else if (passphrase != confirmation) {
+                    syncStatusText.text = "Recovery passphrases did not match. No file was created."
+                } else {
+                    runSyncTask(
+                        progress = "Encrypting the portable device recovery bundle...",
+                        task = { encryptedSyncManager.exportRecoveryBundle(passphrase) },
+                        onSuccess = { bundle ->
+                            pendingSyncRecoveryExport?.fill(0)
+                            pendingSyncRecoveryExport = bundle
+                            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "application/octet-stream"
+                                putExtra(Intent.EXTRA_TITLE, "privacage-device-recovery.pcage-sync")
+                            }
+                            startActivityForResult(intent, REQUEST_SYNC_RECOVERY_EXPORT)
+                            syncStatusText.text = "Choose a local/offline destination for the encrypted recovery file."
+                        }
+                    )
+                }
+            }
+            .show()
+    }
+
+    private fun writeSyncRecoveryBundle(resultCode: Int, uri: Uri?) {
+        val bundle = pendingSyncRecoveryExport
+        pendingSyncRecoveryExport = null
+        if (resultCode != RESULT_OK || uri == null) {
+            bundle?.fill(0)
+            syncStatusText.text = "Recovery export cancelled; no file was saved."
+            return
+        }
+        try {
+            val bytes = bundle ?: throw IOException("Encrypted recovery bytes are missing.")
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IOException("The chosen recovery destination could not be opened.")
+            output.use {
+                it.write(bytes)
+                it.flush()
+            }
+            syncStatusText.text = "Encrypted recovery bundle saved. Keep its passphrase separate; never upload this file to the relay."
+        } catch (exception: Exception) {
+            syncStatusText.text = "Could not save recovery bundle: " + (exception.message ?: "file write failed")
+        } finally {
+            bundle?.fill(0)
+        }
+    }
+
+    private fun chooseSyncRecoveryBundle() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/octet-stream"
+        }
+        startActivityForResult(intent, REQUEST_SYNC_RECOVERY_IMPORT)
+    }
+
+    private fun readSyncRecoveryBundle(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            syncStatusText.text = "Recovery import cancelled; current identity was not changed."
+            return
+        }
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IOException("The selected recovery file could not be opened.")
+            val bundle = input.use { readLimited(it, 1_100_000) }
+            if (bundle.isEmpty()) {
+                bundle.fill(0)
+                throw IOException("The selected recovery file is empty.")
+            }
+            pendingSyncRecoveryImport?.fill(0)
+            pendingSyncRecoveryImport = bundle
+            promptImportSyncRecoveryPassphrase()
+        } catch (exception: Exception) {
+            pendingSyncRecoveryImport?.fill(0)
+            pendingSyncRecoveryImport = null
+            syncStatusText.text = "Could not read recovery file: " + (exception.message ?: "invalid file")
+        }
+    }
+
+    private fun promptImportSyncRecoveryPassphrase() {
+        val passphraseInput = EditText(this).apply {
+            hint = "Recovery passphrase"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Restore device identity")
+            .setMessage("The recovery file is authenticated before any local identity is replaced. Import resets this device's relay settings and trusted-device list.")
+            .setView(passphraseInput)
+            .setNegativeButton("Cancel") { _, _ ->
+                pendingSyncRecoveryImport?.fill(0)
+                pendingSyncRecoveryImport = null
+                syncStatusText.text = "Recovery import cancelled; current identity was not changed."
+            }
+            .setPositiveButton("Decrypt and review identity") { _, _ ->
+                val passphrase = passphraseInput.text.toString()
+                passphraseInput.text.clear()
+                val fileBytes = pendingSyncRecoveryImport
+                pendingSyncRecoveryImport = null
+                if (fileBytes == null) {
+                    syncStatusText.text = "Recovery import failed: no recovery file is available."
+                } else {
+                    runSyncTask(
+                        progress = "Authenticating the recovery bundle...",
+                        task = {
+                            try {
+                                encryptedSyncManager.prepareRecoveryImport(fileBytes, passphrase)
+                            } finally {
+                                fileBytes.fill(0)
+                            }
+                        },
+                        onSuccess = { importedRecord -> showRecoveryReplacementConfirmation(importedRecord) }
+                    )
+                }
+            }
+            .setOnCancelListener {
+                pendingSyncRecoveryImport?.fill(0)
+                pendingSyncRecoveryImport = null
+            }
+            .show()
+    }
+
+    private fun showRecoveryReplacementConfirmation(importedRecord: JSONObject) {
+        val newCard = JSONObject(importedRecord.getString("card_json"))
+        val fingerprint = newCard.optString("fingerprint_sha256", "unavailable")
+        AlertDialog.Builder(this)
+            .setTitle("Replace local sync identity?")
+            .setMessage(
+                "The recovery file was authenticated. New local identity fingerprint:\n" + fingerprint +
+                    "\n\nConfirming replaces the stored sync identity and clears this device's previous relay configuration, trust list, cursor and pending receive. Other devices may need to verify this fingerprint again."
+            )
+            .setNegativeButton("Keep existing identity", null)
+            .setPositiveButton("Replace and protect locally") { _, _ ->
+                runSyncTask(
+                    progress = "Installing the recovered identity...",
+                    task = {
+                        encryptedSyncManager.commitRecoveryImport(importedRecord)
+                        importedRecord.getString("card_json")
+                    },
+                    onSuccess = { cardJson ->
+                        syncRelayUrlInput.text.clear()
+                        syncSpaceIdInput.text.clear()
+                        syncCapabilityInput.text.clear()
+                        syncPeerCardInput.text.clear()
+                        syncStatusText.text = "Recovered identity installed. Configure the relay and explicitly re-trust peers."
+                        showLocalDeviceCard(cardJson)
+                    }
+                )
+            }
+            .show()
     }
 
     private fun refreshDevicePrivacySnapshot() {
@@ -1219,6 +1741,8 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_AUDIT = 4110
         private const val REQUEST_JPEG_SCRUB_INPUT = 4111
         private const val REQUEST_JPEG_SCRUB_OUTPUT = 4112
+        private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113
+        private const val REQUEST_SYNC_RECOVERY_IMPORT = 4114
         private const val MAX_AUDIT_ITEMS_TO_DISPLAY = 80
         private const val PROFILE_FORMAT_VERSION = 2
     }

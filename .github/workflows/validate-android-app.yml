@@ -5,6 +5,9 @@ on:
     paths:
       - "android-app/**"
       - "android-core/**"
+      - "shared/rust/pcage-sync-jni/**"
+      - "shared/rust/pcage-sync/**"
+      - "shared/rust/pcage-crypto/**"
       - "shared/tracker-db/**"
       - "shared/scripts/**"
       - "tests/**"
@@ -13,6 +16,9 @@ on:
     paths:
       - "android-app/**"
       - "android-core/**"
+      - "shared/rust/pcage-sync-jni/**"
+      - "shared/rust/pcage-sync/**"
+      - "shared/rust/pcage-crypto/**"
       - "shared/tracker-db/**"
       - "shared/scripts/**"
       - "tests/**"
@@ -28,7 +34,7 @@ concurrency:
 
 jobs:
   build-and-test:
-    timeout-minutes: 30
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +46,21 @@ jobs:
         with:
           packages: ''
       - name: Install Android SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - name: Set Android NDK path
+        run: echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> $GITHUB_ENV
+      - name: Install cargo-ndk and Android Rust targets
+        run: |
+          cargo install cargo-ndk --version 3.5.4 --locked
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+      - name: Test JNI bridge on the host
+        run: cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
+      - name: Build Rust sync JNI libraries
+        working-directory: shared/rust/pcage-sync-jni
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.14"
@@ -50,7 +70,7 @@ jobs:
       - name: Run DNS core unit tests
         working-directory: android-app
         run: gradle --no-daemon :android-core:test
-      - name: Run APK scanner unit tests
+      - name: Run app unit tests
         working-directory: android-app
         run: gradle --no-daemon :app:testDebugUnitTest
       - name: Validate Android privacy baseline

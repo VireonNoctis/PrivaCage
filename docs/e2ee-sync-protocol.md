@@ -26,9 +26,16 @@ Recovery bundles contain the identity seeds and card, encrypted with the existin
 
 Implemented in this milestone: Rust identity generation, identity-card validation/fingerprints, encrypted and signed per-recipient packets, packet expiry, durable replay protection, signed key rotation, encrypted recovery bundle, and automated unit tests.
 
-Not implemented: network relay, accounts, group roster/revocation, automatic trust-on-first-use, platform keystore adapters, UI flows, iOS/Windows integration, sequence-order enforcement, independent audit, and device/emulator integration tests. Until those are added, this is a protocol core, not a complete sync feature.
+Android now has an initial Rust-JNI client integration: the app wraps its passphrase-encrypted identity bundle and relay capability in an AES-GCM record encrypted with an Android Keystore key, validates public identity cards, requires user-confirmed out-of-band fingerprint comparison before trusting peers, sends signed/encrypted settings profiles through the HTTPS-only relay, and stages received profiles in protected local storage until the user approves applying them. This is not complete account/device sync. Not implemented: iOS/Windows clients, an account service, signed group roster/revocation, conflict resolution, sequence-order enforcement, independent cryptographic audit, TLS deployment validation, or representative physical-device lifecycle testing.
 
 
 ## Relay boundary test
 
 The relay crate's automated test suite exercises an encrypted packet created by `pcage-sync` through the relay HTTP handlers: capability-authenticated upload, unauthenticated-read rejection, cursor retrieval, and successful recipient-side signature/decryption/replay-ledger validation. The test runs in-process and is not a substitute for a deployed TLS endpoint or mobile-device integration. Platform-protected key storage, trusted-device enrollment, revocation, conflict handling, and app UI remain unimplemented.
+
+
+## Android client integration and limits
+
+The Android app loads the shared Rust protocol through `shared/rust/pcage-sync-jni`. Its local record is encrypted with AES-GCM under Android Keystore and includes the locally encrypted identity bundle, relay capability, trusted public cards, inbox cursor, and pending profile. The inner identity bundle uses the existing PCAGE01 Argon2id/AES-256-GCM envelope. A separate recovery export requires a user-chosen passphrase and should be stored offline; it must never be uploaded to the relay.
+
+The user must compare the complete SHA-256 fingerprint through a separate trusted channel before trusting a peer. Relay transport requires HTTPS and rejects redirects to avoid forwarding bearer capabilities to another origin. The app sends only its DNS settings profile, not logs or the whole app configuration. Received payloads are signature-checked, recipient-bound, decrypted through the shared Rust crate, schema-validated locally, staged in the encrypted record, and applied only after explicit confirmation. The relay still sees routing identifiers, timing, packet sizes, and access patterns. Hardware-backed Keystore behavior depends on the device; CI and in-process relay tests do not replace physical-device validation.

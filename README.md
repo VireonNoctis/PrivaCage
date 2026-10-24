@@ -18,8 +18,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust share v1/v2 schema support and decrypt a known-answer vector. No account or remote sync; DNS-over-TLS is optional |
-| E2EE sync protocol core | Rust protocol primitives | Per-device Ed25519/X25519 identities, signed recipient-bound encrypted packets, durable replay ledger, signed key rotation, and encrypted identity recovery bundle. No group roster/revocation or platform keystore adapters yet |
-| Opaque sync relay | Rust + SQLite loopback service | Authenticated per-space capabilities, bounded opaque message storage, 7-day retention, duplicate-ID rejection, admin capability rotation/revocation, cursor pagination, and an in-process encrypted-packet HTTP round-trip regression test. Requires a TLS reverse proxy for remote access; no app client integration yet |
+| E2EE sync protocol core | Rust protocol + initial Android client integration | JNI calls into the shared protocol; local identity and relay capability protected by Android Keystore AES-GCM; explicit out-of-band peer fingerprint confirmation; HTTPS relay send/receive; validated settings profiles staged for user approval; passphrase-protected recovery export/import. No iOS/Windows client, signed group roster/revocation, or physical-device lifecycle validation yet |
+| Opaque sync relay | Rust + SQLite loopback service | Authenticated per-space capabilities, bounded opaque message storage, 7-day retention, duplicate-ID rejection, admin capability rotation/revocation, cursor pagination with a bounded page limit, and an in-process encrypted-packet HTTP round-trip regression test. Requires a TLS reverse proxy for remote access |
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
@@ -55,6 +55,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
 - `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, key rotation, and recovery bundles.
 - `shared/rust/pcage-sync-relay/` — SQLite-backed loopback HTTP relay that stores opaque sync packets and never decrypts them.
+- `shared/rust/pcage-sync-jni/` — native bridge used by Android to call the Rust identity, packet-sealing, packet-opening, and recovery APIs.
+- `android-app/app/src/main/kotlin/org/privacage/android/sync/` — Android Keystore-protected local sync record, native bridge facade, HTTPS relay client, and explicit-trust/send/receive orchestration.
 - `docs/e2ee-sync-protocol.md` — protocol format, trust assumptions, and implementation boundaries.
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
@@ -73,11 +75,17 @@ Requires Python 3.11 or newer for the tracker database validator/tests:
     python shared/scripts/validate-android-backup.py
     python -m unittest discover -s tests -v
 
-The Android app requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible:
+The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
 
-    cd android-app
+    sdkmanager "ndk;27.2.12479018"
+    cargo install cargo-ndk --version 3.5.4 --locked
+    rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+    cd shared/rust/pcage-sync-jni
+    cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+    cd ../../../android-app
     gradle assembleDebug
     gradle :android-core:test
+    gradle :app:testDebugUnitTest
 
 The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -86,10 +94,12 @@ The Rust encrypted-profile implementation requires Rust 1.85 or newer:
     cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
 
-The E2EE sync protocol core requires Rust 1.85 or newer:
+The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
 
     cargo test --manifest-path shared/rust/pcage-sync/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings
+    cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-sync-jni/Cargo.toml --all-targets -- -D warnings
 
 The opaque relay service requires Rust 1.85 or newer:
 
@@ -117,3 +127,8 @@ MIT. See LICENSE.
 
 
 | JPEG metadata inspection and removal | Local report before save | Reports input/output sizes and removed APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM counts; second-pass verification checks those classes are absent. Other APP markers are preserved, and the report does not enumerate every embedded field or guarantee complete metadata removal. |
+
+
+### Android encrypted sync scope
+
+The Android sync UI sends only the current DNS settings profile to an explicitly trusted public device card. Before trusting a peer, compare the complete SHA-256 fingerprint over a separate trusted channel; the relay itself is not a trust authority. Relay URLs must use HTTPS and redirects are rejected. Identity and relay capability are stored inside an Android Keystore-encrypted record. Recovery exports are separate passphrase-encrypted files and should be kept offline. The relay still observes metadata, and app integration has not yet been validated on a representative physical-device matrix.

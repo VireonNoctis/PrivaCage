@@ -1,0 +1,18 @@
+[package]
+name = "pcage-sync-jni"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+description = "JNI bridge from the Android app to PrivaCage's Rust E2EE sync protocol"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "=0.22.1"
+jni = "=0.21.1"
+pcage-sync = { path = "../pcage-sync" }
+serde_json = "=1.0.154"
+zeroize = "=1.9.1"

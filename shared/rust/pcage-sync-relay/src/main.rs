@@ -21,7 +21,7 @@ use std::{
 };
 use subtle::ConstantTimeEq;
 
-const MAX_BODY: usize = 2 * 1024 * 1024;
+const MAX_BODY: usize = 3 * 1024 * 1024;
 const MAX_MESSAGES_PER_SPACE: u64 = 10_000;
 const PAGE_SIZE: usize = 100;
 const RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
@@ -122,7 +122,7 @@ impl Store {
         Ok(conn.last_insert_rowid() as u64)
     }
 
-    fn list(&self, space_id: &str, after: u64) -> Result<MessagePage, StoreError> {
+    fn list(&self, space_id: &str, after: u64, page_size: usize) -> Result<MessagePage, StoreError> {
         let now = unix_now().map_err(|_| StoreError::Database)?;
         let conn = self.connection.lock().map_err(|_| StoreError::Database)?;
         conn.execute("DELETE FROM messages WHERE expires_at <= ?1", [now as i64]).map_err(|_| StoreError::Database)?;
@@ -130,7 +130,7 @@ impl Store {
             "SELECT cursor, message_id, payload, inserted_at, expires_at FROM messages
              WHERE space_id=?1 AND cursor>?2 AND expires_at>?3 ORDER BY cursor LIMIT ?4"
         ).map_err(|_| StoreError::Database)?;
-        let rows = statement.query_map(params![space_id, after as i64, now as i64, PAGE_SIZE as i64], |row| {
+        let rows = statement.query_map(params![space_id, after as i64, now as i64, page_size.clamp(1, PAGE_SIZE) as i64], |row| {
             let payload: Vec<u8> = row.get(2)?;
             Ok(StoredMessage {
                 cursor: row.get::<_, i64>(0)? as u64,
@@ -168,7 +168,7 @@ struct StoredMessage {
 }
 
 #[derive(Deserialize)]
-struct CursorQuery { after: Option<u64> }
+struct CursorQuery { after: Option<u64>, limit: Option<usize> }
 
 #[derive(Serialize)]
 struct ApiError { error: &'static str }
@@ -238,7 +238,11 @@ async fn list_messages(
 ) -> Result<Json<MessagePage>, ApiFailure> {
     let token = bearer(&headers)?;
     state.store.authorize(&space_id, token).map_err(ApiFailure)?;
-    state.store.list(&space_id, cursor.after.unwrap_or(0)).map(Json).map_err(ApiFailure)
+    state.store.list(
+        &space_id,
+        cursor.after.unwrap_or(0),
+        cursor.limit.unwrap_or(PAGE_SIZE).clamp(1, PAGE_SIZE),
+    ).map(Json).map_err(ApiFailure)
 }
 
 fn hash_token(token: &str) -> [u8; 32] { Sha256::digest(token.as_bytes()).into() }
@@ -312,12 +316,22 @@ mod tests {
         assert!(matches!(store.authorize("device-space-0001", &"f".repeat(64)), Err(StoreError::Unauthorized)));
         store.authorize("device-space-0001", &capability).unwrap();
         let packet = br#"{"body":{"ciphertext_hex":"deadbeef"}}"#;
-        let cursor = store.put("device-space-0001", "0123456789abcdef0123456789abcdef", packet).unwrap();
-        assert!(cursor > 0);
-        let page = store.list("device-space-0001", 0).unwrap();
-        assert_eq!(page.messages.len(), 1);
-        assert_eq!(page.messages[0].payload_hex, encode_hex(packet));
-        assert_eq!(page.next_cursor, cursor);
+        let first_id = "0123456789abcdef0123456789abcdef";
+        let second_id = "fedcba9876543210fedcba9876543210";
+        let first_cursor = store.put("device-space-0001", first_id, packet).unwrap();
+        let second_cursor = store.put("device-space-0001", second_id, b"second opaque packet").unwrap();
+        assert!(first_cursor > 0 && second_cursor > first_cursor);
+
+        let first_page = store.list("device-space-0001", 0, 1).unwrap();
+        assert_eq!(first_page.messages.len(), 1);
+        assert_eq!(first_page.messages[0].message_id, first_id);
+        assert_eq!(first_page.messages[0].payload_hex, encode_hex(packet));
+        assert_eq!(first_page.next_cursor, first_cursor);
+
+        let second_page = store.list("device-space-0001", first_page.next_cursor, 1).unwrap();
+        assert_eq!(second_page.messages.len(), 1);
+        assert_eq!(second_page.messages[0].message_id, second_id);
+        assert_eq!(second_page.next_cursor, second_cursor);
     }
 
     #[test]

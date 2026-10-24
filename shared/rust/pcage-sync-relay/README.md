@@ -22,14 +22,14 @@ Never expose the plain HTTP listener directly to the network. It deliberately re
 - `POST /v1/spaces/{space_id}/rotate` — admin bearer token; replace the space capability immediately.
 - `DELETE /v1/spaces/{space_id}` — admin bearer token; delete the space and queued messages.
 - `PUT /v1/spaces/{space_id}/messages/{message_id}` — space capability bearer token; raw serialized sync packet body.
-- `GET /v1/spaces/{space_id}/messages?after=0` — space capability bearer token; cursor page of up to 100 records. Payloads are returned as lowercase hex in `payload_hex`.
+- `GET /v1/spaces/{space_id}/messages?after=0&limit=1` — space capability bearer token; cursor page of up to 100 records. The optional `limit` is clamped to 1–100. Payloads are returned as lowercase hex in `payload_hex`.
 
 Space IDs use 8–80 ASCII letters, digits, underscores, or hyphens. Message IDs must be the 32-character lowercase hex IDs used by the protocol. Capability tokens must be 64 lowercase hex characters and should be generated from 32 cryptographically random bytes. The admin token and space capability are distinct secrets.
 
 ## Data handling and limits
 
 - SQLite stores the capability hash, opaque packet bytes, cursor, and timestamps; it does not store capability tokens.
-- Packets are limited to 2 MiB; each space holds at most 10,000 non-expired packets.
+- HTTP packet bodies are limited to 3 MiB; each space holds at most 10,000 non-expired packets.
 - Stored packets expire after seven days; expired records are purged on reads and writes.
 - Duplicate message IDs within one space are rejected.
 - Space capability rotation invalidates the old shared capability. It does not selectively revoke one device.
@@ -48,3 +48,6 @@ cargo clippy --manifest-path shared/rust/pcage-sync-relay/Cargo.toml --all-targe
 ```
 
 The relay test suite includes an in-process HTTP API round trip using a real `pcage-sync` encrypted and signed packet: create a space, upload ciphertext with its capability, reject an unauthenticated read, retrieve the opaque bytes, and decrypt them only with the recipient identity. This verifies the protocol/relay boundary in-process; it does not claim mobile-client integration, remote TLS deployment, or device lifecycle validation.
+
+
+The Android client requests one record per page to keep the hex-encoded JSON response within a bounded memory limit. The `limit` parameter is optional and the server clamps it to 1–100.
