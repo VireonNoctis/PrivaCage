@@ -752,10 +752,12 @@ mod tests {
         let old = DeviceIdentity::from_seeds([65; 32], [66; 32], 8).unwrap();
         let (next, transition) = old.rotate_owner_key("device-space-0001", 12, 1_800_000_000).unwrap();
         let mut bad_old_signature = transition.clone();
-        bad_old_signature.previous_signature_hex.replace_range(0..2, "00");
+        let changed_old_prefix = if bad_old_signature.previous_signature_hex.starts_with("00") { "01" } else { "00" };
+        bad_old_signature.previous_signature_hex.replace_range(0..2, changed_old_prefix);
         assert!(bad_old_signature.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
         let mut bad_new_signature = transition.clone();
-        bad_new_signature.next_signature_hex.replace_range(0..2, "00");
+        let changed_new_prefix = if bad_new_signature.next_signature_hex.starts_with("00") { "01" } else { "00" };
+        bad_new_signature.next_signature_hex.replace_range(0..2, changed_new_prefix);
         assert!(bad_new_signature.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_800_000_100).is_err());
         assert!(transition.verify(&old.card, "device-space-0001", 12, &next.card.fingerprint_sha256, 1_799_999_000).is_err());
     }
