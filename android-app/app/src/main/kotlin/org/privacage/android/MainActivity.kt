@@ -545,6 +545,27 @@ class MainActivity : Activity() {
             text = "Import owner-signed device roster"
             setOnClickListener { showSignedDeviceRosterImport() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Synchronize signed roster now"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Fetching and verifying signed roster history...",
+                    task = { encryptedSyncManager.syncSignedRosterFromRelay() }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "View roster-change history"
+            setOnClickListener { showRosterChangeHistory() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Stage this device's key rotation"
+            setOnClickListener { showLocalKeyRotation() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import peer key-rotation request"
+            setOnClickListener { showPeerKeyRotationImport() }
+        }, matchWidth())
         root.addView(TextView(this).apply {
             text = "Relay URL (HTTPS only)"
             setPadding(0, dp(12), 0, 0)
@@ -603,6 +624,7 @@ class MainActivity : Activity() {
                 runSyncTask(
                     progress = "Checking the encrypted inbox...",
                     task = {
+                        val rosterStatus = encryptedSyncManager.syncSignedRosterFromRelay()
                         val received = encryptedSyncManager.receiveProfile { payload ->
                             val bytes = payload.toByteArray(StandardCharsets.UTF_8)
                             try {
@@ -612,6 +634,7 @@ class MainActivity : Activity() {
                             }
                         }
                         JSONObject()
+                            .put("roster_sync_status", rosterStatus)
                             .put("status", received.status)
                             .put("message", received.message)
                             .put("profile_json", received.profileJson ?: JSONObject.NULL)
@@ -620,7 +643,8 @@ class MainActivity : Activity() {
                     },
                     onSuccess = { resultJson ->
                         val result = JSONObject(resultJson)
-                        syncStatusText.text = result.optString("message", "Sync receive operation finished.")
+                        syncStatusText.text = result.optString("roster_sync_status", "") + "\n" +
+                            result.optString("message", "Sync receive operation finished.")
                         when (result.optString("status")) {
                             "pending" -> showReceivedProfile(
                                 result.getString("profile_json"),
@@ -839,10 +863,8 @@ class MainActivity : Activity() {
                             .setPositiveButton("Revoke trust") { _, _ ->
                                 runSyncTask(
                                     progress = "Revoking local trust and dropping pending data...",
-                                    task = { encryptedSyncManager.revokeTrustedPeer(fingerprint) },
-                                    onSuccess = {
-                                        syncStatusText.text = "Device revoked on this device. Its fingerprint is deny-listed and any pending profile was discarded. Relay access has not been rotated."
-                                    }
+                                    task = { encryptedSyncManager.revokeTrustedPeerAndPublishRoster(fingerprint) },
+                                    onSuccess = { status -> syncStatusText.text = status }
                                 )
                             }
                             .show()
@@ -916,6 +938,94 @@ class MainActivity : Activity() {
                 )
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showRosterChangeHistory() {
+        runSyncTask(
+            progress = "Loading encrypted local roster-change history...",
+            task = { encryptedSyncManager.rosterChangeHistory().toString() },
+            onSuccess = { historyJson ->
+                val history = JSONArray(historyJson)
+                if (history.length() == 0) {
+                    syncStatusText.text = "No roster lifecycle events have been recorded on this installation yet."
+                    return@runSyncTask
+                }
+                val lines = (history.length() - 1 downTo 0).map { index ->
+                    val event = history.getJSONObject(index)
+                    val fingerprint = event.optString("device_fingerprint", "")
+                        .takeUnless { it == "null" || it.isBlank() } ?: "—"
+                    "#" + event.optLong("timestamp_unix", 0L) +
+                        " · " + event.optString("type") +
+                        " · rev " + event.optLong("roster_revision", 0L) +
+                        "\n" + fingerprint +
+                        "\n" + event.optString("detail")
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Roster-change history · newest first")
+                    .setMessage(lines.joinToString("\n\n"))
+                    .setPositiveButton("Close", null)
+                    .show()
+            }
+        )
+    }
+
+    private fun showLocalKeyRotation() {
+        AlertDialog.Builder(this)
+            .setTitle("Stage peer key rotation?")
+            .setMessage(
+                "This creates a new device identity and a transition signed by the current key, but keeps the current identity active. The roster owner must import the public rotation package and publish a newer signed roster authorizing the replacement. This workflow does not rotate the roster-owner key. The encrypted replacement private identity stays in this device's protected record and is never included in the copied package."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Stage rotation") { _, _ ->
+                runSyncTask(
+                    progress = "Generating a replacement key and signed transition...",
+                    task = { encryptedSyncManager.stageLocalKeyRotation() },
+                    onSuccess = { showStagedKeyRotation(it) }
+                )
+            }
+            .show()
+    }
+
+    private fun showStagedKeyRotation(packageJson: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Key rotation staged")
+            .setMessage(
+                "Copy this public rotation package to the roster owner. It contains the previous public card, replacement public card, and transition signed by the previous key; it contains no private key or recovery bundle. The old identity remains active until a valid owner-signed roster authorizes the replacement.\n\n" +
+                    packageJson
+            )
+            .setPositiveButton("Copy rotation package") { _, _ ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText("PrivaCage peer key rotation", packageJson)
+                )
+                syncStatusText.text = "Public rotation package copied. Send it to the pinned roster owner through a trusted channel."
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showPeerKeyRotationImport() {
+        val rotationInput = EditText(this).apply {
+            hint = "Paste the complete public key-rotation package JSON"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP
+            minLines = 5
+            maxLines = 12
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Verify peer key rotation")
+            .setMessage(
+                "The current roster owner verifies the transition using the exact currently trusted predecessor card. Importing adds the replacement card while retaining the predecessor temporarily. The owner then publishes a signed roster; after the replacement activates, revoke the old peer and separately manage its relay credential."
+            )
+            .setView(rotationInput)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Verify and accept") { _, _ ->
+                val packageJson = rotationInput.text.toString().trim()
+                runSyncTask(
+                    progress = "Verifying previous-key signature, epoch and trusted predecessor...",
+                    task = { encryptedSyncManager.acceptPeerKeyRotation(packageJson) }
+                )
+            }
             .show()
     }
 

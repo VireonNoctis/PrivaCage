@@ -8,7 +8,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use pcage_sync::{verify_relay_request_signature, IdentityCard};
+use pcage_sync::{verify_relay_request_signature, IdentityCard, SignedDeviceRoster};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -30,6 +30,9 @@ const PAGE_SIZE: usize = 100;
 const RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
 const REQUEST_CLOCK_SKEW_SECS: u64 = 120;
 const REQUEST_NONCE_RETENTION_SECS: u64 = 300;
+const MAX_SIGNED_ROSTER_BYTES: usize = 256 * 1024;
+const MAX_ROSTER_HISTORY: usize = 128;
+const MAX_ROSTERS_PER_PAGE: usize = 25;
 
 #[derive(Clone)]
 struct AppState { store: Arc<Store> }
@@ -85,6 +88,15 @@ impl Store {
                created_at INTEGER NOT NULL,
                PRIMARY KEY(space_id, fingerprint, nonce)
              );
+             CREATE TABLE IF NOT EXISTS signed_roster_history (
+               space_id TEXT NOT NULL REFERENCES spaces(space_id) ON DELETE CASCADE,
+               revision INTEGER NOT NULL,
+               owner_fingerprint TEXT NOT NULL,
+               roster_json TEXT NOT NULL,
+               inserted_at INTEGER NOT NULL,
+               PRIMARY KEY(space_id, revision)
+             );
+             CREATE INDEX IF NOT EXISTS signed_roster_history_cursor ON signed_roster_history(space_id, revision);
              CREATE INDEX IF NOT EXISTS messages_space_cursor ON messages(space_id, cursor);"
         )?;
         let has_device_card_column: bool = connection.query_row(
@@ -492,6 +504,133 @@ impl Store {
         Ok(())
     }
 
+    fn put_signed_roster(&self, space_id: &str, body: &[u8]) -> Result<bool, StoreError> {
+        if !valid_space_id(space_id) || body.is_empty() || body.len() > MAX_SIGNED_ROSTER_BYTES {
+            return Err(StoreError::Invalid);
+        }
+        let roster: SignedDeviceRoster = serde_json::from_slice(body).map_err(|_| StoreError::Invalid)?;
+        let owner_fingerprint = roster.unsigned.owner_card.fingerprint_sha256.clone();
+        let now = unix_now().map_err(|_| StoreError::Database)?;
+        if roster.unsigned.space_id != space_id
+            || roster.verify(&owner_fingerprint, 0, now).is_err()
+        {
+            return Err(StoreError::Invalid);
+        }
+        let roster_json = serde_json::to_string(&roster).map_err(|_| StoreError::Database)?;
+        let mut conn = self.connection.lock().map_err(|_| StoreError::Database)?;
+        let exists: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM spaces WHERE space_id=?1)",
+            [space_id],
+            |row| row.get(0),
+        ).map_err(|_| StoreError::Database)?;
+        if exists == 0 {
+            return Err(StoreError::Unauthorized);
+        }
+        let latest: Option<(i64, String, String)> = conn.query_row(
+            "SELECT revision, owner_fingerprint, roster_json FROM signed_roster_history
+             WHERE space_id=?1 ORDER BY revision DESC LIMIT 1",
+            [space_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).optional().map_err(|_| StoreError::Database)?;
+        if let Some((latest_revision, latest_owner, latest_json)) = latest {
+            if latest_owner != owner_fingerprint {
+                return Err(StoreError::Conflict);
+            }
+            let latest_revision = u64::try_from(latest_revision).map_err(|_| StoreError::Database)?;
+            if roster.unsigned.revision == latest_revision {
+                return if roster_json == latest_json { Ok(false) } else { Err(StoreError::Conflict) };
+            }
+            if roster.unsigned.revision != latest_revision.checked_add(1).ok_or(StoreError::Conflict)? {
+                return Err(StoreError::Conflict);
+            }
+        } else if roster.unsigned.revision != 1 {
+            return Err(StoreError::Conflict);
+        }
+        let tx = conn.transaction().map_err(|_| StoreError::Database)?;
+        tx.execute(
+            "INSERT INTO signed_roster_history(space_id, revision, owner_fingerprint, roster_json, inserted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                space_id,
+                i64::try_from(roster.unsigned.revision).map_err(|_| StoreError::Invalid)?,
+                owner_fingerprint,
+                roster_json,
+                i64::try_from(now).map_err(|_| StoreError::Invalid)?
+            ],
+        ).map_err(|error| {
+            if matches!(error, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) {
+                StoreError::Conflict
+            } else {
+                StoreError::Database
+            }
+        })?;
+        tx.execute(
+            "DELETE FROM signed_roster_history WHERE space_id=?1 AND revision NOT IN
+             (SELECT revision FROM signed_roster_history WHERE space_id=?1 ORDER BY revision DESC LIMIT ?2)",
+            params![space_id, MAX_ROSTER_HISTORY as i64],
+        ).map_err(|_| StoreError::Database)?;
+        tx.commit().map_err(|_| StoreError::Database)?;
+        Ok(true)
+    }
+
+    fn list_signed_rosters(
+        &self,
+        space_id: &str,
+        after_revision: u64,
+        limit: usize,
+    ) -> Result<RosterHistoryPage, StoreError> {
+        if !valid_space_id(space_id) || after_revision > i64::MAX as u64 {
+            return Err(StoreError::Invalid);
+        }
+        let conn = self.connection.lock().map_err(|_| StoreError::Database)?;
+        let exists: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM spaces WHERE space_id=?1)",
+            [space_id],
+            |row| row.get(0),
+        ).map_err(|_| StoreError::Database)?;
+        if exists == 0 {
+            return Err(StoreError::Unauthorized);
+        }
+        let mut statement = conn.prepare(
+            "SELECT revision, owner_fingerprint, roster_json, inserted_at
+             FROM signed_roster_history
+             WHERE space_id=?1 AND revision>?2
+             ORDER BY revision ASC LIMIT ?3",
+        ).map_err(|_| StoreError::Database)?;
+        let rows = statement.query_map(
+            params![
+                space_id,
+                after_revision as i64,
+                limit.clamp(1, MAX_ROSTERS_PER_PAGE) as i64
+            ],
+            |row| Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            )),
+        ).map_err(|_| StoreError::Database)?;
+        let mut rosters = Vec::new();
+        for row in rows {
+            let (revision, owner_fingerprint, json, inserted_at) = row.map_err(|_| StoreError::Database)?;
+            let roster: SignedDeviceRoster = serde_json::from_str(&json).map_err(|_| StoreError::Database)?;
+            if revision < 1
+                || roster.unsigned.revision != revision as u64
+                || roster.unsigned.owner_card.fingerprint_sha256 != owner_fingerprint
+            {
+                return Err(StoreError::Database);
+            }
+            rosters.push(SignedRosterVersion {
+                revision: revision as u64,
+                owner_fingerprint,
+                roster,
+                inserted_at_unix: inserted_at.max(0) as u64,
+            });
+        }
+        let next_revision = rosters.last().map(|entry| entry.revision).unwrap_or(after_revision);
+        Ok(RosterHistoryPage { next_revision, rosters })
+    }
+
     fn put(&self, space_id: &str, message_id: &str, payload: &[u8]) -> Result<u64, StoreError> {
         if !valid_space_id(space_id) || !valid_message_id(message_id) || payload.is_empty() || payload.len() > MAX_BODY {
             return Err(StoreError::Invalid);
@@ -566,6 +705,23 @@ struct MemberSummary {
 
 #[derive(Serialize)]
 struct MessagePage { next_cursor: u64, messages: Vec<StoredMessage> }
+
+#[derive(Deserialize)]
+struct RosterQuery { after_revision: Option<u64>, limit: Option<usize> }
+
+#[derive(Serialize)]
+struct RosterHistoryPage {
+    next_revision: u64,
+    rosters: Vec<SignedRosterVersion>,
+}
+
+#[derive(Serialize)]
+struct SignedRosterVersion {
+    revision: u64,
+    owner_fingerprint: String,
+    roster: SignedDeviceRoster,
+    inserted_at_unix: u64,
+}
 
 #[derive(Serialize)]
 struct StoredMessage {
@@ -682,6 +838,37 @@ async fn replace_member_token(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn put_signed_roster(
+    State(state): State<AppState>,
+    Path(space_id): Path<String>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, ApiFailure> {
+    let token = bearer(&headers)?;
+    let path = uri.path_and_query().map(|value| value.as_str()).unwrap_or_else(|| uri.path());
+    state.store.authorize_request(&space_id, token, "PUT", path, &body, &headers).map_err(ApiFailure)?;
+    let inserted = state.store.put_signed_roster(&space_id, &body).map_err(ApiFailure)?;
+    Ok(if inserted { StatusCode::CREATED } else { StatusCode::NO_CONTENT })
+}
+
+async fn list_signed_rosters(
+    State(state): State<AppState>,
+    Path(space_id): Path<String>,
+    Query(query): Query<RosterQuery>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Result<Json<RosterHistoryPage>, ApiFailure> {
+    let token = bearer(&headers)?;
+    let path = uri.path_and_query().map(|value| value.as_str()).unwrap_or_else(|| uri.path());
+    state.store.authorize_request(&space_id, token, "GET", path, &[], &headers).map_err(ApiFailure)?;
+    state.store.list_signed_rosters(
+        &space_id,
+        query.after_revision.unwrap_or(0),
+        query.limit.unwrap_or(MAX_ROSTERS_PER_PAGE).clamp(1, MAX_ROSTERS_PER_PAGE),
+    ).map(Json).map_err(ApiFailure)
+}
+
 async fn put_message(
     State(state): State<AppState>,
     Path((space_id, message_id)): Path<(String, String)>,
@@ -757,6 +944,8 @@ fn build_app(store: Arc<Store>) -> Router {
         .route("/v1/spaces/{space_id}/members/activate", post(activate_members))
         .route("/v1/spaces/{space_id}/members/{fingerprint}", put(replace_member_token).delete(revoke_member))
         .route("/v1/spaces/{space_id}", delete(delete_space))
+        .route("/v1/spaces/{space_id}/roster", put(put_signed_roster))
+        .route("/v1/spaces/{space_id}/rosters", get(list_signed_rosters))
         .route("/v1/spaces/{space_id}/messages/{message_id}", put(put_message))
         .route("/v1/spaces/{space_id}/messages", get(list_messages))
         .layer(DefaultBodyLimit::max(MAX_BODY))
@@ -1096,6 +1285,74 @@ mod tests {
         ));
         store.authorize("device-space-0001", &replacement_token).unwrap();
         store.authorize("device-space-0001", &second_token).unwrap();
+    }
+
+    #[test]
+    fn signed_roster_history_rejects_replay_and_owner_substitution() {
+        use pcage_sync::{RosterMember, RosterMemberStatus};
+
+        let dir = tempdir().unwrap();
+        let admin = "a".repeat(64);
+        let capability = "0123456789abcdef".repeat(4);
+        let store = Store::open(&dir.path().join("relay.sqlite3"), &admin).unwrap();
+        store.create_space(&admin, "device-space-0001", &capability).unwrap();
+
+        let owner = DeviceIdentity::from_seeds([71; 32], [72; 32], 1).unwrap();
+        let now = unix_now().unwrap();
+        let owner_member = RosterMember {
+            fingerprint_sha256: owner.card.fingerprint_sha256.clone(),
+            card: Some(owner.card.clone()),
+            status: RosterMemberStatus::Active,
+            added_at_unix: 0,
+            revoked_at_unix: None,
+        };
+        let first = owner.sign_device_roster(
+            "device-space-0001", 1, now, vec![owner_member.clone()]
+        ).unwrap();
+        let first_bytes = serde_json::to_vec(&first).unwrap();
+        assert!(store.put_signed_roster("device-space-0001", &first_bytes).unwrap());
+        assert!(!store.put_signed_roster("device-space-0001", &first_bytes).unwrap());
+
+        let revoked = RosterMember {
+            fingerprint_sha256: "ab".repeat(32),
+            card: None,
+            status: RosterMemberStatus::Revoked,
+            added_at_unix: 0,
+            revoked_at_unix: Some(now),
+        };
+        let second = owner.sign_device_roster(
+            "device-space-0001", 2, now, vec![owner_member, revoked]
+        ).unwrap();
+        assert!(store.put_signed_roster(
+            "device-space-0001", &serde_json::to_vec(&second).unwrap()
+        ).unwrap());
+
+        let history = store.list_signed_rosters("device-space-0001", 0, 25).unwrap();
+        assert_eq!(history.rosters.iter().map(|entry| entry.revision).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(history.next_revision, 2);
+        let after_first = store.list_signed_rosters("device-space-0001", 1, 25).unwrap();
+        assert_eq!(after_first.rosters.len(), 1);
+        assert_eq!(after_first.rosters[0].revision, 2);
+
+        assert!(matches!(
+            store.put_signed_roster("device-space-0001", &first_bytes),
+            Err(StoreError::Conflict)
+        ));
+        let impostor = DeviceIdentity::from_seeds([73; 32], [74; 32], 1).unwrap();
+        let impostor_member = RosterMember {
+            fingerprint_sha256: impostor.card.fingerprint_sha256.clone(),
+            card: Some(impostor.card.clone()),
+            status: RosterMemberStatus::Active,
+            added_at_unix: 0,
+            revoked_at_unix: None,
+        };
+        let substituted = impostor.sign_device_roster(
+            "device-space-0001", 3, now, vec![impostor_member]
+        ).unwrap();
+        assert!(matches!(
+            store.put_signed_roster("device-space-0001", &serde_json::to_vec(&substituted).unwrap()),
+            Err(StoreError::Conflict)
+        ));
     }
 
     #[tokio::test]

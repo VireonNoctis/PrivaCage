@@ -13,6 +13,13 @@ import java.security.SecureRandom
 
 internal data class RelayedMessage(val cursor: Long, val messageId: String, val packetJson: String)
 internal data class RelayPage(val nextCursor: Long, val messages: List<RelayedMessage>)
+internal data class RelayedRoster(
+    val revision: Long,
+    val ownerFingerprint: String,
+    val rosterJson: String,
+    val insertedAtUnix: Long
+)
+internal data class RosterPage(val nextRevision: Long, val rosters: List<RelayedRoster>)
 
 /**
  * HTTPS-only client for the opaque relay API. Redirects are not followed because a redirect
@@ -43,9 +50,90 @@ internal class SyncRelayClient(
         }
         try {
             request("PUT", "/v1/spaces/$spaceId/messages/$messageId", payload,
-                HttpURLConnection.HTTP_CREATED, 1024)
+                setOf(HttpURLConnection.HTTP_CREATED), 1024)
         } finally {
             payload.fill(0)
+        }
+    }
+
+    @Throws(IOException::class)
+    fun publishRoster(rosterJson: String) {
+        val payload = rosterJson.toByteArray(StandardCharsets.UTF_8)
+        if (payload.isEmpty() || payload.size > MAX_ROSTER_BYTES) {
+            payload.fill(0)
+            throw IOException("Signed roster exceeds the relay's 256 KiB limit.")
+        }
+        try {
+            val response = request(
+                "PUT",
+                "/v1/spaces/$spaceId/roster",
+                payload,
+                setOf(HttpURLConnection.HTTP_CREATED, HttpURLConnection.HTTP_NO_CONTENT),
+                1024
+            )
+            response.fill(0)
+        } finally {
+            payload.fill(0)
+        }
+    }
+
+    @Throws(IOException::class)
+    fun fetchRostersAfter(afterRevision: Long, limit: Int = DEFAULT_ROSTER_PAGE_SIZE): RosterPage {
+        require(afterRevision >= 0) { "Roster revision cannot be negative." }
+        require(limit in 1..MAX_ROSTER_PAGE_SIZE) { "Roster page size must be from 1 to $MAX_ROSTER_PAGE_SIZE." }
+        val bytes = request(
+            "GET",
+            "/v1/spaces/$spaceId/rosters?after_revision=$afterRevision&limit=$limit",
+            null,
+            setOf(HttpURLConnection.HTTP_OK),
+            MAX_RESPONSE_BYTES
+        )
+        try {
+            val json = JSONObject(String(bytes, StandardCharsets.UTF_8))
+            val nextRevision = json.optLong("next_revision", -1L)
+            if (nextRevision < afterRevision) throw IOException("Relay returned a backward roster revision.")
+            val rawRosters = json.optJSONArray("rosters")
+                ?: throw IOException("Relay response omitted the roster history array.")
+            if (rawRosters.length() > limit) throw IOException("Relay returned more roster revisions than requested.")
+            val rosters = ArrayList<RelayedRoster>(rawRosters.length())
+            var previousRevision = afterRevision
+            for (index in 0 until rawRosters.length()) {
+                val item = rawRosters.optJSONObject(index)
+                    ?: throw IOException("Relay returned a malformed roster history entry.")
+                val revision = item.optLong("revision", -1L)
+                val ownerFingerprint = item.optString("owner_fingerprint", "")
+                val roster = item.optJSONObject("roster")
+                    ?: throw IOException("Relay roster entry omitted its signed roster.")
+                val unsigned = roster.optJSONObject("unsigned")
+                val rosterRevision = unsigned?.optLong("revision", -1L) ?: -1L
+                val rosterOwner = unsigned?.optJSONObject("owner_card")
+                    ?.optString("fingerprint_sha256", "").orEmpty()
+                if (revision <= previousRevision || rosterRevision != revision ||
+                    !isValidFingerprint(ownerFingerprint) || ownerFingerprint != rosterOwner
+                ) {
+                    throw IOException("Relay roster history contains inconsistent revision or owner metadata.")
+                }
+                previousRevision = revision
+                rosters += RelayedRoster(
+                    revision,
+                    ownerFingerprint,
+                    roster.toString(),
+                    item.optLong("inserted_at_unix", 0L)
+                )
+            }
+            if (rosters.isNotEmpty() && nextRevision != rosters.last().revision) {
+                throw IOException("Relay returned an inconsistent roster cursor.")
+            }
+            if (rosters.isEmpty() && nextRevision != afterRevision) {
+                throw IOException("Relay advanced the roster cursor without returning a roster.")
+            }
+            return RosterPage(nextRevision, rosters)
+        } catch (exception: IOException) {
+            throw exception
+        } catch (exception: Exception) {
+            throw IOException("Relay returned an invalid signed roster history page.", exception)
+        } finally {
+            bytes.fill(0)
         }
     }
 
@@ -57,7 +145,7 @@ internal class SyncRelayClient(
             "GET",
             "/v1/spaces/$spaceId/messages?after=$cursor&limit=$limit",
             null,
-            HttpURLConnection.HTTP_OK,
+            setOf(HttpURLConnection.HTTP_OK),
             MAX_RESPONSE_BYTES
         )
         try {
@@ -120,7 +208,7 @@ internal class SyncRelayClient(
         method: String,
         path: String,
         body: ByteArray?,
-        expectedStatus: Int,
+        expectedStatuses: Set<Int>,
         maxResponseBytes: Int
     ): ByteArray {
         val url = URL(baseUrl + path)
@@ -156,7 +244,7 @@ internal class SyncRelayClient(
                 }
             }
             val status = connection.responseCode
-            if (status != expectedStatus) {
+            if (status !in expectedStatuses) {
                 throw IOException(
                     when (status) {
                         in 300..399 -> "Relay attempted a redirect; credentials were not forwarded."
@@ -219,6 +307,9 @@ internal class SyncRelayClient(
         private const val MAX_REQUEST_BYTES = 3 * 1024 * 1024
         private const val MAX_RESPONSE_BYTES = 5_000_000
         private const val MAX_PAGE_SIZE = 100
+        private const val MAX_ROSTER_BYTES = 256 * 1024
+        private const val MAX_ROSTER_PAGE_SIZE = 25
+        private const val DEFAULT_ROSTER_PAGE_SIZE = 25
 
         fun validateBaseUrl(value: String): String {
             val trimmed = value.trim()
