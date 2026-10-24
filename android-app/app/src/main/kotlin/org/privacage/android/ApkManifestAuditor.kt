@@ -108,6 +108,7 @@ internal class ApkManifestAuditor(
             fileSizeBytes = apkFile.length(),
             sha256 = sha256(apkFile),
             signingCertificateSha256 = signingCertificateFingerprints(packageInfo),
+            signatureVerification = ApkSignatureVerifier.verify(apkFile),
             permissions = permissions,
             exportedComponents = exportedComponents,
             trackerScan = trackerScan
