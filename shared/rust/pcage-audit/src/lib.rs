@@ -542,6 +542,19 @@ mod tests {
     }
 
     #[test]
+    fn verifies_fixed_cross_implementation_checkpoint_vector() {
+        let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1.json");
+        let result = verify_checkpoint_json(checkpoint).expect("checked-in Android-format vector must verify");
+        assert_eq!(result.event_count, 1);
+        assert_eq!(result.created_at, "2026-10-24T10:01:00Z");
+        assert_eq!(
+            result.signer_public_key_sha256,
+            "11086649cd3e5d1892200a4200b165bbea5c9f9b47ca83792d4f9a1ef0dc8921"
+        );
+        assert!(!result.signer_identity_established);
+    }
+
+    #[test]
     fn accepts_a_valid_signed_checkpoint() {
         let result = verify_checkpoint_json(&valid_checkpoint()).expect("checkpoint must verify");
         assert_eq!(result.event_count, 1);
