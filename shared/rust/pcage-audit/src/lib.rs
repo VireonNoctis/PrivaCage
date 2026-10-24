@@ -12,7 +12,7 @@ use std::fmt;
 use time::{format_description, format_description::well_known::Rfc3339, Date, OffsetDateTime};
 
 pub const MAX_CHECKPOINT_BYTES: usize = 2 * 1024 * 1024;
-pub const MAX_PAYLOAD_BYTES: usize = 1 * 1024 * 1024;
+pub const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 pub const MAX_EVENTS: usize = 100;
 
 const CHECKPOINT_FORMAT: &str = "privacage-audit-checkpoint";
@@ -558,8 +558,8 @@ mod tests {
     fn accepts_a_valid_signed_checkpoint() {
         let result = verify_checkpoint_json(&valid_checkpoint()).expect("checkpoint must verify");
         assert_eq!(result.event_count, 1);
-        assert_eq!(result.signer_identity_established, false);
-        assert_eq!(result.chain_head_sha256, result.chain_head_sha256.to_ascii_lowercase());
+        assert!(!result.signer_identity_established);
+        assert_eq!(result.chain_head_sha256, "ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb");
     }
 
     #[test]
