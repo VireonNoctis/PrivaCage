@@ -8,7 +8,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-const DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
+pub const DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
 const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 const COPY_BUFFER_BYTES: usize = 8 * 1024;
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -481,7 +481,7 @@ fn scrub_png<R: Read, W: Write + Seek>(
         buffer.fill(0);
         let mut stored_crc_bytes = [0u8; 4];
         read_exact_checked(reader, &mut stored_crc_bytes)?;
-        consumed += chunk_length + 8;
+        consumed += chunk_length + 4; // The 8-byte chunk header was already counted above.
         let stored_crc = u32::from_be_bytes(stored_crc_bytes);
         if stored_crc != !crc { return Err(MetadataError::Invalid("PNG chunk CRC mismatch")); }
         if remove_kind.is_none() {
