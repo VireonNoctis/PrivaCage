@@ -158,6 +158,131 @@ pub fn validate_bundle(b:&IntelligenceBundle)->Result<(),IntelError>{
 fn validate_hash(s:&str)->Result<(),IntelError>{if s.len()!=64||!s.bytes().all(|b|b.is_ascii_hexdigit()){Err(invalid(format!("invalid SHA-256: {s}")))}else{Ok(())}}
 fn validate_evidence(e:&Evidence)->Result<(),IntelError>{if !(e.url.starts_with("https://")||e.url.starts_with("http://"))||e.description.trim().is_empty(){Err(invalid(format!("invalid evidence URL/description: {}",e.url)))}else{Ok(())}}
 
+
+const MAX_FEED_BYTES: usize = 32 * 1024 * 1024;
+const STEVENBLACK_SOURCE_ID: &str = "feed-stevenblack-personal-hosts";
+const STEVENBLACK_FEED_URL: &str =
+    "https://raw.githubusercontent.com/StevenBlack/hosts/master/data/StevenBlack/hosts";
+
+/// Parse a hosts-format feed into normalized domains. These are review candidates,
+/// never an assertion that each domain is a tracker or malicious.
+pub fn parse_hosts_feed(text: &str) -> Result<(Vec<String>, usize), IntelError> {
+    if text.trim().is_empty() {
+        return Err(invalid("feed is empty"));
+    }
+    let mut domains = BTreeSet::new();
+    let mut ignored_lines = 0usize;
+    for raw in text.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() { continue; }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 2 || fields[0].parse::<std::net::IpAddr>().is_err() {
+            ignored_lines += 1;
+            continue;
+        }
+        for host in fields.iter().skip(1) {
+            let host = host.trim_end_matches('.').to_ascii_lowercase();
+            if host == "localhost" || host == "localhost.localdomain" || host == "broadcasthost"
+                || host.ends_with(".localhost") || host.ends_with(".local")
+                || host.ends_with(".invalid") || host.ends_with(".test") || host.ends_with(".example")
+                || host.parse::<std::net::IpAddr>().is_ok() {
+                continue;
+            }
+            if let Some(domain) = normalize_domain(&host) {
+                domains.insert(domain);
+            } else {
+                ignored_lines += 1;
+            }
+        }
+    }
+    if domains.is_empty() {
+        return Err(invalid("feed contained no valid public DNS domain candidates"));
+    }
+    Ok((domains.into_iter().collect(), ignored_lines))
+}
+
+/// Fetch only an explicitly registered, license-approved, known-format HTTPS feed.
+/// Fetching is user-triggered; this function never schedules refreshes or publishes entries.
+pub fn fetch_registered_hosts_feed(
+    catalog_path: &Path,
+    registry_path: &Path,
+    source_id: &str,
+    as_of: &str,
+) -> Result<(Vec<Observation>, Vec<Candidate>, Value), IntelError> {
+    if date_ordinal(as_of).is_none() {
+        return Err(invalid("as-of date must be a valid YYYY-MM-DD date"));
+    }
+    let registry = load_source_registry(registry_path)?;
+    let source = registry.sources.iter().find(|s| s.id == source_id)
+        .ok_or_else(|| invalid(format!("source id {source_id} is not registered")))?;
+    if source_id != STEVENBLACK_SOURCE_ID || source.url != STEVENBLACK_FEED_URL {
+        return Err(invalid("this release supports only the registered StevenBlack personal hosts feed adapter"));
+    }
+    if source.ingest_mode != "manual_import" {
+        return Err(invalid("source is not configured for manual import"));
+    }
+    if source.license_status != "approved" {
+        return Err(invalid("source license must be reviewed and marked approved before fetching"));
+    }
+    if !source.review_required || registry.policy.automatic_promotion {
+        return Err(invalid("feed must require human review and disable automatic promotion"));
+    }
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(10))
+        .timeout_read(std::time::Duration::from_secs(20))
+        .redirects(0)
+        .build();
+    let response = agent.get(&source.url)
+        .set("User-Agent", "PrivaCage-Tracker-Intelligence/0.2")
+        .call()
+        .map_err(|e| IntelError::Io(format!("HTTPS feed request failed: {e}")))?;
+    if response.get_url() != source.url {
+        return Err(invalid("feed redirected; redirects are not accepted"));
+    }
+    let content_type = response.header("Content-Type").unwrap_or("");
+    if !(content_type.starts_with("text/plain") || content_type.starts_with("application/octet-stream")) {
+        return Err(invalid(format!("unexpected feed Content-Type: {content_type}")));
+    }
+    let mut bytes = Vec::new();
+    response.into_reader().take((MAX_FEED_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| IntelError::Io(format!("read feed response: {e}")))?;
+    if bytes.len() > MAX_FEED_BYTES {
+        return Err(invalid("feed exceeds the 32 MiB download limit"));
+    }
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|e| invalid(format!("feed is not UTF-8 text: {e}")))?;
+    let (domains, ignored_lines) = parse_hosts_feed(text)?;
+    let catalog = crate::load_catalog(catalog_path)?;
+    let observations: Vec<Observation> = domains.into_iter().map(|domain| Observation {
+        value: domain,
+        kind: IndicatorKind::Domain,
+        context: Some(format!("registered source {} ({}) fetched on {}; unreviewed feed candidate", source.id, source.url, as_of)),
+    }).collect();
+    let candidates = crate::discover_candidates(&catalog, &observations);
+    let catalog_bytes = fs::read(catalog_path)
+        .map_err(|e| IntelError::Io(format!("read catalog for provenance: {e}")))?;
+    let manifest = json!({
+        "schema_version": 1,
+        "source_id": source.id,
+        "source_name": source.name,
+        "source_url": source.url,
+        "source_license_status": source.license_status,
+        "source_trust_tier": source.trust_tier,
+        "retrieved_at": as_of,
+        "source_sha256": sha256_hex(&bytes),
+        "source_bytes": bytes.len(),
+        "catalog_sha256": sha256_hex(&catalog_bytes),
+        "observation_count": observations.len(),
+        "candidate_count": candidates.len(),
+        "ignored_or_invalid_lines": ignored_lines,
+        "automatic_promotion": false,
+        "classification": "host-file entries are candidates, not verified tracker identities or maliciousness findings"
+    });
+    Ok((observations, candidates, manifest))
+}
+
 pub fn ingest_observations(paths:&[PathBuf])->Result<Vec<Observation>,IntelError>{
     let mut out=Vec::new();let mut seen=BTreeSet::new();
     for p in paths {
@@ -560,7 +685,20 @@ mod advanced_tests {
         assert!(html.contains("analytics.example.org"));
         assert!(html.contains("public docs"));
     }
-    #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),17);}
+
+    #[test] fn parses_hosts_feed_deduplicates_and_ignores_local_names() {
+        let input = "# source\n0.0.0.0 tracker.example.com ads.example.com\n127.0.0.1 localhost\n0.0.0.0 tracker.example.com\n::1 local-v6.example\n0.0.0.0 bad..domain\n";
+        let (domains, ignored) = parse_hosts_feed(input).unwrap();
+        assert_eq!(domains, vec!["ads.example.com".to_string(), "tracker.example.com".to_string()]);
+        assert!(ignored >= 1);
+    }
+
+    #[test] fn rejects_empty_or_non_domain_hosts_feeds() {
+        assert!(parse_hosts_feed("# only comments\n").is_err());
+        assert!(parse_hosts_feed("0.0.0.0 localhost\n127.0.0.1 127.0.0.2\n").is_err());
+    }
+
+    #[test] fn source_registry_is_valid(){let p=concat!(env!("CARGO_MANIFEST_DIR"),"/../../tracker-db/source-registry.json");let r=load_source_registry(p).unwrap();assert_eq!(r.sources.len(),18);}
     #[test] fn migration_keeps_entry_and_assigns_source_ids(){
         let b=migrate_v1(sample_catalog()).unwrap();
         assert_eq!(b.schema_version,2);assert_eq!(b.entries.len(),1);
