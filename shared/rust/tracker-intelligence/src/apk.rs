@@ -168,12 +168,12 @@ pub fn parse_binary_android_manifest(bytes: &[u8]) -> Result<Value, IntelError> 
                 }
             }
             if element_name.starts_with("uses-permission") {
-                if let Some(permission) = name_value {
-                    if !permission.trim().is_empty() { permissions.insert(permission); }
+                if let Some(permission) = &name_value {
+                    if !permission.trim().is_empty() { permissions.insert(permission.clone()); }
                 }
             }
             if exported_true && ["activity", "activity-alias", "service", "receiver", "provider"].contains(&element_name.as_str()) {
-                if let Some(component_name) = name_value {
+                if let Some(component_name) = &name_value {
                     exported_components.insert(format!("{element_name}:{component_name}"));
                 }
             }
