@@ -8,7 +8,7 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - JPEG input is limited to 100 MiB, staged in private cache, and temporary files are deleted after use or cancellation.
 
 - User-selected APK manifest inspection through Android's package archive parser, staged into a private cache file with a 100 MiB cap, then deleted after inspection.
-- Static report with package/version/target-SDK metadata, APK SHA-256, current signing-certificate SHA-256 fingerprints when Android exposes signer metadata, declared permissions with conservative explanations, components the parser reports as exported, and a bounded scan of DEX byte strings for catalog domain/SDK literals.
+- Static report with package/version/target-SDK metadata, APK SHA-256, current signing-certificate SHA-256 fingerprints when Android exposes signer metadata, cryptographic APK signature verification through Google's `apksig` library (including supported v1/JAR and v2/v3 schemes), declared permissions with conservative explanations, components the parser reports as exported, and a bounded scan of DEX byte strings for catalog domain/SDK literals.
 - Permission findings are not described as proof of runtime use; the APK is not installed or executed and is not uploaded.
 - Local UI for a numeric IPv4 upstream resolver and user-entered blocked domains.
 - Optional DNS-over-TLS on port 853 with platform trust, SNI, strict certificate hostname verification, protected sockets, bounded reads, DNS response validation, and no plaintext fallback.
@@ -36,7 +36,7 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Limits
 
-- APK inspection is static: it reports manifest declarations, current signer certificate SHA-256 fingerprints when available, and searches bounded DEX data for literal catalog markers. It does not decompile or analyze every code path, verify permission grants, prove network activity, or decide that an app is malicious. Marker strings may be unused, dead code, test data, or embedded documentation.
+- APK inspection is static: it reports manifest declarations, current signer certificate SHA-256 fingerprints when available, verifies APK signature integrity with Google's `apksig` library, and searches bounded DEX data for literal catalog markers. A valid signature proves integrity relative to the included signing certificate, not publisher identity or safety. It does not decompile or analyze every code path, verify permission grants, prove network activity, or decide that an app is malicious. Marker strings may be unused, dead code, test data, or embedded documentation.
 - The APK is user-selected, limited to 100 MiB, copied into private cache for parsing, and deleted after inspection; no APK upload or installation occurs.
 - The bundled catalog currently contains only two Analytics endpoint indicators and is not comprehensive. Only explicitly imported active domain indicators (plus manually entered domains) become blocking rules; review-status records are excluded.
 - The client-facing tunnel supports IPv4 UDP DNS only. It does not accept DNS-over-TCP connections from device apps.
