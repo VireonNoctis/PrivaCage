@@ -634,7 +634,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("The rotated roster exceeds the 128-entry limit including revocation tombstones.")
         }
         val members = org.json.JSONArray()
-        memberByFingerprint.toSortedMap().values.forEach(members::put)
+        memberByFingerprint.toSortedMap().values.forEach { members.put(it) }
 
         val roster = parseNative(
             bridge.nativeCreateDeviceRoster(
@@ -771,6 +771,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         val configuredSpace = currentRoster.optJSONObject("unsigned")?.optString("space_id", "").orEmpty()
         if (spaceId.isBlank() || configuredSpace != spaceId) {
             throw IOException("Configured relay space does not match the currently pinned roster.")
+        }
+        if (currentRevision == Long.MAX_VALUE) {
+            throw IOException("Current roster revision is exhausted and cannot accept a further owner transition.")
         }
         val verifiedTransition = parseNative(
             bridge.nativeVerifyOwnerKeyRotation(
