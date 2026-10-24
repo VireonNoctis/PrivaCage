@@ -16,7 +16,7 @@ cargo run -- ingest ../../tracker-db/signatures.json /tmp/observations.json /tmp
 cargo run -- scan-apk ../../tracker-db/signatures.json app.apk /tmp/apk-observations.json /tmp/apk-report.json
 cargo run -- diff old-v2.json new-v2.json /tmp/catalog-diff.json
 cargo run -- graph /tmp/intelligence-v2.json /tmp/intelligence-graph.json
-cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html>
+cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html
 cargo run -- regressions old-v2.json new-v2.json /tmp/regressions.json
 cargo run -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 cargo run -- review-candidate /tmp/candidates.json domain collector.example.net accept reviewer-id "confirmed by primary documentation" 2026-10-23 ./review-ledger.jsonl
@@ -42,8 +42,9 @@ The release store keeps immutable `releases/<id>/catalog.json` and `manifest.jso
 - Local ingestion accepts typed JSON observations or newline-separated domains; it normalizes/deduplicates and creates candidates without auto-publishing them.
 - Static APK scanning reads DEX files from ZIP/APK archives, extracts printable ASCII strings, compares them with catalog DEX indicators, and records the APK SHA-256. It does not extract package IDs from binary AndroidManifest.xml, certificate identity from APK signing blocks, runtime behavior, or network destinations.
 - Catalog diff produces added, removed, and changed entries.
+- `dashboard` generates a self-contained offline HTML report for a validated schema-v2 bundle, with catalog counts, indicator values, evidence links, and escaped record text. It makes no background requests and is a point-in-time report, not a live dashboard.
 - Ed25519 release signing/verification and local immutable release snapshots/rollback are implemented. Pin the public key out-of-band.
 - Exact DNS-label-boundary matching prevents substring matches. Indicator association is not proof of SDK execution, sensitive-data access, exfiltration, or malicious intent.
 
 ## Not implemented here
-Live VPN/DNS telemetry still requires platform-specific Android VPN-service integration and OS-permitted iOS networking APIs. Automatic internet feed crawling and publication require source-specific adapters, licensing/provenance rules, network/privacy policy, and maintainer review; this crate deliberately accepts local feed exports instead of inventing a universal scraper. A dashboard and multi-user review service require the app/backend's actual UI and API surfaces.
+Live VPN/DNS telemetry still requires platform-specific Android VPN-service integration and OS-permitted iOS networking APIs. Automatic internet feed crawling and publication require source-specific adapters, licensing/provenance rules, network/privacy policy, and maintainer review; this crate deliberately accepts local feed exports instead of inventing a universal scraper. A live web dashboard and multi-user review service still require the app/backend's actual UI and API surfaces; the `dashboard` command provides an offline static report.
