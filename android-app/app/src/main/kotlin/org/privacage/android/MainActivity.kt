@@ -714,6 +714,10 @@ class MainActivity : Activity() {
         } else {
             report.signingCertificateSha256.forEach { append("\n  ").append(it) }
         }
+        append("\n\nAPK signature verification: ").append(report.signatureVerification.status.name)
+        append("\nThis checks cryptographic signature integrity, not whether the publisher or app is trustworthy.")
+        report.signatureVerification.errors.forEach { append("\n  ERROR: ").append(it) }
+        report.signatureVerification.warnings.forEach { append("\n  WARNING: ").append(it) }
         append("\n\n")
 
         append("Declared permissions (").append(report.permissions.size).append("):")
