@@ -831,7 +831,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Import or publish the initial signed roster before rotating a peer identity.")
         }
         if (ownerFingerprint == localFingerprint) {
-            throw IOException("Owner-key rotation is not supported by this transition format. Do not rotate the roster owner key.")
+            throw IOException("This peer-key rotation flow is for non-owner devices. Use 'Rotate roster owner key' for the pinned roster owner.")
         }
         if (record.has(KEY_PENDING_KEY_ROTATION)) {
             throw IOException("A key rotation is already staged. Finish it or restore from the current recovery bundle first.")
