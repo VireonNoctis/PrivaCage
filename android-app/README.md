@@ -31,6 +31,7 @@ Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.
 
     gradle assembleDebug
     gradle :android-core:test
+    gradle :app:testDebugUnitTest
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
