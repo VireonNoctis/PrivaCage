@@ -32,10 +32,10 @@ Space IDs use 8–80 ASCII letters, digits, underscores, or hyphens. Message IDs
 - HTTP packet bodies are limited to 3 MiB; each space holds at most 10,000 non-expired packets.
 - Stored packets expire after seven days; expired records are purged on reads and writes.
 - Duplicate message IDs within one space are rejected.
-- Space capability rotation invalidates the old shared capability. It does not selectively revoke one device.
+- Space capability rotation invalidates the old shared capability for every device. It does not selectively revoke one device; reconfigure all remaining devices with the new token. The Android UI's per-peer revoke action is local trust revocation only and does not call this administrator endpoint.
 - The relay does not parse or verify packet signatures and cannot prove clients encrypted payloads correctly. Clients must verify packet signatures, fingerprints, recipient binding, expiry, and replay protection.
 - Metadata such as space ID, message ID, timing, payload length, and access patterns remains visible to the relay operator.
-- No app integration, rate-limiting system, account identity, group roster, or per-device revocation is implemented.
+- The Android client performs trust revocation locally using its encrypted fingerprint denylist. The relay has no account identity, signed group roster, per-device credential, or selective per-device revocation. Administrator rotation is space-wide.
 
 
 ## Validation
@@ -50,4 +50,4 @@ cargo clippy --manifest-path shared/rust/pcage-sync-relay/Cargo.toml --all-targe
 The relay test suite includes an in-process HTTP API round trip using a real `pcage-sync` encrypted and signed packet: create a space, upload ciphertext with its capability, reject an unauthenticated read, retrieve the opaque bytes, and decrypt them only with the recipient identity. This verifies the protocol/relay boundary in-process; it does not claim mobile-client integration, remote TLS deployment, or device lifecycle validation.
 
 
-The Android client requests one record per page to keep the hex-encoded JSON response within a bounded memory limit. The `limit` parameter is optional and the server clamps it to 1–100.
+The Android client requests one record per page to keep the hex-encoded JSON response within a bounded memory limit. The `limit` parameter is optional and the server clamps it to 1–100. The end-to-end regression test restores the same recipient identity from a recovery bundle, decrypts a relayed packet, rejects a wrong recovery passphrase, and rejects replay with the same durable ledger. This is identity recovery/clone behavior, not a new device identity or a remote revocation operation.

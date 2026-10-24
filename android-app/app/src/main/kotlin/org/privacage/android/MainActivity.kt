@@ -524,6 +524,10 @@ class MainActivity : Activity() {
                 )
             }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Manage / revoke trusted devices"
+            setOnClickListener { showTrustedDeviceManager() }
+        }, matchWidth())
         root.addView(TextView(this).apply {
             text = "Relay URL (HTTPS only)"
             setPadding(0, dp(12), 0, 0)
@@ -638,7 +642,8 @@ class MainActivity : Activity() {
                 syncSpaceIdInput.setText(savedSyncConfig.optString("space_id", ""))
                 syncCapabilityInput.setText(savedSyncConfig.optString("capability_token", ""))
                 syncStatusText.text = "Protected sync record loaded. Trusted devices: " +
-                    savedSyncConfig.optInt("trusted_count", 0) + ". No network request was made."
+                    savedSyncConfig.optInt("trusted_count", 0) + "; revoked fingerprints: " +
+                    savedSyncConfig.optInt("revoked_count", 0) + ". No network request was made."
             }
         } catch (exception: Exception) {
             syncStatusText.text = "Could not load protected sync configuration: " +
@@ -771,7 +776,7 @@ class MainActivity : Activity() {
                 } else {
                     runSyncTask(
                         progress = "Saving the explicitly verified device card...",
-                        task = { encryptedSyncManager.trustPeerCard(card.toString()) },
+                        task = { encryptedSyncManager.trustPeerCard(card.toString(), confirmedFingerprint) },
                         onSuccess = { savedFingerprint ->
                             syncStatusText.text = "Trusted device saved: " + savedFingerprint
                         }
@@ -780,6 +785,53 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Not now", null)
             .show()
+    }
+
+    private fun showTrustedDeviceManager() {
+        runSyncTask(
+            progress = "Loading explicitly trusted devices...",
+            task = { encryptedSyncManager.listTrustedPeers().toString() },
+            onSuccess = { peersJson ->
+                val peers = JSONArray(peersJson)
+                if (peers.length() == 0) {
+                    syncStatusText.text = "No trusted devices remain. Revoked fingerprints stay locally denylisted until the full fingerprint is independently confirmed again."
+                    return@runSyncTask
+                }
+                val labels = Array(peers.length()) { index ->
+                    val peer = peers.getJSONObject(index)
+                    val fingerprint = peer.optString("fingerprint_sha256")
+                    peer.optString("device_id") +
+                        " · epoch " + peer.optLong("key_epoch", 0L) +
+                        "\nSHA-256: " + fingerprint
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Trusted devices")
+                    .setItems(labels) { _, index ->
+                        val peer = peers.getJSONObject(index)
+                        val fingerprint = peer.getString("fingerprint_sha256")
+                        val deviceId = peer.optString("device_id")
+                        AlertDialog.Builder(this)
+                            .setTitle("Revoke this device?")
+                            .setMessage(
+                                "Device: " + deviceId +
+                                    "\n\nThis removes its trust on this device, deny-lists its fingerprint, and discards any pending profile from it. Future packets from this fingerprint will be skipped.\n\nThis does not erase data already copied to that device and does not revoke the shared relay capability. If that capability may be compromised, rotate it using the relay administrator credentials; that invalidates access for every device until the remaining devices are reconfigured."
+                            )
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Revoke trust") { _, _ ->
+                                runSyncTask(
+                                    progress = "Revoking local trust and dropping pending data...",
+                                    task = { encryptedSyncManager.revokeTrustedPeer(fingerprint) },
+                                    onSuccess = {
+                                        syncStatusText.text = "Device revoked on this device. Its fingerprint is deny-listed and any pending profile was discarded. Relay access has not been rotated."
+                                    }
+                                )
+                            }
+                            .show()
+                    }
+                    .setPositiveButton("Close", null)
+                    .show()
+            }
+        )
     }
 
     private fun showReceivedProfile(profileJson: String, senderFingerprint: String) {
@@ -986,10 +1038,10 @@ class MainActivity : Activity() {
         val newCard = JSONObject(importedRecord.getString("card_json"))
         val fingerprint = newCard.optString("fingerprint_sha256", "unavailable")
         AlertDialog.Builder(this)
-            .setTitle("Replace local sync identity?")
+            .setTitle("Restore sync identity from recovery?")
             .setMessage(
-                "The recovery file was authenticated. New local identity fingerprint:\n" + fingerprint +
-                    "\n\nConfirming replaces the stored sync identity and clears this device's previous relay configuration, trust list, cursor and pending receive. Other devices may need to verify this fingerprint again."
+                "The recovery file was authenticated. Restored identity fingerprint:\n" + fingerprint +
+                    "\n\nThis restores the same long-term cryptographic identity from the recovery bundle; it does not create a new device identity or revoke the original installation. Confirming replaces this device's stored sync record and clears its relay configuration, trusted-device list, revoked-fingerprint list, inbox cursor and pending receive. If the original device may be lost or compromised, separately revoke its trust on other devices and rotate the shared relay capability with the relay administrator. Rotation affects every device using that capability."
             )
             .setNegativeButton("Keep existing identity", null)
             .setPositiveButton("Replace and protect locally") { _, _ ->

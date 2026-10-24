@@ -64,12 +64,15 @@ internal class AndroidEncryptedSyncManager(context: Context) {
 
     @Synchronized
     @Throws(IOException::class)
-    fun trustPeerCard(cardJson: String): String {
+    fun trustPeerCard(cardJson: String, independentlyConfirmedFingerprint: String): String {
         val record = requireRecord()
         validateLocalRecord(record)
         val verified = parseNative(bridge.nativeVerifyIdentityCard(cardJson))
         val card = verified.getJSONObject("card")
         val fingerprint = verified.getString("fingerprint_sha256")
+        if (independentlyConfirmedFingerprint.trim().lowercase() != fingerprint) {
+            throw IOException("Independent fingerprint confirmation did not match; the device was not trusted.")
+        }
         val localFingerprint = JSONObject(record.getString(KEY_CARD_JSON)).getString("fingerprint_sha256")
         if (fingerprint == localFingerprint) throw IOException("This is your own device card; it cannot be added as a peer.")
         val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
@@ -78,6 +81,61 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         }
         trusted.put(fingerprint, card)
         record.put(KEY_TRUSTED_CARDS, trusted)
+        // Re-trust is possible only after the caller confirms the full fingerprint again.
+        val revoked = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
+        revoked.remove(fingerprint)
+        record.put(KEY_REVOKED_FINGERPRINTS, revoked)
+        store.saveRecord(record)
+        return fingerprint
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun listTrustedPeers(): org.json.JSONArray {
+        val record = requireRecord()
+        validateLocalRecord(record)
+        val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        val fingerprints = mutableListOf<String>()
+        val keys = trusted.keys()
+        while (keys.hasNext()) fingerprints += keys.next()
+        val result = org.json.JSONArray()
+        fingerprints.sorted().forEach { fingerprint ->
+            val card = trusted.optJSONObject(fingerprint) ?: return@forEach
+            result.put(
+                JSONObject()
+                    .put("fingerprint_sha256", fingerprint)
+                    .put("device_id", card.optString("device_id"))
+                    .put("key_epoch", card.optLong("key_epoch", 0L))
+            )
+        }
+        return result
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun revokeTrustedPeer(fingerprint: String): String {
+        if (fingerprint.length != 64 || fingerprint.any { it !in '0'..'9' && it !in 'a'..'f' }) {
+            throw IOException("Peer fingerprint must be a full lowercase SHA-256 hex digest.")
+        }
+        val record = requireRecord()
+        val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        if (!trusted.has(fingerprint)) {
+            throw IOException("This fingerprint is not currently trusted on this device.")
+        }
+        trusted.remove(fingerprint)
+        record.put(KEY_TRUSTED_CARDS, trusted)
+
+        // Keep a denylist so old cards cannot be silently re-trusted via a future code path.
+        // Explicit trust confirmation removes this tombstone only after the complete fingerprint is re-entered.
+        val revoked = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
+        revoked.put(fingerprint, System.currentTimeMillis() / 1000L)
+        record.put(KEY_REVOKED_FINGERPRINTS, revoked)
+
+        // A received-but-not-yet-applied profile from the revoked peer must not remain approvable.
+        if (record.optString(KEY_PENDING_SENDER, "") == fingerprint) {
+            record.remove(KEY_PENDING_PROFILE)
+            record.remove(KEY_PENDING_SENDER)
+        }
         store.saveRecord(record)
         return fingerprint
     }
@@ -113,6 +171,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             .put("capability_token", record.optString(KEY_CAPABILITY, ""))
             .put("has_identity", record.has(KEY_CARD_JSON))
             .put("trusted_count", record.optJSONObject(KEY_TRUSTED_CARDS)?.length() ?: 0)
+            .put("revoked_count", record.optJSONObject(KEY_REVOKED_FINGERPRINTS)?.length() ?: 0)
     }
 
     @Synchronized
@@ -208,6 +267,13 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             }
 
             val senderFingerprint = header.optString("sender_fingerprint_sha256")
+            val revokedCards = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
+            if (revokedCards.has(senderFingerprint)) {
+                // A revoked sender must not wedge the inbox cursor or keep a pending item visible.
+                cursor = advanceCursor(record, message.cursor)
+                skipped += 1
+                return@repeat
+            }
             val senderCard = trustedCards.optJSONObject(senderFingerprint)
                 ?: return SyncReceiveResult(
                     "untrusted",
@@ -371,6 +437,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             .put(KEY_SPACE_ID, "")
             .put(KEY_CAPABILITY, "")
             .put(KEY_TRUSTED_CARDS, JSONObject())
+            .put(KEY_REVOKED_FINGERPRINTS, JSONObject())
             .put(KEY_NEXT_SEQUENCE, 1L)
             .put(KEY_CURSOR, 0L)
 
@@ -418,6 +485,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val KEY_SPACE_ID = "space_id"
         private const val KEY_CAPABILITY = "capability_token"
         private const val KEY_TRUSTED_CARDS = "trusted_cards"
+        private const val KEY_REVOKED_FINGERPRINTS = "revoked_fingerprints"
         private const val KEY_NEXT_SEQUENCE = "next_sequence"
         private const val KEY_CURSOR = "relay_cursor"
         private const val KEY_PENDING_PROFILE = "pending_profile_json"

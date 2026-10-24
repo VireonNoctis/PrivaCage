@@ -303,7 +303,7 @@ mod tests {
         body::{to_bytes, Body},
         http::{header, Request},
     };
-    use pcage_sync::{DeviceIdentity, SyncPacket};
+    use pcage_sync::{DeviceIdentity, SyncError, SyncPacket};
     use tempfile::tempdir;
     use tower::ServiceExt;
 
@@ -440,11 +440,26 @@ mod tests {
         let payload_hex = page["messages"][0]["payload_hex"].as_str().unwrap();
         let returned_packet: SyncPacket =
             serde_json::from_slice(&decode_hex_for_test(payload_hex)).unwrap();
+        // Restore the recipient from a passphrase-protected recovery bundle before opening.
+        // This models a replacement install receiving the same long-term device identity.
+        let recovery_passphrase = "correct horse battery staple for PrivaCage";
+        let recovery_bundle = recipient.create_recovery_bundle(recovery_passphrase).unwrap();
+        let restored_recipient =
+            DeviceIdentity::restore_recovery_bundle(&recovery_bundle, recovery_passphrase).unwrap();
+        assert_eq!(restored_recipient.card, recipient.card);
+        assert!(DeviceIdentity::restore_recovery_bundle(&recovery_bundle, "incorrect passphrase").is_err());
+
         let ledger_path = dir.path().join("recipient-replay-ledger.json");
-        let opened = recipient
+        let opened = restored_recipient
             .open_packet(&returned_packet, &sender.card, now + 1, &ledger_path)
             .unwrap();
         assert_eq!(opened, plaintext);
+
+        // The same signed packet cannot be accepted a second time, including after identity restore.
+        assert_eq!(
+            restored_recipient.open_packet(&returned_packet, &sender.card, now + 1, &ledger_path),
+            Err(SyncError::Replay)
+        );
     }
 
 }
