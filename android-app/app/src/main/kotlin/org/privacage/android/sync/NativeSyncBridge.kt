@@ -19,6 +19,20 @@ internal class NativeSyncBridge {
     external fun nativeCreateIdentity(localPassphrase: String): String
     external fun nativeRestoreIdentity(localBundleBase64: String, localPassphrase: String): String
     external fun nativeVerifyIdentityCard(cardJson: String): String
+    external fun nativeCreateDeviceRoster(
+        localBundleBase64: String,
+        localPassphrase: String,
+        spaceId: String,
+        revision: Long,
+        issuedAtUnix: Long,
+        membersJson: String
+    ): String
+    external fun nativeVerifyDeviceRoster(
+        rosterJson: String,
+        expectedOwnerFingerprint: String,
+        minimumRevision: Long,
+        nowUnix: Long
+    ): String
     external fun nativeSignRelayRequest(
         localBundleBase64: String,
         localPassphrase: String,

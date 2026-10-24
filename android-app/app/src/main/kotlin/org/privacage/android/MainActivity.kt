@@ -528,6 +528,20 @@ class MainActivity : Activity() {
             text = "Manage / revoke trusted devices"
             setOnClickListener { showTrustedDeviceManager() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Create / update owner-signed device roster"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Signing the roster with this device's protected identity...",
+                    task = { encryptedSyncManager.createSignedDeviceRoster() },
+                    onSuccess = { showSignedDeviceRoster(it) }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import owner-signed device roster"
+            setOnClickListener { showSignedDeviceRosterImport() }
+        }, matchWidth())
         root.addView(TextView(this).apply {
             text = "Relay URL (HTTPS only)"
             setPadding(0, dp(12), 0, 0)
@@ -832,6 +846,72 @@ class MainActivity : Activity() {
                     .show()
             }
         )
+    }
+
+
+    private fun showSignedDeviceRoster(rosterJson: String) {
+        val roster = try {
+            JSONObject(rosterJson)
+        } catch (_: Exception) {
+            syncStatusText.text = "Signed roster was created but could not be displayed."
+            return
+        }
+        val unsigned = roster.optJSONObject("unsigned")
+        val ownerFingerprint = unsigned?.optJSONObject("owner_card")?.optString("fingerprint_sha256") ?: "unavailable"
+        val revision = unsigned?.optLong("revision", 0L) ?: 0L
+        AlertDialog.Builder(this)
+            .setTitle("Owner-signed device roster · revision " + revision)
+            .setMessage(
+                "Owner fingerprint:\n" + ownerFingerprint +
+                    "\n\nShare the complete signed JSON with each trusted device. Before first import on a device, compare the full owner fingerprint through a separate trusted channel. A signature does not make an unverified owner key trustworthy.\n\n" +
+                    rosterJson
+            )
+            .setPositiveButton("Copy signed roster") { _, _ ->
+                val clipboard = getSystemService(ClipboardManager::class.java)
+                clipboard.setPrimaryClip(ClipData.newPlainText("PrivaCage signed device roster", rosterJson))
+                syncStatusText.text = "Signed roster revision " + revision +
+                    " copied. Import it on every trusted device; revocation takes effect there only after importing a newer revision."
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showSignedDeviceRosterImport() {
+        val rosterInput = EditText(this).apply {
+            hint = "Paste the complete signed roster JSON"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP
+            minLines = 5
+            maxLines = 10
+        }
+        val ownerFingerprintInput = EditText(this).apply {
+            hint = "Independently confirmed 64-character owner fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "Compare the owner fingerprint with the owner through a separate trusted channel. Import replaces this device's peer roster, and older revisions are rejected."
+                textSize = 14f
+            }, matchWidth())
+            addView(ownerFingerprintInput, matchWidth())
+            addView(rosterInput, matchWidth())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Import signed device roster")
+            .setView(fields)
+            .setPositiveButton("Verify and import") { _, _ ->
+                val rosterJson = rosterInput.text.toString().trim()
+                val ownerFingerprint = ownerFingerprintInput.text.toString().trim().lowercase()
+                runSyncTask(
+                    progress = "Verifying owner signature, fingerprint pin, membership and revision...",
+                    task = { encryptedSyncManager.importSignedDeviceRoster(rosterJson, ownerFingerprint) }
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showReceivedProfile(profileJson: String, senderFingerprint: String) {

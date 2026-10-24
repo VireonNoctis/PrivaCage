@@ -6,7 +6,7 @@ use jni::{
     sys::{jlong, jstring},
     JNIEnv,
 };
-use pcage_sync::{DeviceIdentity, IdentityCard, SyncError, SyncPacket};
+use pcage_sync::{DeviceIdentity, IdentityCard, RosterMember, SignedDeviceRoster, SyncError, SyncPacket};
 use serde_json::{json, Value};
 use std::{path::PathBuf, ptr};
 use zeroize::Zeroize;
@@ -123,6 +123,61 @@ pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeSi
             &method, &path_and_query, timestamp_unix, &nonce, body.as_bytes()
         ).map_err(|_| "Could not sign relay request".to_owned())?;
         Ok(json!({ "ok": true, "signature_hex": signature_hex }))
+    })();
+    respond(&mut env, result)
+}
+
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeCreateDeviceRoster(
+    mut env: JNIEnv, _this: JObject,
+    local_bundle_base64: JString, local_passphrase: JString, space_id: JString,
+    revision: jlong, issued_at_unix: jlong, members_json: JString,
+) -> jstring {
+    let result = (|| {
+        let bundle = read_string(&mut env, local_bundle_base64)?;
+        let passphrase = read_string(&mut env, local_passphrase)?;
+        let space_id = read_string(&mut env, space_id)?;
+        let revision = u64::try_from(revision).map_err(|_| "Invalid roster revision".to_owned())?;
+        let issued_at_unix = u64::try_from(issued_at_unix).map_err(|_| "Invalid roster timestamp".to_owned())?;
+        let members_json = read_string(&mut env, members_json)?;
+        if members_json.len() > 256_000 {
+            return Err("Device roster member list exceeds the supported size".to_owned());
+        }
+        let members: Vec<RosterMember> = serde_json::from_str(&members_json)
+            .map_err(|_| "Device roster member list is not valid protocol JSON".to_owned())?;
+        let identity = restore_identity(&bundle, &passphrase)?;
+        let roster = identity.sign_device_roster(&space_id, revision, issued_at_unix, members)
+            .map_err(|error| error.to_string())?;
+        Ok(json!({ "ok": true, "roster": roster }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeVerifyDeviceRoster(
+    mut env: JNIEnv, _this: JObject,
+    roster_json: JString, expected_owner_fingerprint: JString,
+    minimum_revision: jlong, now_unix: jlong,
+) -> jstring {
+    let result = (|| {
+        let roster_json = read_string(&mut env, roster_json)?;
+        let expected_owner = read_string(&mut env, expected_owner_fingerprint)?;
+        let minimum_revision = u64::try_from(minimum_revision).map_err(|_| "Invalid minimum roster revision".to_owned())?;
+        let now_unix = u64::try_from(now_unix).map_err(|_| "Invalid roster verification timestamp".to_owned())?;
+        if roster_json.len() > 256_000 {
+            return Err("Signed device roster exceeds the supported size".to_owned());
+        }
+        let roster: SignedDeviceRoster = serde_json::from_str(&roster_json)
+            .map_err(|_| "Signed device roster is not valid protocol JSON".to_owned())?;
+        roster.verify(&expected_owner, minimum_revision, now_unix)
+            .map_err(|error| error.to_string())?;
+        Ok(json!({
+            "ok": true,
+            "owner_fingerprint_sha256": roster.unsigned.owner_card.fingerprint_sha256,
+            "revision": roster.unsigned.revision,
+            "roster": roster
+        }))
     })();
     respond(&mut env, result)
 }

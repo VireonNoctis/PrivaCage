@@ -81,10 +81,16 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         }
         trusted.put(fingerprint, card)
         record.put(KEY_TRUSTED_CARDS, trusted)
+        val addedAt = record.optJSONObject(KEY_TRUSTED_ADDED_AT) ?: JSONObject()
+        if (!addedAt.has(fingerprint)) addedAt.put(fingerprint, System.currentTimeMillis() / 1000L)
+        record.put(KEY_TRUSTED_ADDED_AT, addedAt)
         // Re-trust is possible only after the caller confirms the full fingerprint again.
         val revoked = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
         revoked.remove(fingerprint)
         record.put(KEY_REVOKED_FINGERPRINTS, revoked)
+        val revokedCards = record.optJSONObject(KEY_REVOKED_CARDS) ?: JSONObject()
+        revokedCards.remove(fingerprint)
+        record.put(KEY_REVOKED_CARDS, revokedCards)
         store.saveRecord(record)
         return fingerprint
     }
@@ -119,11 +125,21 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         }
         val record = requireRecord()
         val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        validateLocalRecord(record)
         if (!trusted.has(fingerprint)) {
             throw IOException("This fingerprint is not currently trusted on this device.")
         }
+        val revokedCard = trusted.optJSONObject(fingerprint)
         trusted.remove(fingerprint)
         record.put(KEY_TRUSTED_CARDS, trusted)
+        val addedAt = record.optJSONObject(KEY_TRUSTED_ADDED_AT) ?: JSONObject()
+        addedAt.remove(fingerprint)
+        record.put(KEY_TRUSTED_ADDED_AT, addedAt)
+        if (revokedCard != null) {
+            val revokedCards = record.optJSONObject(KEY_REVOKED_CARDS) ?: JSONObject()
+            revokedCards.put(fingerprint, revokedCard)
+            record.put(KEY_REVOKED_CARDS, revokedCards)
+        }
 
         // Keep a denylist so old cards cannot be silently re-trusted via a future code path.
         // Explicit trust confirmation removes this tombstone only after the complete fingerprint is re-entered.
@@ -138,6 +154,209 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         }
         store.saveRecord(record)
         return fingerprint
+    }
+
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun createSignedDeviceRoster(): String {
+        val record = requireRecord()
+        validateLocalRecord(record)
+        val localCard = JSONObject(record.getString(KEY_CARD_JSON))
+        val localFingerprint = localCard.getString("fingerprint_sha256")
+        val pinnedOwner = record.optString(KEY_ROSTER_OWNER, "")
+        if (pinnedOwner.isNotEmpty() && pinnedOwner != localFingerprint) {
+            throw IOException("Only the pinned roster owner identity can sign roster updates.")
+        }
+        val spaceId = record.optString(KEY_SPACE_ID, "")
+        if (!SyncRelayClient.isValidSpaceId(spaceId)) {
+            throw IOException("Save the relay space ID before creating a signed device roster.")
+        }
+        val oldRevision = record.optLong(KEY_ROSTER_REVISION, 0L)
+        if (oldRevision < 0L || oldRevision == Long.MAX_VALUE) {
+            throw IOException("Roster revision is invalid or exhausted.")
+        }
+        val issuedAt = System.currentTimeMillis() / 1000L
+        val members = mutableListOf<JSONObject>()
+        members.add(rosterMember(localFingerprint, localCard, "active", 0L, null))
+
+        val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        val addedAt = record.optJSONObject(KEY_TRUSTED_ADDED_AT) ?: JSONObject()
+        val peerKeys = trusted.keys()
+        while (peerKeys.hasNext()) {
+            val fingerprint = peerKeys.next()
+            if (fingerprint == localFingerprint) continue
+            val card = trusted.optJSONObject(fingerprint)
+                ?: throw IOException("A trusted device card is malformed; roster was not created.")
+            members.add(rosterMember(fingerprint, card, "active", addedAt.optLong(fingerprint, 0L), null))
+        }
+
+        val revoked = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
+        val revokedCards = record.optJSONObject(KEY_REVOKED_CARDS) ?: JSONObject()
+        val revokedKeys = revoked.keys()
+        while (revokedKeys.hasNext()) {
+            val fingerprint = revokedKeys.next()
+            if (!validFingerprint(fingerprint) || trusted.has(fingerprint)) continue
+            val revokedAt = revoked.optLong(fingerprint, 0L)
+            if (revokedAt <= 0L || revokedAt > issuedAt) continue
+            members.add(rosterMember(fingerprint, revokedCards.optJSONObject(fingerprint), "revoked", 0L, revokedAt))
+        }
+        if (members.size > MAX_ROSTER_MEMBERS) {
+            throw IOException("Roster exceeds the supported 128 device entries including revocation tombstones.")
+        }
+        members.sortBy { it.getString("fingerprint_sha256") }
+        val memberArray = org.json.JSONArray()
+        members.forEach { memberArray.put(it) }
+
+        val response = parseNative(
+            bridge.nativeCreateDeviceRoster(
+                record.getString(KEY_BUNDLE_BASE64),
+                record.getString(KEY_LOCAL_PASSPHRASE),
+                spaceId,
+                oldRevision + 1L,
+                issuedAt,
+                memberArray.toString()
+            )
+        )
+        val roster = response.getJSONObject("roster")
+        record.put(KEY_ROSTER_OWNER, localFingerprint)
+        record.put(KEY_ROSTER_REVISION, oldRevision + 1L)
+        record.put(KEY_DEVICE_ROSTER, roster)
+        store.saveRecord(record)
+        roster.toString()
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun importSignedDeviceRoster(rosterJson: String, independentlyConfirmedOwnerFingerprint: String): String {
+        if (rosterJson.isBlank() || rosterJson.toByteArray(StandardCharsets.UTF_8).size > MAX_ROSTER_JSON_BYTES) {
+            throw IOException("Paste a complete signed roster under 256 KiB.")
+        }
+        val expectedOwner = independentlyConfirmedOwnerFingerprint.trim().lowercase()
+        if (!validFingerprint(expectedOwner)) {
+            throw IOException("Owner fingerprint must be a full lowercase SHA-256 digest.")
+        }
+        val record = requireRecord()
+        validateLocalRecord(record)
+        val pinnedOwner = record.optString(KEY_ROSTER_OWNER, "")
+        if (pinnedOwner.isNotEmpty() && pinnedOwner != expectedOwner) {
+            throw IOException("Roster owner does not match the previously pinned owner.")
+        }
+        val minimumRevision = if (pinnedOwner == expectedOwner) record.optLong(KEY_ROSTER_REVISION, 0L) else 0L
+        val response = parseNative(
+            bridge.nativeVerifyDeviceRoster(
+                rosterJson, expectedOwner, minimumRevision, System.currentTimeMillis() / 1000L
+            )
+        )
+        val roster = response.getJSONObject("roster")
+        val unsigned = roster.getJSONObject("unsigned")
+        val revision = unsigned.getLong("revision")
+        if (revision <= minimumRevision) throw IOException("Roster revision did not advance; export a newer revision.")
+
+        val rosterSpace = unsigned.getString("space_id")
+        val configuredSpace = record.optString(KEY_SPACE_ID, "")
+        if (configuredSpace.isNotEmpty() && configuredSpace != rosterSpace) {
+            throw IOException("Signed roster belongs to a different relay space.")
+        }
+
+        val localCard = JSONObject(record.getString(KEY_CARD_JSON))
+        val localFingerprint = localCard.getString("fingerprint_sha256")
+        val trusted = JSONObject()
+        val addedAt = JSONObject()
+        val revoked = JSONObject()
+        val revokedCards = JSONObject()
+        val priorTrusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        val priorRevokedCards = record.optJSONObject(KEY_REVOKED_CARDS) ?: JSONObject()
+        val members = unsigned.getJSONArray("members")
+        var localMemberFound = false
+        var revokedCount = 0
+        for (index in 0 until members.length()) {
+            val member = members.getJSONObject(index)
+            val fingerprint = member.getString("fingerprint_sha256")
+            val status = member.getString("status")
+            val card = member.optJSONObject("card")
+            if (fingerprint == localFingerprint) {
+                if (status != "active" || card == null || !sameDeviceCard(card, localCard)) {
+                    throw IOException("Roster does not include this exact local identity as active.")
+                }
+                localMemberFound = true
+                continue
+            }
+            when (status) {
+                "active" -> {
+                    val activeCard = card ?: throw IOException("Active roster member has no public device card.")
+                    trusted.put(fingerprint, activeCard)
+                    addedAt.put(fingerprint, member.optLong("added_at_unix", 0L))
+                }
+                "revoked" -> {
+                    revoked.put(fingerprint, member.getLong("revoked_at_unix"))
+                    val knownCard = card ?: priorRevokedCards.optJSONObject(fingerprint)
+                        ?: priorTrusted.optJSONObject(fingerprint)
+                    if (knownCard != null) revokedCards.put(fingerprint, knownCard)
+                    revokedCount += 1
+                }
+                else -> throw IOException("Roster contains an unknown member status.")
+            }
+        }
+        if (!localMemberFound) throw IOException("Roster does not authorize this device; nothing was imported.")
+        if (trusted.length() > MAX_TRUSTED_CARDS) {
+            throw IOException("Roster exceeds the 32 active peer cards supported by this Android client.")
+        }
+
+        record.put(KEY_TRUSTED_CARDS, trusted)
+        record.put(KEY_TRUSTED_ADDED_AT, addedAt)
+        record.put(KEY_REVOKED_FINGERPRINTS, revoked)
+        record.put(KEY_REVOKED_CARDS, revokedCards)
+        record.put(KEY_ROSTER_OWNER, expectedOwner)
+        record.put(KEY_ROSTER_REVISION, revision)
+        record.put(KEY_DEVICE_ROSTER, roster)
+        val pendingSender = record.optString(KEY_PENDING_SENDER, "")
+        if (pendingSender.isNotEmpty() && !trusted.has(pendingSender)) {
+            record.remove(KEY_PENDING_PROFILE)
+            record.remove(KEY_PENDING_SENDER)
+        }
+        store.saveRecord(record)
+        "Verified owner-signed roster revision " + revision + ". Active peers: " + trusted.length() +
+            "; revoked entries: " + revokedCount + ". Relay administrator membership is separate."
+    }
+
+    private fun rosterMember(
+        fingerprint: String,
+        card: JSONObject?,
+        status: String,
+        addedAtUnix: Long,
+        revokedAtUnix: Long?
+    ): JSONObject = JSONObject()
+        .put("fingerprint_sha256", fingerprint)
+        .put("card", card ?: JSONObject.NULL)
+        .put("status", status)
+        .put("added_at_unix", addedAtUnix)
+        .put("revoked_at_unix", revokedAtUnix ?: JSONObject.NULL)
+
+    private fun validFingerprint(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+    private fun sameDeviceCard(left: JSONObject, right: JSONObject): Boolean {
+        val fields = listOf(
+            "protocol_version", "device_id", "key_epoch", "signing_public_key_hex",
+            "encryption_public_key_hex", "fingerprint_sha256"
+        )
+        return fields.all { left.optString(it) == right.optString(it) }
+    }
+
+    private fun isRosterMemberActive(record: JSONObject, fingerprint: String): Boolean {
+        if (!record.has(KEY_DEVICE_ROSTER)) return true
+        val roster = record.optJSONObject(KEY_DEVICE_ROSTER)
+            ?: throw IOException("Stored signed device roster is malformed.")
+        val members = roster.optJSONObject("unsigned")?.optJSONArray("members")
+            ?: throw IOException("Stored signed device roster has no members.")
+        for (index in 0 until members.length()) {
+            val member = members.optJSONObject(index) ?: continue
+            if (member.optString("fingerprint_sha256") == fingerprint) {
+                return member.optString("status") == "active"
+            }
+        }
+        return false
     }
 
     @Synchronized
@@ -155,6 +374,12 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Space capability must be 64 lowercase hexadecimal characters.")
         }
         val record = requireRecord()
+        validateLocalRecord(record)
+        val rosterSpace = record.optJSONObject(KEY_DEVICE_ROSTER)
+            ?.optJSONObject("unsigned")?.optString("space_id", "")
+        if (!rosterSpace.isNullOrEmpty() && rosterSpace != spaceId) {
+            throw IOException("Relay space ID cannot change while a signed roster is pinned.")
+        }
         record.put(KEY_RELAY_URL, normalizedUrl)
         record.put(KEY_SPACE_ID, spaceId)
         record.put(KEY_CAPABILITY, capability)
@@ -181,10 +406,14 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Settings profile exceeds the supported size.")
         }
         val record = requireRecord()
+        validateLocalRecord(record)
         val localCard = JSONObject(record.getString(KEY_CARD_JSON))
         val verifiedReply = parseNative(bridge.nativeVerifyIdentityCard(recipientCardJson))
         val recipientCard = verifiedReply.getJSONObject("card")
         val fingerprint = verifiedReply.getString("fingerprint_sha256")
+        if (!isRosterMemberActive(record, fingerprint)) {
+            throw IOException("Recipient is not active in the verified signed roster. Import a newer roster before sending.")
+        }
         val trustedCards = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
         val trustedCard = trustedCards.optJSONObject(fingerprint)
             ?: throw IOException("This device is not trusted yet. Verify its fingerprint and explicitly trust it first.")
@@ -219,6 +448,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     @Throws(IOException::class)
     fun receiveProfile(validateProfile: (String) -> Unit): SyncReceiveResult {
         val record = requireRecord()
+        validateLocalRecord(record)
         val pending = record.optString(KEY_PENDING_PROFILE, "")
         if (pending.isNotEmpty()) {
             return SyncReceiveResult(
@@ -270,6 +500,11 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             val revokedCards = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
             if (revokedCards.has(senderFingerprint)) {
                 // A revoked sender must not wedge the inbox cursor or keep a pending item visible.
+                cursor = advanceCursor(record, message.cursor)
+                skipped += 1
+                return@repeat
+            }
+            if (!isRosterMemberActive(record, senderFingerprint)) {
                 cursor = advanceCursor(record, message.cursor)
                 skipped += 1
                 return@repeat
@@ -443,6 +678,42 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         ) {
             throw IOException("Stored sync identity does not match its encrypted private bundle.")
         }
+        if (record.has(KEY_DEVICE_ROSTER)) {
+            val owner = record.optString(KEY_ROSTER_OWNER, "")
+            val revision = record.optLong(KEY_ROSTER_REVISION, 0L)
+            if (!validFingerprint(owner) || revision < 1L) {
+                throw IOException("Stored signed roster metadata is incomplete.")
+            }
+            val rosterJson = record.optJSONObject(KEY_DEVICE_ROSTER)?.toString()
+                ?: throw IOException("Stored signed roster is malformed.")
+            val verified = parseNative(
+                bridge.nativeVerifyDeviceRoster(rosterJson, owner, revision - 1L, System.currentTimeMillis() / 1000L)
+            ).getJSONObject("roster")
+            val unsigned = verified.getJSONObject("unsigned")
+            if (unsigned.getLong("revision") != revision ||
+                unsigned.getJSONObject("owner_card").optString("fingerprint_sha256") != owner
+            ) throw IOException("Stored roster signature or owner/revision pin does not match.")
+            val configuredSpace = record.optString(KEY_SPACE_ID, "")
+            if (configuredSpace.isNotEmpty() && configuredSpace != unsigned.optString("space_id")) {
+                throw IOException("Stored signed roster belongs to a different relay space.")
+            }
+            val members = unsigned.getJSONArray("members")
+            var localMemberFound = false
+            for (index in 0 until members.length()) {
+                val member = members.getJSONObject(index)
+                if (member.optString("fingerprint_sha256") == stored.optString("fingerprint_sha256")) {
+                    val card = member.optJSONObject("card")
+                    if (member.optString("status") != "active" || card == null || !sameDeviceCard(card, stored)) {
+                        throw IOException("Stored signed roster does not authorize this local identity.")
+                    }
+                    localMemberFound = true
+                    break
+                }
+            }
+            if (!localMemberFound) throw IOException("Stored signed roster omits the local identity.")
+        } else if (record.has(KEY_ROSTER_OWNER) || record.has(KEY_ROSTER_REVISION)) {
+            throw IOException("Stored roster pin exists without its signed roster.")
+        }
     }
 
     private fun newRecord(localPassphrase: String, bundleBase64: String, cardJson: String): JSONObject =
@@ -455,7 +726,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             .put(KEY_SPACE_ID, "")
             .put(KEY_CAPABILITY, "")
             .put(KEY_TRUSTED_CARDS, JSONObject())
+            .put(KEY_TRUSTED_ADDED_AT, JSONObject())
             .put(KEY_REVOKED_FINGERPRINTS, JSONObject())
+            .put(KEY_REVOKED_CARDS, JSONObject())
             .put(KEY_NEXT_SEQUENCE, 1L)
             .put(KEY_CURSOR, 0L)
 
@@ -493,6 +766,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val MAX_PROFILE_BYTES = 1_048_576
         private const val MAX_RECOVERY_BUNDLE_BYTES = 1_100_000
         private const val MAX_TRUSTED_CARDS = 32
+        private const val MAX_ROSTER_MEMBERS = 128
+        private const val MAX_ROSTER_JSON_BYTES = 256 * 1024
         private const val MAX_MESSAGES_PER_CHECK = 25
         private const val MESSAGE_TTL_SECONDS = 7L * 24 * 60 * 60
         const val RECOVERY_PASSPHRASE_MIN_LENGTH = 12
@@ -503,7 +778,12 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val KEY_SPACE_ID = "space_id"
         private const val KEY_CAPABILITY = "capability_token"
         private const val KEY_TRUSTED_CARDS = "trusted_cards"
+        private const val KEY_TRUSTED_ADDED_AT = "trusted_added_at"
         private const val KEY_REVOKED_FINGERPRINTS = "revoked_fingerprints"
+        private const val KEY_REVOKED_CARDS = "revoked_cards"
+        private const val KEY_DEVICE_ROSTER = "signed_device_roster"
+        private const val KEY_ROSTER_OWNER = "roster_owner_fingerprint"
+        private const val KEY_ROSTER_REVISION = "roster_revision"
         private const val KEY_NEXT_SEQUENCE = "next_sequence"
         private const val KEY_CURSOR = "relay_cursor"
         private const val KEY_PENDING_PROFILE = "pending_profile_json"

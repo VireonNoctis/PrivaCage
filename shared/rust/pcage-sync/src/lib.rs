@@ -19,7 +19,7 @@ const INFO: &str = "PrivaCage E2EE sync v1";
 pub enum SyncError {
     InvalidInput(&'static str), RandomFailure, SerializationFailure, InvalidIdentity,
     UntrustedSender, WrongRecipient, InvalidSignature, Expired, FutureDated, Replay,
-    EncryptionFailure, DecryptionFailure, RecoveryFailure, IoFailure,
+    EncryptionFailure, DecryptionFailure, RecoveryFailure, IoFailure, InvalidRoster, RosterRollback,
 }
 impl fmt::Display for SyncError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -31,7 +31,8 @@ impl fmt::Display for SyncError {
             Self::Expired => "packet expired", Self::FutureDated => "packet timestamp is too far in the future",
             Self::Replay => "packet was already accepted", Self::EncryptionFailure => "encryption failed",
             Self::DecryptionFailure => "authentication or decryption failed", Self::RecoveryFailure => "recovery bundle is invalid",
-            Self::IoFailure => "replay ledger read/write failed",
+            Self::IoFailure => "replay ledger read/write failed", Self::InvalidRoster => "invalid owner-signed device roster",
+            Self::RosterRollback => "device roster revision did not advance",
         })
     }
 }
@@ -147,6 +148,30 @@ impl DeviceIdentity {
         let message = relay_request_signing_bytes(method, path_and_query, timestamp_unix, nonce, body)?;
         Ok(hex(&self.signing.sign(&message).to_bytes()))
     }
+    pub fn sign_device_roster(
+        &self,
+        space_id: &str,
+        revision: u64,
+        issued_at_unix: u64,
+        mut members: Vec<RosterMember>,
+    ) -> Result<SignedDeviceRoster, SyncError> {
+        members.sort_by(|left, right| left.fingerprint_sha256.cmp(&right.fingerprint_sha256));
+        let unsigned = UnsignedDeviceRoster {
+            version: 1,
+            space_id: space_id.to_owned(),
+            owner_card: self.card.clone(),
+            revision,
+            issued_at_unix,
+            members,
+        };
+        validate_device_roster(&unsigned, &self.card.fingerprint_sha256, 0, issued_at_unix)?;
+        let bytes = roster_signing_bytes(&unsigned)?;
+        Ok(SignedDeviceRoster {
+            unsigned,
+            signature_hex: hex(&self.signing.sign(&bytes).to_bytes()),
+        })
+    }
+
     pub fn from_seeds(signing_seed: [u8; 32], encryption_seed: [u8; 32], epoch: u64) -> Result<Self, SyncError> {
         if epoch == 0 { return Err(SyncError::InvalidInput("key epoch must be positive")); }
         let signing = SigningKey::from_bytes(&signing_seed);
@@ -284,6 +309,156 @@ impl KeyRotation {
     }
 }
 
+
+const MAX_ROSTER_MEMBERS: usize = 128;
+const ROSTER_SIGNING_DOMAIN: &str = "PrivaCage signed device roster v1\n";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RosterMemberStatus {
+    Active,
+    Revoked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RosterMember {
+    pub fingerprint_sha256: String,
+    pub card: Option<IdentityCard>,
+    pub status: RosterMemberStatus,
+    /// Zero means the original trust time is unknown.
+    pub added_at_unix: u64,
+    pub revoked_at_unix: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UnsignedDeviceRoster {
+    pub version: u8,
+    pub space_id: String,
+    pub owner_card: IdentityCard,
+    pub revision: u64,
+    pub issued_at_unix: u64,
+    pub members: Vec<RosterMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SignedDeviceRoster {
+    pub unsigned: UnsignedDeviceRoster,
+    pub signature_hex: String,
+}
+
+impl SignedDeviceRoster {
+    pub fn verify(
+        &self,
+        expected_owner_fingerprint: &str,
+        minimum_revision: u64,
+        now_unix: u64,
+    ) -> Result<(), SyncError> {
+        validate_device_roster(&self.unsigned, expected_owner_fingerprint, minimum_revision, now_unix)?;
+        if self.signature_hex.len() != 128
+            || !self.signature_hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(SyncError::InvalidRoster);
+        }
+        let key_bytes = unhex::<32>(&self.unsigned.owner_card.signing_public_key_hex)
+            .map_err(|_| SyncError::InvalidRoster)?;
+        let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| SyncError::InvalidRoster)?;
+        let signature_bytes = unhex::<64>(&self.signature_hex).map_err(|_| SyncError::InvalidRoster)?;
+        let signature = Signature::from_bytes(&signature_bytes);
+        key.verify(&roster_signing_bytes(&self.unsigned)?, &signature)
+            .map_err(|_| SyncError::InvalidSignature)
+    }
+}
+
+fn roster_signing_bytes(roster: &UnsignedDeviceRoster) -> Result<Vec<u8>, SyncError> {
+    let encoded = serde_json::to_vec(roster).map_err(|_| SyncError::SerializationFailure)?;
+    let mut bytes = Vec::with_capacity(ROSTER_SIGNING_DOMAIN.len() + encoded.len());
+    bytes.extend_from_slice(ROSTER_SIGNING_DOMAIN.as_bytes());
+    bytes.extend_from_slice(&encoded);
+    Ok(bytes)
+}
+
+fn validate_device_roster(
+    roster: &UnsignedDeviceRoster,
+    expected_owner_fingerprint: &str,
+    minimum_revision: u64,
+    now_unix: u64,
+) -> Result<(), SyncError> {
+    let valid_fingerprint = |value: &str| {
+        value.len() == 64
+            && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    if roster.revision != 0 && roster.revision <= minimum_revision {
+        return Err(SyncError::RosterRollback);
+    }
+    if roster.version != 1
+        || roster.space_id.len() < 8
+        || roster.space_id.len() > 80
+        || !roster.space_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        || roster.revision == 0
+        || roster.issued_at_unix == 0
+        || roster.issued_at_unix > now_unix.saturating_add(300)
+        || !valid_fingerprint(expected_owner_fingerprint)
+        || roster.members.is_empty()
+        || roster.members.len() > MAX_ROSTER_MEMBERS
+    {
+        return Err(SyncError::InvalidRoster);
+    }
+
+    roster.owner_card.verify().map_err(|_| SyncError::InvalidRoster)?;
+    if roster.owner_card.fingerprint_sha256 != expected_owner_fingerprint {
+        return Err(SyncError::InvalidRoster);
+    }
+
+    let mut previous_fingerprint: Option<&str> = None;
+    let mut owner_member_found = false;
+    for member in &roster.members {
+        if !valid_fingerprint(&member.fingerprint_sha256)
+            || previous_fingerprint.is_some_and(|previous| previous >= member.fingerprint_sha256.as_str())
+            || (member.added_at_unix != 0 && member.added_at_unix > roster.issued_at_unix)
+        {
+            return Err(SyncError::InvalidRoster);
+        }
+        previous_fingerprint = Some(&member.fingerprint_sha256);
+
+        if let Some(card) = &member.card {
+            card.verify().map_err(|_| SyncError::InvalidRoster)?;
+            if card.fingerprint_sha256 != member.fingerprint_sha256 {
+                return Err(SyncError::InvalidRoster);
+            }
+        }
+
+        match member.status {
+            RosterMemberStatus::Active => {
+                if member.card.is_none() || member.revoked_at_unix.is_some() {
+                    return Err(SyncError::InvalidRoster);
+                }
+            }
+            RosterMemberStatus::Revoked => {
+                let revoked_at = member.revoked_at_unix.ok_or(SyncError::InvalidRoster)?;
+                if revoked_at == 0 || revoked_at > roster.issued_at_unix {
+                    return Err(SyncError::InvalidRoster);
+                }
+            }
+        }
+
+        if member.fingerprint_sha256 == expected_owner_fingerprint {
+            if member.status != RosterMemberStatus::Active
+                || member.card.as_ref() != Some(&roster.owner_card)
+            {
+                return Err(SyncError::InvalidRoster);
+            }
+            owner_member_found = true;
+        }
+    }
+    if !owner_member_found {
+        return Err(SyncError::InvalidRoster);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReplayLedger { seen_message_ids: BTreeSet<String> }
@@ -362,6 +537,75 @@ mod tests {
         assert_eq!(restored.card, a.card);
         assert!(DeviceIdentity::restore_recovery_bundle(&bundle, "wrong recovery passphrase").is_err());
     }
+
+    #[test]
+    fn owner_signed_roster_rejects_wrong_owner_rollback_and_tampering() {
+        let owner = DeviceIdentity::from_seeds([31; 32], [32; 32], 1).unwrap();
+        let peer = DeviceIdentity::from_seeds([33; 32], [34; 32], 1).unwrap();
+        let roster = owner.sign_device_roster(
+            "device-space-0001",
+            1,
+            1_800_000_000,
+            vec![
+                RosterMember {
+                    fingerprint_sha256: peer.card.fingerprint_sha256.clone(),
+                    card: Some(peer.card.clone()),
+                    status: RosterMemberStatus::Active,
+                    added_at_unix: 1_799_999_000,
+                    revoked_at_unix: None,
+                },
+                RosterMember {
+                    fingerprint_sha256: owner.card.fingerprint_sha256.clone(),
+                    card: Some(owner.card.clone()),
+                    status: RosterMemberStatus::Active,
+                    added_at_unix: 0,
+                    revoked_at_unix: None,
+                },
+            ],
+        ).unwrap();
+        assert!(roster.unsigned.members.windows(2).all(|pair|
+            pair[0].fingerprint_sha256 < pair[1].fingerprint_sha256
+        ));
+        roster.verify(&owner.card.fingerprint_sha256, 0, 1_800_000_010).unwrap();
+        assert_eq!(
+            roster.verify(&owner.card.fingerprint_sha256, 1, 1_800_000_010),
+            Err(SyncError::RosterRollback)
+        );
+        assert!(roster.verify(&peer.card.fingerprint_sha256, 0, 1_800_000_010).is_err());
+
+        let mut tampered = roster.clone();
+        tampered.unsigned.members[0].status = RosterMemberStatus::Revoked;
+        tampered.unsigned.members[0].revoked_at_unix = Some(1_800_000_001);
+        assert!(tampered.verify(&owner.card.fingerprint_sha256, 0, 1_800_000_010).is_err());
+    }
+
+    #[test]
+    fn owner_signed_roster_keeps_revocation_tombstones() {
+        let owner = DeviceIdentity::from_seeds([35; 32], [36; 32], 1).unwrap();
+        let roster = owner.sign_device_roster(
+            "device-space-0001",
+            2,
+            1_800_000_000,
+            vec![
+                RosterMember {
+                    fingerprint_sha256: owner.card.fingerprint_sha256.clone(),
+                    card: Some(owner.card.clone()),
+                    status: RosterMemberStatus::Active,
+                    added_at_unix: 0,
+                    revoked_at_unix: None,
+                },
+                RosterMember {
+                    fingerprint_sha256: "ab".repeat(32),
+                    card: None,
+                    status: RosterMemberStatus::Revoked,
+                    added_at_unix: 0,
+                    revoked_at_unix: Some(1_799_999_900),
+                },
+            ],
+        ).unwrap();
+        roster.verify(&owner.card.fingerprint_sha256, 1, 1_800_000_010).unwrap();
+    }
+
     #[test] fn fingerprint_tampering_is_detected() {
         let a = DeviceIdentity::from_seeds([21;32], [22;32], 1).unwrap();
         let mut card = a.card.clone(); card.fingerprint_sha256 = "00".repeat(32);
