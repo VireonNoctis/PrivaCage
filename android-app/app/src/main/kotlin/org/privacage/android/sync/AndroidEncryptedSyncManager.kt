@@ -546,6 +546,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         if (record.has(KEY_PENDING_KEY_ROTATION)) {
             throw IOException("Finish the staged peer-key rotation before rotating the roster owner.")
         }
+        if (record.optBoolean(KEY_OWNER_ROTATION_HANDOFF_PENDING, false)) {
+            throw IOException("The previous owner-key rotation package is still awaiting handoff confirmation. Copy the saved package to the trusted devices, then explicitly confirm that they accepted the transition before rotating again.")
+        }
         if (record.optBoolean(KEY_ROSTER_PUBLISH_PENDING, false)) {
             throw IOException("Publish or retry the current roster before rotating the owner key.")
         }
@@ -659,6 +662,16 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Replacement owner roster does not match the signed transition.")
         }
 
+        val packageJson = JSONObject()
+            .put("format", OWNER_ROTATION_PACKAGE_FORMAT)
+            .put("schema_version", 1)
+            .put("transition", transition)
+            .put("signed_roster", verifiedRoster)
+            .toString(2)
+        if (packageJson.toByteArray(StandardCharsets.UTF_8).size > MAX_OWNER_ROTATION_PACKAGE_BYTES) {
+            throw IOException("Signed owner-key rotation package exceeds the 512 KiB limit.")
+        }
+
         val revokedNow = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
         revokedNow.put(oldFingerprint, issuedAt)
         record.put(KEY_REVOKED_FINGERPRINTS, revokedNow)
@@ -672,6 +685,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         record.put(KEY_ROSTER_REVISION, nextRevision)
         record.put(KEY_DEVICE_ROSTER, verifiedRoster)
         record.put(KEY_ROSTER_PUBLISH_PENDING, true)
+        record.put(KEY_OWNER_ROTATION_PACKAGE_JSON, packageJson)
+        record.put(KEY_OWNER_ROTATION_HANDOFF_PENDING, true)
         record.put(KEY_NEXT_SEQUENCE, 1L)
         appendRosterHistory(
             record, "owner_key_rotation_signed", nextFingerprint,
@@ -700,12 +715,6 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             store.saveRecord(record)
         }
 
-        val packageJson = JSONObject()
-            .put("format", OWNER_ROTATION_PACKAGE_FORMAT)
-            .put("schema_version", 1)
-            .put("transition", transition)
-            .put("signed_roster", verifiedRoster)
-            .toString(2)
         return OwnerRotationResult(
             packageJson = packageJson,
             publicationMessage = publicationMessage,
@@ -713,6 +722,106 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             nextFingerprint = nextFingerprint,
             rosterRevision = nextRevision
         )
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun lastOwnerKeyRotationPackage(): String {
+        val record = requireRecord()
+        validateLocalRecord(record)
+        val packageJson = record.optString(KEY_OWNER_ROTATION_PACKAGE_JSON, "")
+        if (packageJson.isBlank() || packageJson.toByteArray(StandardCharsets.UTF_8).size > MAX_OWNER_ROTATION_PACKAGE_BYTES) {
+            throw IOException("No valid saved owner-key rotation package is available on this installation.")
+        }
+        val wrapper = try {
+            JSONObject(packageJson)
+        } catch (exception: Exception) {
+            throw IOException("Saved owner-key rotation package is malformed.", exception)
+        }
+        val allowedKeys = setOf("format", "schema_version", "transition", "signed_roster")
+        val keys = wrapper.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (key !in allowedKeys) throw IOException("Saved owner-key rotation package contains unsupported field '$key'.")
+        }
+        if (wrapper.length() != allowedKeys.size ||
+            wrapper.optString("format") != OWNER_ROTATION_PACKAGE_FORMAT ||
+            wrapper.optInt("schema_version", -1) != 1
+        ) {
+            throw IOException("Saved owner-key rotation package has an unsupported format.")
+        }
+        val transition = wrapper.optJSONObject("transition")
+            ?: throw IOException("Saved owner-key rotation package omitted its transition.")
+        val signedRoster = wrapper.optJSONObject("signed_roster")
+            ?: throw IOException("Saved owner-key rotation package omitted its signed roster.")
+        val transitionUnsigned = transition.optJSONObject("unsigned")
+            ?: throw IOException("Saved owner-key transition is malformed.")
+        val previousCard = transitionUnsigned.optJSONObject("previous_owner_card")
+            ?: throw IOException("Saved owner-key transition omitted the predecessor card.")
+        val nextCard = transitionUnsigned.optJSONObject("next_owner_card")
+            ?: throw IOException("Saved owner-key transition omitted the replacement card.")
+        val currentCard = JSONObject(record.getString(KEY_CARD_JSON))
+        val currentFingerprint = currentCard.getString("fingerprint_sha256")
+        val previousFingerprint = previousCard.optString("fingerprint_sha256", "")
+        val oldCardTombstone = record.optJSONObject(KEY_REVOKED_CARDS)?.optJSONObject(previousFingerprint)
+            ?: throw IOException("Saved owner-key transition's predecessor is not retained as a local tombstone.")
+        val spaceId = record.optString(KEY_SPACE_ID, "")
+        val previousRevision = transitionUnsigned.optLong("previous_roster_revision", -1L)
+        val nextRevision = transitionUnsigned.optLong("next_roster_revision", -1L)
+        if (!sameDeviceCard(oldCardTombstone, previousCard) ||
+            !sameDeviceCard(currentCard, nextCard) ||
+            transitionUnsigned.optString("space_id") != spaceId ||
+            nextRevision != previousRevision + 1L ||
+            previousRevision < 1L
+        ) {
+            throw IOException("Saved owner-key rotation package no longer matches the local owner, space, or predecessor record.")
+        }
+        parseNative(
+            bridge.nativeVerifyOwnerKeyRotation(
+                previousCard.toString(),
+                transition.toString(),
+                spaceId,
+                previousRevision,
+                currentFingerprint,
+                System.currentTimeMillis() / 1000L
+            )
+        )
+        val verifiedRoster = parseNative(
+            bridge.nativeVerifyDeviceRoster(
+                signedRoster.toString(), currentFingerprint, previousRevision, System.currentTimeMillis() / 1000L
+            )
+        ).getJSONObject("roster")
+        val unsigned = verifiedRoster.getJSONObject("unsigned")
+        if (unsigned.getLong("revision") != nextRevision ||
+            unsigned.getString("space_id") != spaceId ||
+            !sameDeviceCard(unsigned.getJSONObject("owner_card"), currentCard)
+        ) {
+            throw IOException("Saved owner-key rotation roster is not the exact signed next revision.")
+        }
+        return packageJson
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
+    fun confirmOwnerKeyRotationHandoff(independentlyConfirmedCurrentOwnerFingerprint: String): String {
+        val record = requireRecord()
+        validateLocalRecord(record)
+        val current = JSONObject(record.getString(KEY_CARD_JSON)).getString("fingerprint_sha256")
+        if (independentlyConfirmedCurrentOwnerFingerprint.trim().lowercase() != current) {
+            throw IOException("Confirmed owner fingerprint does not match this installation's current owner identity.")
+        }
+        lastOwnerKeyRotationPackage()
+        if (!record.optBoolean(KEY_OWNER_ROTATION_HANDOFF_PENDING, false)) {
+            throw IOException("There is no pending owner-key handoff to confirm.")
+        }
+        record.put(KEY_OWNER_ROTATION_HANDOFF_PENDING, false)
+        appendRosterHistory(
+            record, "owner_key_rotation_handoff_confirmed", current,
+            "User confirmed that the saved dual-signed owner transition was distributed and accepted by every intended trusted device. The public package remains stored for re-copying.",
+            record.optLong(KEY_ROSTER_REVISION, 0L)
+        )
+        store.saveRecord(record)
+        return "Owner-key handoff marked complete. The last public rotation package remains saved for re-copying; a later owner rotation may replace it."
     }
 
     @Synchronized
@@ -1550,6 +1659,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val KEY_ROSTER_HISTORY = "roster_change_history"
         private const val KEY_ROSTER_PUBLISH_PENDING = "roster_publish_pending"
         private const val KEY_PENDING_KEY_ROTATION = "pending_key_rotation"
+        private const val KEY_OWNER_ROTATION_PACKAGE_JSON = "last_owner_key_rotation_package_json"
+        private const val KEY_OWNER_ROTATION_HANDOFF_PENDING = "owner_key_rotation_handoff_pending"
         private const val KEY_NEXT_SEQUENCE = "next_sequence"
         private const val KEY_CURSOR = "relay_cursor"
         private const val KEY_PENDING_PROFILE = "pending_profile_json"
