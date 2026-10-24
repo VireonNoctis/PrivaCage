@@ -763,12 +763,12 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         val currentCard = JSONObject(record.getString(KEY_CARD_JSON))
         val currentFingerprint = currentCard.getString("fingerprint_sha256")
         val previousFingerprint = previousCard.optString("fingerprint_sha256", "")
-        val oldCardTombstone = record.optJSONObject(KEY_REVOKED_CARDS)?.optJSONObject(previousFingerprint)
-            ?: throw IOException("Saved owner-key transition's predecessor is not retained as a local tombstone.")
+        // The package is retained inside the authenticated Keystore-encrypted record.
+        // Re-export must not depend on the predecessor remaining in the editable trust list.
         val spaceId = record.optString(KEY_SPACE_ID, "")
         val previousRevision = transitionUnsigned.optLong("previous_roster_revision", -1L)
         val nextRevision = transitionUnsigned.optLong("next_roster_revision", -1L)
-        if (!sameDeviceCard(oldCardTombstone, previousCard) ||
+        if (!validFingerprint(previousFingerprint) ||
             !sameDeviceCard(currentCard, nextCard) ||
             transitionUnsigned.optString("space_id") != spaceId ||
             nextRevision != previousRevision + 1L ||
