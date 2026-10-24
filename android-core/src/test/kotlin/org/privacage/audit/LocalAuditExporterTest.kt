@@ -27,8 +27,8 @@ class LocalAuditExporterTest {
         assertTrue(result.json.contains("\"queried_hostnames\": true"))
         assertTrue(result.json.contains("\"socket_owner_labels\": true"))
         assertTrue(result.json.contains("\"device_identifiers\": true"))
-        assertTrue(result.previewText.contains("queried hostnames: REDACTED"))
-        assertTrue(result.previewText.contains("socket-owner labels: REDACTED"))
+        assertTrue(result.previewText.contains("Queried hostnames: REDACTED"))
+        assertTrue(result.previewText.contains("Socket-owner labels: REDACTED"))
     }
 
     @Test
