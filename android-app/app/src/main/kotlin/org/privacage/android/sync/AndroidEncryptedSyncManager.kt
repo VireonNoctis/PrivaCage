@@ -210,7 +210,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             val pendingRevision = pendingRoster.optJSONObject("unsigned")?.optLong("revision", 0L) ?: 0L
             appendRosterHistory(record, "roster_published", null, "Published the previously signed roster revision after retry.", pendingRevision)
             store.saveRecord(record)
-            return pendingRoster.toString()
+            // Do not return here: a newer local trust change may have been saved while this snapshot was pending.
+            // The next revision below includes current trust state after the old snapshot is safely published.
         }
         val oldRevision = record.optLong(KEY_ROSTER_REVISION, 0L)
         if (oldRevision < 0L || oldRevision == Long.MAX_VALUE) {
@@ -947,11 +948,18 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 localPassphrase
             )
         )
-        return newRecord(
+        val restored = newRecord(
             localPassphrase,
             response.getString("recovery_bundle_base64"),
             response.getJSONObject("card").toString()
         )
+        appendRosterHistory(
+            restored,
+            "recovery_identity_restored",
+            response.getJSONObject("card").optString("fingerprint_sha256"),
+            "Restored the same long-term cryptographic identity into a clean local record. Relay configuration and trust history were reset; this does not revoke the previous installation."
+        )
+        return restored
     }
 
     @Synchronized
