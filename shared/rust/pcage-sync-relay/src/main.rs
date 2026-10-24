@@ -264,6 +264,18 @@ fn encode_hex(bytes: &[u8]) -> String {
     out
 }
 
+fn build_app(store: Arc<Store>) -> Router {
+    Router::new()
+        .route("/healthz", get(health))
+        .route("/v1/spaces", post(create_space))
+        .route("/v1/spaces/{space_id}/rotate", post(rotate_space))
+        .route("/v1/spaces/{space_id}", delete(delete_space))
+        .route("/v1/spaces/{space_id}/messages/{message_id}", put(put_message))
+        .route("/v1/spaces/{space_id}/messages", get(list_messages))
+        .layer(DefaultBodyLimit::max(MAX_BODY))
+        .with_state(AppState { store })
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let admin = env::var("PCAGE_RELAY_ADMIN_TOKEN").map_err(|_| "PCAGE_RELAY_ADMIN_TOKEN is required")?;
@@ -273,15 +285,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err("plain HTTP relay must bind to loopback; terminate TLS at a local reverse proxy".into());
     }
     let store = Arc::new(Store::open(FsPath::new(&db), &admin)?);
-    let app = Router::new()
-        .route("/healthz", get(health))
-        .route("/v1/spaces", post(create_space))
-        .route("/v1/spaces/{space_id}/rotate", post(rotate_space))
-        .route("/v1/spaces/{space_id}", delete(delete_space))
-        .route("/v1/spaces/{space_id}/messages/{message_id}", put(put_message))
-        .route("/v1/spaces/{space_id}/messages", get(list_messages))
-        .layer(DefaultBodyLimit::max(MAX_BODY))
-        .with_state(AppState { store });
+    let app = build_app(store);
     let listener = tokio::net::TcpListener::bind(listen).await?;
     println!("PrivaCage opaque sync relay listening on {listen}; payloads are never decrypted");
     axum::serve(listener, app).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await?;
@@ -291,7 +295,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        body::{to_bytes, Body},
+        http::{header, Request},
+    };
+    use pcage_sync::{DeviceIdentity, SyncPacket};
     use tempfile::tempdir;
+    use tower::ServiceExt;
 
     #[test]
     fn space_capability_authenticates_and_messages_are_opaque_persistent_bytes() {
@@ -342,4 +352,85 @@ mod tests {
         assert!("127.0.0.1:8788".parse::<SocketAddr>().unwrap().ip().is_loopback());
         assert!(!"0.0.0.0:8788".parse::<SocketAddr>().unwrap().ip().is_loopback());
     }
+    fn decode_hex_for_test(value: &str) -> Vec<u8> {
+        value.as_bytes().chunks_exact(2).map(|pair| {
+            u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap()
+        }).collect()
+    }
+
+    #[tokio::test]
+    async fn signed_encrypted_packet_round_trips_through_authenticated_http_relay() {
+        let dir = tempdir().unwrap();
+        let admin = "a".repeat(64);
+        let capability = "0123456789abcdef".repeat(4);
+        let store = Arc::new(Store::open(&dir.path().join("relay.sqlite3"), &admin).unwrap());
+        let app = build_app(store);
+
+        let create_body = serde_json::json!({
+            "space_id": "device-space-0001",
+            "capability_token": capability
+        });
+        let create_response = app.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/spaces")
+                .header(header::AUTHORIZATION, format!("Bearer {admin}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(create_body.to_string()))
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(create_response.status(), StatusCode::CREATED);
+
+        let sender = DeviceIdentity::from_seeds([31; 32], [32; 32], 1).unwrap();
+        let recipient = DeviceIdentity::from_seeds([33; 32], [34; 32], 1).unwrap();
+        let now = unix_now().unwrap();
+        let plaintext = b"local-only profile contents";
+        let packet = sender.seal_for(&recipient.card, plaintext, 1, now, 600).unwrap();
+        let message_id = packet.body.header.message_id.clone();
+        let packet_bytes = serde_json::to_vec(&packet).unwrap();
+        assert!(!String::from_utf8_lossy(&packet_bytes).contains("local-only profile contents"));
+
+        let upload_response = app.clone().oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/v1/spaces/device-space-0001/messages/{message_id}"))
+                .header(header::AUTHORIZATION, format!("Bearer {capability}"))
+                .body(Body::from(packet_bytes))
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(upload_response.status(), StatusCode::CREATED);
+
+        let unauthenticated_response = app.clone().oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/spaces/device-space-0001/messages?after=0")
+                .body(Body::empty())
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(unauthenticated_response.status(), StatusCode::UNAUTHORIZED);
+
+        let list_response = app.clone().oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/spaces/device-space-0001/messages?after=0")
+                .header(header::AUTHORIZATION, format!("Bearer {capability}"))
+                .body(Body::empty())
+                .unwrap()
+        ).await.unwrap();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let response_body = to_bytes(list_response.into_body(), MAX_BODY).await.unwrap();
+        let page: serde_json::Value = serde_json::from_slice(&response_body).unwrap();
+        assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(page["messages"][0]["message_id"], message_id);
+
+        let payload_hex = page["messages"][0]["payload_hex"].as_str().unwrap();
+        let returned_packet: SyncPacket =
+            serde_json::from_slice(&decode_hex_for_test(payload_hex)).unwrap();
+        let ledger_path = dir.path().join("recipient-replay-ledger.json");
+        let opened = recipient
+            .open_packet(&returned_packet, &sender.card, now + 1, &ledger_path)
+            .unwrap();
+        assert_eq!(opened, plaintext);
+    }
+
 }

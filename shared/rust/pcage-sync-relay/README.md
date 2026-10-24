@@ -36,3 +36,15 @@ Space IDs use 8–80 ASCII letters, digits, underscores, or hyphens. Message IDs
 - The relay does not parse or verify packet signatures and cannot prove clients encrypted payloads correctly. Clients must verify packet signatures, fingerprints, recipient binding, expiry, and replay protection.
 - Metadata such as space ID, message ID, timing, payload length, and access patterns remains visible to the relay operator.
 - No app integration, rate-limiting system, account identity, group roster, or per-device revocation is implemented.
+
+
+## Validation
+
+Run:
+
+```sh
+cargo test --manifest-path shared/rust/pcage-sync-relay/Cargo.toml
+cargo clippy --manifest-path shared/rust/pcage-sync-relay/Cargo.toml --all-targets -- -D warnings
+```
+
+The relay test suite includes an in-process HTTP API round trip using a real `pcage-sync` encrypted and signed packet: create a space, upload ciphertext with its capability, reject an unauthenticated read, retrieve the opaque bytes, and decrypt them only with the recipient identity. This verifies the protocol/relay boundary in-process; it does not claim mobile-client integration, remote TLS deployment, or device lifecycle validation.
