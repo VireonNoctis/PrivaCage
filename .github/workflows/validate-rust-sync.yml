@@ -1,0 +1,46 @@
+name: Validate Rust sync protocol
+
+on:
+  push:
+    paths:
+      - "shared/rust/pcage-sync/**"
+      - "shared/rust/pcage-crypto/**"
+      - "docs/e2ee-sync-protocol.md"
+      - ".github/workflows/validate-rust-sync.yml"
+  pull_request:
+    paths:
+      - "shared/rust/pcage-sync/**"
+      - "shared/rust/pcage-crypto/**"
+      - "docs/e2ee-sync-protocol.md"
+      - ".github/workflows/validate-rust-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            shared/rust/pcage-crypto
+            shared/rust/pcage-sync
+      - name: Format check
+        run: |
+          cargo fmt --manifest-path shared/rust/pcage-crypto/Cargo.toml --all -- --check
+          cargo fmt --manifest-path shared/rust/pcage-sync/Cargo.toml --all -- --check
+      - name: Test crypto compatibility
+        run: cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
+      - name: Test sync protocol
+        run: cargo test --manifest-path shared/rust/pcage-sync/Cargo.toml
+      - name: Clippy crypto
+        run: cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy sync
+        run: cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings

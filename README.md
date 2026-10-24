@@ -18,6 +18,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust share v1/v2 schema support and decrypt a known-answer vector. No account or remote sync; DNS-over-TLS is optional |
+| E2EE sync protocol core | Rust protocol primitives | Per-device Ed25519/X25519 identities, signed recipient-bound encrypted packets, durable replay ledger, signed key rotation, and encrypted identity recovery bundle. No relay, group revocation, platform keystore adapters, or UI integration yet |
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
@@ -51,6 +52,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
+- `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, key rotation, and recovery bundles.
+- `docs/e2ee-sync-protocol.md` — protocol format, trust assumptions, and implementation boundaries.
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
@@ -80,6 +83,11 @@ The Rust encrypted-profile implementation requires Rust 1.85 or newer:
 
     cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
+
+The E2EE sync protocol core requires Rust 1.85 or newer:
+
+    cargo test --manifest-path shared/rust/pcage-sync/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings
 
 The tracker validator checks structure and URL syntax and can enforce an evidence-review age limit (CI uses 180 days); it does not prove that evidence is true or the URL is still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
 

@@ -69,3 +69,10 @@ The file is encrypted before it is written through Android's Storage Access Fram
 - Network access by PrivaCage itself must be documented and limited to explicitly requested updates or user-initiated actions.
 - Rules and logs remain local unless exported by the user.
 - Automatic rule updates require authenticated metadata, integrity checks, and a rollback policy.
+
+
+## End-to-end encrypted sync protocol core
+
+`shared/rust/pcage-sync` defines device identities using Ed25519 signing keys and X25519 encryption keys. Device cards expose public keys and a SHA-256 fingerprint; the receiving user must verify the fingerprint through a separate trusted channel before trusting the card. Each sync packet uses ephemeral X25519, HKDF-SHA-256, ChaCha20-Poly1305 with an authenticated header, and an Ed25519 signature. The receiver checks sender and recipient binding, signature, expiry, and AEAD authentication, then durably records the message ID before returning plaintext. The crate also creates old-key-signed rotation statements and PCAGE01-encrypted recovery bundles.
+
+This is protocol code only. No relay or account service is implemented; no Android/iOS/Windows keystore adapter or UI is wired to it. The relay will still observe routing metadata, timing, and packet sizes. Group membership, revocation, sequence-order enforcement, conflict resolution, and independent cryptographic review remain required before claiming a complete sync product.
