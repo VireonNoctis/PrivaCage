@@ -20,6 +20,7 @@ internal data class RelayedRoster(
     val insertedAtUnix: Long
 )
 internal data class RosterPage(val nextRevision: Long, val rosters: List<RelayedRoster>)
+internal data class RelayMemberRevocationResult(val alreadyRevoked: Boolean)
 
 /**
  * HTTPS-only client for the opaque relay API. Redirects are not followed because a redirect
@@ -75,6 +76,50 @@ internal class SyncRelayClient(
         } finally {
             payload.fill(0)
         }
+    }
+
+    /**
+     * Selectively revokes one enrolled member using the relay administrator token.
+     * The administrator token is accepted per call and is never retained by this client.
+     * Member-mode is checked first because deleting a member row does not disable a legacy
+     * shared capability.
+     */
+    @Throws(IOException::class)
+    fun revokeMemberCredential(adminToken: String, fingerprint: String): RelayMemberRevocationResult {
+        if (!isValidAdminToken(adminToken)) {
+            throw IOException("Relay administrator token must be 32–4096 printable ASCII characters without whitespace.")
+        }
+        if (!isValidFingerprint(fingerprint)) {
+            throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
+        }
+
+        val membersBytes = request(
+            "GET",
+            "/v1/spaces/$spaceId/members",
+            null,
+            setOf(HttpURLConnection.HTTP_OK),
+            MAX_RESPONSE_BYTES,
+            authorizationToken = adminToken,
+            signAsDevice = false
+        )
+        val currentState = try {
+            parseMemberRevocationState(String(membersBytes, StandardCharsets.UTF_8), fingerprint)
+        } finally {
+            membersBytes.fill(0)
+        }
+        if (currentState.alreadyRevoked) return currentState
+
+        val response = request(
+            "DELETE",
+            "/v1/spaces/$spaceId/members/$fingerprint",
+            null,
+            setOf(HttpURLConnection.HTTP_NO_CONTENT),
+            1024,
+            authorizationToken = adminToken,
+            signAsDevice = false
+        )
+        response.fill(0)
+        return RelayMemberRevocationResult(alreadyRevoked = false)
     }
 
     @Throws(IOException::class)
@@ -209,7 +254,9 @@ internal class SyncRelayClient(
         path: String,
         body: ByteArray?,
         expectedStatuses: Set<Int>,
-        maxResponseBytes: Int
+        maxResponseBytes: Int,
+        authorizationToken: String = capabilityToken,
+        signAsDevice: Boolean = true
     ): ByteArray {
         val url = URL(baseUrl + path)
         val connection = (url.openConnection() as? HttpURLConnection)
@@ -219,15 +266,17 @@ internal class SyncRelayClient(
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.useCaches = false
-        val timestamp = System.currentTimeMillis() / 1000L
-        val nonce = randomNonce()
-        val requestBodyText = body?.let { String(it, StandardCharsets.UTF_8) } ?: ""
-        val signature = requestSigner(method, path, timestamp, nonce, requestBodyText)
-        connection.setRequestProperty("Authorization", "Bearer $capabilityToken")
-        connection.setRequestProperty("X-PCAGE-Device-Fingerprint", deviceFingerprint)
-        connection.setRequestProperty("X-PCAGE-Timestamp", timestamp.toString())
-        connection.setRequestProperty("X-PCAGE-Nonce", nonce)
-        connection.setRequestProperty("X-PCAGE-Signature", signature)
+        connection.setRequestProperty("Authorization", "Bearer $authorizationToken")
+        if (signAsDevice) {
+            val timestamp = System.currentTimeMillis() / 1000L
+            val nonce = randomNonce()
+            val requestBodyText = body?.let { String(it, StandardCharsets.UTF_8) } ?: ""
+            val signature = requestSigner(method, path, timestamp, nonce, requestBodyText)
+            connection.setRequestProperty("X-PCAGE-Device-Fingerprint", deviceFingerprint)
+            connection.setRequestProperty("X-PCAGE-Timestamp", timestamp.toString())
+            connection.setRequestProperty("X-PCAGE-Nonce", nonce)
+            connection.setRequestProperty("X-PCAGE-Signature", signature)
+        }
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Cache-Control", "no-store")
         connection.setRequestProperty("Pragma", "no-cache")
@@ -249,14 +298,19 @@ internal class SyncRelayClient(
                     when (status) {
                         in 300..399 -> "Relay attempted a redirect; credentials were not forwarded."
                         HttpURLConnection.HTTP_UNAUTHORIZED,
-                        HttpURLConnection.HTTP_FORBIDDEN -> "Relay rejected the space capability."
-                        HttpURLConnection.HTTP_CONFLICT -> "Relay already contains this message ID."
+                        HttpURLConnection.HTTP_FORBIDDEN -> if (signAsDevice) {
+                            "Relay rejected the space capability."
+                        } else {
+                            "Relay rejected the administrator token or denied this member operation."
+                        }
+                        HttpURLConnection.HTTP_CONFLICT -> "Relay reported a conflicting operation."
                         HttpURLConnection.HTTP_BAD_REQUEST -> "Relay rejected the request format."
                         507 -> "Relay space is full."
                         else -> "Relay request failed with HTTP $status."
                     }
                 )
             }
+            if (status == HttpURLConnection.HTTP_NO_CONTENT) return ByteArray(0)
             return connection.inputStream.use { readLimited(it, maxResponseBytes) }
         } finally {
             connection.disconnect()
@@ -339,6 +393,67 @@ internal class SyncRelayClient(
 
         fun isValidCapability(value: String): Boolean =
             value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+        fun isValidAdminToken(value: String): Boolean =
+            value.length in 32..4096 && value.all { it.code in 0x21..0x7e }
+
+        internal fun parseMemberRevocationState(
+            responseJson: String,
+            targetFingerprint: String
+        ): RelayMemberRevocationResult {
+            if (!isValidFingerprint(targetFingerprint)) {
+                throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
+            }
+            val response = try {
+                JSONObject(responseJson)
+            } catch (exception: Exception) {
+                throw IOException("Relay administrator response was not valid JSON.", exception)
+            }
+            if (!response.has("member_mode") || response.isNull("member_mode")) {
+                throw IOException("Relay administrator response omitted the member-mode state.")
+            }
+            val memberMode = try {
+                response.getBoolean("member_mode")
+            } catch (exception: Exception) {
+                throw IOException("Relay administrator response contains an invalid member-mode state.", exception)
+            }
+            if (!memberMode) {
+                throw IOException(
+                    "Per-device member mode is not active. Selective revocation would not disable the legacy shared capability; rotate that capability through the relay administrator first."
+                )
+            }
+            val members = response.optJSONArray("members")
+                ?: throw IOException("Relay administrator response omitted the member list.")
+            var targetFound = false
+            var targetRevokedAt: Long? = null
+            for (index in 0 until members.length()) {
+                val member = members.optJSONObject(index)
+                    ?: throw IOException("Relay administrator response contains a malformed member.")
+                val fingerprint = member.optString("fingerprint", "")
+                if (!isValidFingerprint(fingerprint)) {
+                    throw IOException("Relay administrator response contains an invalid member fingerprint.")
+                }
+                if (fingerprint != targetFingerprint) continue
+                if (targetFound) {
+                    throw IOException("Relay administrator response contains a duplicate target member.")
+                }
+                targetFound = true
+                if (!member.has("revoked_at_unix")) {
+                    throw IOException("Relay administrator response omitted the target revocation state.")
+                }
+                if (!member.isNull("revoked_at_unix")) {
+                    val revokedAt = member.optLong("revoked_at_unix", -1L)
+                    if (revokedAt <= 0L) {
+                        throw IOException("Relay administrator response contains an invalid revocation timestamp.")
+                    }
+                    targetRevokedAt = revokedAt
+                }
+            }
+            if (!targetFound) {
+                throw IOException("This fingerprint has no registered relay member credential in this space.")
+            }
+            return RelayMemberRevocationResult(alreadyRevoked = targetRevokedAt != null)
+        }
 
         private fun isValidFingerprint(value: String): Boolean =
             value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }

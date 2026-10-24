@@ -628,6 +628,61 @@ internal class AndroidEncryptedSyncManager(context: Context) {
 
     @Synchronized
     @Throws(IOException::class)
+    fun revokeLostDevice(fingerprint: String, adminToken: String): String {
+        if (!validFingerprint(fingerprint)) {
+            throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
+        }
+        val record = requireRecord()
+        var relayStatus: String
+        val relayResult = try {
+            relayClient(record).revokeMemberCredential(adminToken, fingerprint)
+        } catch (exception: IOException) {
+            relayStatus = "FAILED: " + (exception.message ?: "The relay did not confirm credential revocation.")
+            null
+        }
+
+        if (relayResult != null) {
+            relayStatus = if (relayResult.alreadyRevoked) {
+                "The relay member credential was already revoked."
+            } else {
+                "The relay member credential was revoked."
+            }
+            try {
+                appendRosterHistory(
+                    record,
+                    if (relayResult.alreadyRevoked) "relay_member_already_revoked" else "relay_member_revoked",
+                    fingerprint,
+                    "A user-supplied administrator token was used for selective relay-member revocation. The administrator token was not stored."
+                )
+                store.saveRecord(record)
+            } catch (exception: IOException) {
+                relayStatus += " The relay confirmed this action, but its local audit event could not be persisted."
+            }
+        } else {
+            try {
+                appendRosterHistory(
+                    record,
+                    "relay_member_revocation_failed",
+                    fingerprint,
+                    "Selective relay-member revocation failed. The administrator token was not stored."
+                )
+                store.saveRecord(record)
+            } catch (_: IOException) {
+                relayStatus += " The failed remote attempt could not be recorded locally."
+            }
+        }
+
+        val localStatus = try {
+            revokeTrustedPeerAndPublishRoster(fingerprint)
+        } catch (exception: IOException) {
+            "Local trust/roster action did not fully complete: " +
+                (exception.message ?: "local revocation could not be confirmed.")
+        }
+        return "Remote relay credential: $relayStatus\nLocal trust and signed roster: $localStatus"
+    }
+
+    @Synchronized
+    @Throws(IOException::class)
     fun rosterChangeHistory(): org.json.JSONArray {
         val record = requireRecord()
         validateLocalRecord(record)

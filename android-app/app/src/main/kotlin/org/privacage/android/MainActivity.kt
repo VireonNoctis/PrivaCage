@@ -860,7 +860,10 @@ class MainActivity : Activity() {
                                     "\n\nThis removes its trust on this device, deny-lists its fingerprint, and discards any pending profile from it. Future packets from this fingerprint will be skipped.\n\nThis does not erase data already copied to that device and does not revoke the shared relay capability. If that capability may be compromised, rotate it using the relay administrator credentials; that invalidates access for every device until the remaining devices are reconfigured."
                             )
                             .setNegativeButton("Cancel", null)
-                            .setPositiveButton("Revoke trust") { _, _ ->
+                            .setNeutralButton("Revoke trust + relay access") { _, _ ->
+                                showRelayAdminRevocationPrompt(fingerprint, deviceId)
+                            }
+                            .setPositiveButton("Revoke trust locally") { _, _ ->
                                 runSyncTask(
                                     progress = "Revoking local trust and dropping pending data...",
                                     task = { encryptedSyncManager.revokeTrustedPeerAndPublishRoster(fingerprint) },
@@ -875,6 +878,35 @@ class MainActivity : Activity() {
         )
     }
 
+
+    private fun showRelayAdminRevocationPrompt(fingerprint: String, deviceId: String) {
+        val adminTokenInput = EditText(this).apply {
+            hint = "Relay administrator token"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Revoke lost device at relay?")
+            .setMessage(
+                "Target device: $deviceId\n\nEnter the relay administrator token to revoke this fingerprint's per-device relay credential. The app requests the token for this operation only and does not save it. The relay's per-device member mode must already be active; if it is not, remote revocation fails closed because the legacy shared capability would remain usable. Local trust revocation is still attempted even if remote revocation fails."
+            )
+            .setView(adminTokenInput)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Revoke device") { _, _ ->
+                val adminToken = adminTokenInput.text.toString()
+                adminTokenInput.text.clear()
+                if (!SyncRelayClient.isValidAdminToken(adminToken)) {
+                    syncStatusText.text = "No relay request was sent. The administrator token must be 32–4096 printable ASCII characters without whitespace. You can still use 'Revoke trust locally'."
+                    return@setPositiveButton
+                }
+                runSyncTask(
+                    progress = "Revoking relay credential first, then updating local trust...",
+                    task = { encryptedSyncManager.revokeLostDevice(fingerprint, adminToken) },
+                    onSuccess = { status -> syncStatusText.text = status }
+                )
+            }
+            .show()
+    }
 
     private fun showSignedDeviceRoster(rosterJson: String) {
         val roster = try {
