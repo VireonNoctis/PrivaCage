@@ -633,7 +633,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
         }
         val record = requireRecord()
-        var relayStatus: String
+        var relayStatus = "FAILED: Relay administrator request was not completed."
         val relayResult = try {
             relayClient(record).revokeMemberCredential(adminToken, fingerprint)
         } catch (exception: Exception) {
