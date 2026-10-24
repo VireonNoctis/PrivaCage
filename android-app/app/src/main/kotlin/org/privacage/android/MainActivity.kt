@@ -707,7 +707,14 @@ class MainActivity : Activity() {
             .append(" (code ").append(report.versionCode).append(")\n")
         append("Target SDK: ").append(report.targetSdkVersion ?: "unknown").append('\n')
         append("File size: ").append(report.fileSizeBytes).append(" bytes\n")
-        append("SHA-256: ").append(report.sha256).append("\n\n")
+        append("APK SHA-256: ").append(report.sha256).append('\n')
+        append("Current signing certificate SHA-256 fingerprints:")
+        if (report.signingCertificateSha256.isEmpty()) {
+            append(" unavailable (unsigned APK or Android did not expose signer metadata)")
+        } else {
+            report.signingCertificateSha256.forEach { append("\n  ").append(it) }
+        }
+        append("\n\n")
 
         append("Declared permissions (").append(report.permissions.size).append("):")
         if (report.permissions.isEmpty()) append("\nNo requested manifest permissions were declared.")

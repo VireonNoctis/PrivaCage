@@ -30,6 +30,7 @@ internal data class ApkManifestAuditReport(
     val targetSdkVersion: Int?,
     val fileSizeBytes: Long,
     val sha256: String,
+    val signingCertificateSha256: List<String>,
     val permissions: List<ApkPermissionFinding>,
     val exportedComponents: List<ExportedApkComponent>,
     val trackerScan: ApkTrackerScanReport
@@ -47,11 +48,18 @@ internal class ApkManifestAuditor(
             throw IOException("APK must be a readable file no larger than 100 MiB.")
         }
 
+        val signingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
         val flags = PackageManager.GET_PERMISSIONS or
             PackageManager.GET_ACTIVITIES or
             PackageManager.GET_SERVICES or
             PackageManager.GET_RECEIVERS or
-            PackageManager.GET_PROVIDERS
+            PackageManager.GET_PROVIDERS or
+            signingFlags
         val packageInfo = loadPackageInfo(apkFile.absolutePath, flags)
             ?: throw IOException("Android could not parse this file as an APK.")
 
@@ -98,6 +106,7 @@ internal class ApkManifestAuditor(
             targetSdkVersion = packageInfo.applicationInfo?.targetSdkVersion,
             fileSizeBytes = apkFile.length(),
             sha256 = sha256(apkFile),
+            signingCertificateSha256 = signingCertificateFingerprints(packageInfo),
             permissions = permissions,
             exportedComponents = exportedComponents,
             trackerScan = trackerScan
@@ -128,6 +137,22 @@ internal class ApkManifestAuditor(
             )
         )
     }
+
+    private fun signingCertificateFingerprints(packageInfo: PackageInfo): List<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+        } else {
+            legacySignatures(packageInfo)
+        }
+        return signatures
+            .map { CertificateFingerprint.sha256(it.toByteArray()) }
+            .distinct()
+            .sorted()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun legacySignatures(packageInfo: PackageInfo) =
+        packageInfo.signatures?.toList().orEmpty()
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
