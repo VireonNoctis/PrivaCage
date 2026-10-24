@@ -31,6 +31,7 @@ internal data class ApkManifestAuditReport(
     val fileSizeBytes: Long,
     val sha256: String,
     val signingCertificateSha256: List<String>,
+    val signatureVerification: ApkSignatureVerification,
     val permissions: List<ApkPermissionFinding>,
     val exportedComponents: List<ExportedApkComponent>,
     val trackerScan: ApkTrackerScanReport
