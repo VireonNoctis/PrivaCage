@@ -55,6 +55,9 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
+- `docs/audit-checkpoint-format.md` — signed audit checkpoint v1 wire format, hash-chain rules, limits, and trust boundary.
+- `shared/rust/pcage-audit/` — offline Rust CLI/library to verify signed Android audit checkpoints without network access.
+- `shared/audit/test-vectors/checkpoint-v1.json` — fixed, test-only signed interoperability vector (no private key included).
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
 - `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, key rotation, and recovery bundles.
 - Android sync peer management maintains a local denylist and removes pending profiles when a trusted fingerprint is revoked. This is device-local trust revocation; shared relay capability rotation is a separate administrator action and invalidates all devices using that capability.
@@ -101,6 +104,13 @@ The Rust encrypted-profile and metadata implementations require Rust 1.85 or new
     cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
     cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
+
+The portable audit checkpoint verifier requires Rust 1.85 or newer. It rejects unsupported fields, oversized inputs, false redaction claims, chain mismatches, invalid P-256 signatures, and inconsistent counts; a valid signature does not establish the signer’s identity.
+
+    cargo fmt --manifest-path shared/rust/pcage-audit/Cargo.toml --all -- --check
+    cargo test --manifest-path shared/rust/pcage-audit/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-audit/Cargo.toml --all-targets -- -D warnings
+    cargo run --manifest-path shared/rust/pcage-audit/Cargo.toml -- path/to/checkpoint.json
 
 The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
 
