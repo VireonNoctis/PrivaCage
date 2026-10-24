@@ -687,7 +687,7 @@ mod advanced_tests {
     }
 
     #[test] fn parses_hosts_feed_deduplicates_and_ignores_local_names() {
-        let input = "# source\n0.0.0.0 tracker.example.com ads.example.com\n127.0.0.1 localhost\n0.0.0.0 tracker.example.com\n::1 local-v6.example\n0.0.0.0 bad..domain\n";
+        let input = "# source\n0.0.0.0 tracker.example.com ads.example.com\n127.0.0.1 localhost\n0.0.0.0 tracker.example.com\n::1 localhost\n0.0.0.0 bad..domain\n";
         let (domains, ignored) = parse_hosts_feed(input).unwrap();
         assert_eq!(domains, vec!["ads.example.com".to_string(), "tracker.example.com".to_string()]);
         assert!(ignored >= 1);

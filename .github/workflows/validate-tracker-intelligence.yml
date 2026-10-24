@@ -41,3 +41,4 @@ jobs:
           cargo run -- validate-v2 /tmp/intelligence-v2.json
           cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html
           grep -q 'PrivaCage Tracker Intelligence' /tmp/intelligence-dashboard.html
+          cargo run -- serve-dashboard /tmp/intelligence-v2.json 0.0.0.0:8787 2>/tmp/should-not-bind.log && exit 1 || grep -q 'loopback address' /tmp/should-not-bind.log

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-23",
+  "updated_at": "2026-10-24",
   "policy": {
     "automatic_fetching": false,
     "automatic_promotion": false,
@@ -194,6 +194,17 @@
       "ingest_mode": "manual_import",
       "review_required": true,
       "license_status": "not_assessed",
+      "last_verified": null
+    },
+    {
+      "id": "feed-stevenblack-personal-hosts",
+      "name": "StevenBlack personal hosts list (MIT-licensed source file)",
+      "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/data/StevenBlack/hosts",
+      "source_type": "community_database",
+      "trust_tier": "reference",
+      "ingest_mode": "manual_import",
+      "review_required": true,
+      "license_status": "approved",
       "last_verified": null
     }
   ]

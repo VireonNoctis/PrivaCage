@@ -17,6 +17,8 @@ cargo run -- scan-apk ../../tracker-db/signatures.json app.apk /tmp/apk-observat
 cargo run -- diff old-v2.json new-v2.json /tmp/catalog-diff.json
 cargo run -- graph /tmp/intelligence-v2.json /tmp/intelligence-graph.json
 cargo run -- dashboard /tmp/intelligence-v2.json /tmp/intelligence-dashboard.html
+cargo run -- serve-dashboard /tmp/intelligence-v2.json 127.0.0.1:8787
+cargo run -- fetch-feed ../../tracker-db/signatures.json ../../tracker-db/source-registry.json feed-stevenblack-personal-hosts 2026-10-24 /tmp/feed-observations.json /tmp/feed-candidates.json /tmp/feed-manifest.json
 cargo run -- regressions old-v2.json new-v2.json /tmp/regressions.json
 cargo run -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 cargo run -- review-candidate /tmp/candidates.json domain collector.example.net accept reviewer-id "confirmed by primary documentation" 2026-10-23 ./review-ledger.jsonl
@@ -40,11 +42,13 @@ The release store keeps immutable `releases/<id>/catalog.json` and `manifest.jso
 - V1-to-v2 migration preserves entries and aggregates evidence into the bundle source list; it does not invent company/SDK relationships.
 - Schema-v2 validation checks identifiers, evidence, domains, hashes, and entity/SDK references.
 - Local ingestion accepts typed JSON observations or newline-separated domains; it normalizes/deduplicates and creates candidates without auto-publishing them.
+- `fetch-feed` is an explicit, user-triggered HTTPS adapter for the registered MIT-licensed StevenBlack personal hosts source. It enforces a 32 MiB cap, rejects redirects and unexpected content types, records feed/catalog hashes, and writes only unreviewed candidates. It is not scheduled, and a hosts-list domain is not automatically classified as a tracker.
+- `serve-dashboard` is a loopback-only local dashboard server. It reloads the bundle on each request, refreshes the page every 30 seconds, and rejects non-loopback bind addresses; it is not a remote multi-user service.
 - Static APK scanning reads DEX files from ZIP/APK archives, extracts printable ASCII strings, compares them with catalog DEX indicators, and records the APK SHA-256. It does not extract package IDs from binary AndroidManifest.xml, certificate identity from APK signing blocks, runtime behavior, or network destinations.
 - Catalog diff produces added, removed, and changed entries.
-- `dashboard` generates a self-contained offline HTML report for a validated schema-v2 bundle, with catalog counts, indicator values, evidence links, and escaped record text. It makes no background requests and is a point-in-time report, not a live dashboard.
+- `dashboard` generates a self-contained offline HTML report for a validated schema-v2 bundle, with catalog counts, indicator values, evidence links, and escaped record text. `serve-dashboard` serves the report locally and refreshes it against the current bundle.
 - Ed25519 release signing/verification and local immutable release snapshots/rollback are implemented. Pin the public key out-of-band.
 - Exact DNS-label-boundary matching prevents substring matches. Indicator association is not proof of SDK execution, sensitive-data access, exfiltration, or malicious intent.
 
 ## Not implemented here
-Live VPN/DNS telemetry still requires platform-specific Android VPN-service integration and OS-permitted iOS networking APIs. Automatic internet feed crawling and publication require source-specific adapters, licensing/provenance rules, network/privacy policy, and maintainer review; this crate deliberately accepts local feed exports instead of inventing a universal scraper. A live web dashboard and multi-user review service still require the app/backend's actual UI and API surfaces; the `dashboard` command provides an offline static report.
+Live VPN/DNS telemetry still requires platform-specific Android VPN-service integration and OS-permitted iOS networking APIs. Scheduled multi-source crawling and publication remain intentionally disabled. Only one manually triggered, license-reviewed host-file adapter is enabled; additional formats need source-specific parser, license, and provenance review. The local dashboard is loopback-only and has no multi-user authentication or remote review API.
