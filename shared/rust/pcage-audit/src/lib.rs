@@ -413,8 +413,7 @@ fn validate_hostname(value: &str, index: usize) -> Result<(), VerifyError> {
         )));
     }
     let labels = value.split('.');
-    if !value.contains('.')
-        || labels.clone().any(|label| {
+    if labels.clone().any(|label| {
             label.is_empty()
                 || label.len() > 63
                 || label.starts_with('-')
@@ -638,6 +637,18 @@ mod tests {
             result.chain_head_sha256,
             "ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb"
         );
+    }
+
+    #[test]
+    fn accepts_a_single_label_hostname_when_hostname_opt_in() {
+        let mut payload = sample_payload();
+        payload.redactions.queried_hostnames = false;
+        payload.events[0].queried_hostname = "localhost".to_owned();
+        payload.events[0].record_sha256 = record_digest(GENESIS_SHA256, &payload.events[0]);
+        let head = payload.events[0].record_sha256.clone();
+        payload.integrity.chain_head_sha256 = head.clone();
+        let checkpoint = sign_payload(&payload, &test_key(), &head);
+        assert!(verify_checkpoint_json(&checkpoint).is_ok());
     }
 
     #[test]
