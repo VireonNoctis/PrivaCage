@@ -24,6 +24,7 @@ import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
 import org.privacage.android.sync.AndroidEncryptedSyncManager
+import org.privacage.android.sync.SyncRelayClient
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream

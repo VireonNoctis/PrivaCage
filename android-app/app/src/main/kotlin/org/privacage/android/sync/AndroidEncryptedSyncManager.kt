@@ -636,7 +636,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         var relayStatus: String
         val relayResult = try {
             relayClient(record).revokeMemberCredential(adminToken, fingerprint)
-        } catch (exception: IOException) {
+        } catch (exception: Exception) {
             relayStatus = "FAILED: " + (exception.message ?: "The relay did not confirm credential revocation.")
             null
         }
@@ -674,7 +674,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
 
         val localStatus = try {
             revokeTrustedPeerAndPublishRoster(fingerprint)
-        } catch (exception: IOException) {
+        } catch (exception: Exception) {
             "Local trust/roster action did not fully complete: " +
                 (exception.message ?: "local revocation could not be confirmed.")
         }
