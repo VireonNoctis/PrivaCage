@@ -53,7 +53,10 @@ Protect persisted sensitive settings with platform-native key storage, versioned
 Explain VPN replacement behavior and data handling before consent. Report actual service lifecycle and tested route diagnostics. Do not imply a successful tunnel means IPv6, encrypted DNS, or every app path is covered.
 
 ### App-update privacy diff
-Compare selected APK versions locally for manifest permissions, exported components, SDK signature matches, and embedded endpoint candidates. Record the APK hash and signature database version; never present static indicators as observed runtime behavior.
+
+**Implemented Android slice (24 October 2026):** users can select a baseline APK and a candidate APK for the same package, then compare declared permissions, exported components, embedded tracker-catalog indicators, target SDK, signer fingerprints, and signature-verification results. Both APK SHA-256 hashes and the exact bundled tracker-catalog SHA-256 are included in the report. The files are staged locally, scanned without installation or upload, and deleted after each scan.
+
+**Limits:** these are manifest and bounded DEX-string differences, not runtime observations. A removed string does not prove a tracker was removed; a new string does not prove it executes or transmits data. Split APKs, native code, obfuscation, encrypted strings, dynamic loading, and bounded scan coverage can hide changes. The app rejects package-ID mismatches and does not produce a private/not-private score.
 
 ### Minimal, redacted audit export
 Let users choose the date range and event categories, preview redactions, and exclude raw DNS names, packet payloads, internal paths, and identifiers by default.

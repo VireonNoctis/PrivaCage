@@ -35,6 +35,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
@@ -61,6 +62,7 @@ class MainActivity : Activity() {
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
     private var pendingMetadataInput: File? = null
+    private var pendingApkDiffBaseline: ApkManifestAuditReport? = null
     private var pendingScrubbedMedia: File? = null
     private var pendingScrubbedMediaExtension: String? = null
     private var pendingScrubbedMediaMime: String? = null
@@ -201,6 +203,10 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Inspect APK manifest offline"
             setOnClickListener { chooseApkForAudit() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Compare two APK versions locally"
+            setOnClickListener { chooseApkForDiffBaseline() }
         }, matchWidth())
         apkAuditText = TextView(this).apply {
             visibility = android.view.View.GONE
@@ -771,6 +777,8 @@ class MainActivity : Activity() {
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
+            REQUEST_APK_DIFF_BASELINE -> auditApkDiffBaseline(resultCode, data?.data)
+            REQUEST_APK_DIFF_CANDIDATE -> auditApkDiffCandidate(resultCode, data?.data)
             REQUEST_METADATA_SCRUB_INPUT -> inspectSelectedMedia(resultCode, data?.data)
             REQUEST_METADATA_SCRUB_OUTPUT -> saveScrubbedMedia(resultCode, data?.data)
             REQUEST_SYNC_RECOVERY_EXPORT -> writeSyncRecoveryBundle(resultCode, data?.data)
@@ -1618,13 +1626,148 @@ class MainActivity : Activity() {
         }, "PrivaCage-metadata-save").start()
     }
 
+    private fun apkPickerIntent(): Intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = "*/*"
+        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/vnd.android.package-archive"))
+    }
+
     private fun chooseApkForAudit() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/vnd.android.package-archive"))
+        startActivityForResult(apkPickerIntent(), REQUEST_APK_AUDIT)
+    }
+
+    private fun chooseApkForDiffBaseline() {
+        pendingApkDiffBaseline = null
+        startActivityForResult(apkPickerIntent(), REQUEST_APK_DIFF_BASELINE)
+    }
+
+    private fun chooseApkForDiffCandidate() {
+        if (pendingApkDiffBaseline == null) {
+            statusText.text = "The baseline report is no longer available. Start the comparison again."
+            return
         }
-        startActivityForResult(intent, REQUEST_APK_AUDIT)
+        startActivityForResult(apkPickerIntent(), REQUEST_APK_DIFF_CANDIDATE)
+    }
+
+    private fun auditApkDiffBaseline(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            pendingApkDiffBaseline = null
+            statusText.text = "APK comparison cancelled; no file was installed or uploaded."
+            return
+        }
+
+        pendingApkDiffBaseline = null
+        statusText.text = "Scanning the baseline APK locally. It will not be installed or uploaded."
+        Thread({
+            var stagedApk: File? = null
+            try {
+                stagedApk = stageSelectedApk(uri)
+                val report = ApkManifestAuditor(packageManager).inspect(stagedApk, apkTrackerCatalog)
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        pendingApkDiffBaseline = report
+                        AlertDialog.Builder(this)
+                            .setTitle("Baseline APK scanned")
+                            .setMessage(
+                                "Package: " + report.packageName +
+                                    "\nVersion: " + (report.versionName ?: "unknown") +
+                                    " (code " + report.versionCode + ")" +
+                                    "\nAPK SHA-256: " + report.sha256 +
+                                    "\n\nSelect the candidate version of this same package. Both APKs are inspected locally."
+                            )
+                            .setNegativeButton("Cancel comparison") { _, _ ->
+                                pendingApkDiffBaseline = null
+                                statusText.text = "APK comparison cancelled; baseline report discarded."
+                            }
+                            .setPositiveButton("Choose candidate APK") { _, _ ->
+                                chooseApkForDiffCandidate()
+                            }
+                            .setOnCancelListener {
+                                pendingApkDiffBaseline = null
+                                statusText.text = "APK comparison cancelled; baseline report discarded."
+                            }
+                            .show()
+                    }
+                }
+            } catch (exception: Exception) {
+                val failure = exception.message ?: "The baseline APK could not be inspected."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        pendingApkDiffBaseline = null
+                        statusText.text = "APK comparison failed: " + failure + " No file was installed or uploaded."
+                    }
+                }
+            } finally {
+                stagedApk?.delete()
+            }
+        }, "PrivaCage-APK-diff-baseline").start()
+    }
+
+    private fun auditApkDiffCandidate(resultCode: Int, uri: Uri?) {
+        val baseline = pendingApkDiffBaseline
+        if (resultCode != RESULT_OK || uri == null) {
+            pendingApkDiffBaseline = null
+            statusText.text = "APK comparison cancelled; the baseline report was discarded."
+            return
+        }
+        if (baseline == null) {
+            statusText.text = "The baseline report is no longer available. Start the comparison again."
+            return
+        }
+
+        pendingApkDiffBaseline = null
+        statusText.text = "Scanning the candidate APK and comparing static privacy indicators locally..."
+        Thread({
+            var stagedApk: File? = null
+            try {
+                stagedApk = stageSelectedApk(uri)
+                val candidate = ApkManifestAuditor(packageManager).inspect(stagedApk, apkTrackerCatalog)
+                val diff = ApkPrivacyDiff.compare(baseline, candidate, trackerCatalogSha256())
+                val summary = formatApkPrivacyDiffReport(diff)
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        apkAuditText.text = summary
+                        apkAuditText.visibility = android.view.View.VISIBLE
+                        statusText.text = "APK comparison finished locally. Both temporary APK copies were deleted."
+                    }
+                }
+            } catch (exception: Exception) {
+                val failure = exception.message ?: "The candidate APK could not be compared."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        statusText.text = "APK comparison failed: " + failure + " Both APKs remained uninstalled and were not uploaded."
+                    }
+                }
+            } finally {
+                stagedApk?.delete()
+            }
+        }, "PrivaCage-APK-diff-candidate").start()
+    }
+
+    private fun trackerCatalogSha256(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(8_192)
+        try {
+            assets.open("signatures.json").use { input ->
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    digest.update(buffer, 0, count)
+                }
+            }
+        } finally {
+            buffer.fill(0)
+        }
+
+        val hexDigits = "0123456789abcdef"
+        return buildString(64) {
+            digest.digest().forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hexDigits[value ushr 4])
+                append(hexDigits[value and 0x0f])
+            }
+        }
     }
 
     private fun auditSelectedApk(resultCode: Int, uri: Uri?) {
@@ -1772,6 +1915,92 @@ class MainActivity : Activity() {
         append(" runtime execution, network connections, transmitted data, or malicious intent.")
         append(" Obfuscation, native code, encryption, and dynamic loading can evade static string scans.")
         append(" Exported components may be intentional; review their purpose and guards.")
+    }
+
+    private fun formatApkPrivacyDiffReport(diff: ApkPrivacyDiffReport): String = buildString {
+        val baseline = diff.baseline
+        val candidate = diff.candidate
+        append("LOCAL STATIC APK PRIVACY DIFF\n")
+        append("Package: ").append(baseline.packageName).append('\n')
+        append("Baseline version: ").append(baseline.versionName ?: "unknown")
+            .append(" (code ").append(baseline.versionCode).append(")\n")
+        append("Candidate version: ").append(candidate.versionName ?: "unknown")
+            .append(" (code ").append(candidate.versionCode).append(")\n")
+        if (candidate.versionCode < baseline.versionCode) {
+            append("WARNING: the candidate version code is lower than the baseline. Verify which file is the intended update.\n")
+        }
+        append("Baseline APK SHA-256: ").append(baseline.sha256).append('\n')
+        append("Candidate APK SHA-256: ").append(candidate.sha256).append('\n')
+        append("Bundled tracker catalog SHA-256: ").append(diff.trackerCatalogSha256).append('\n')
+        append("Target SDK: ").append(baseline.targetSdkVersion ?: "unknown")
+            .append(" -> ").append(candidate.targetSdkVersion ?: "unknown").append('\n')
+        append("APK signature verification: baseline ").append(baseline.signatureVerification.status.name)
+            .append(", candidate ").append(candidate.signatureVerification.status.name).append('\n')
+        append("Signing certificate fingerprints: ")
+            .append(if (baseline.signingCertificateSha256 == candidate.signingCertificateSha256) "unchanged" else "CHANGED")
+        if (baseline.signingCertificateSha256 != candidate.signingCertificateSha256) {
+            append("\nWARNING: signing fingerprints differ. Rotation can be legitimate, but independently verify the publisher before installing an APK.")
+        }
+        appendDiffSection(this, "Declared permissions added", diff.addedPermissions.map {
+            "[" + it.review.category.displayName + "] " + it.permissionName
+        })
+        appendDiffSection(this, "Declared permissions removed", diff.removedPermissions.map {
+            "[" + it.review.category.displayName + "] " + it.permissionName
+        })
+        appendDiffSection(this, "Exported components added", diff.addedExportedComponents.map {
+            it.kind + ": " + it.className + " (enabled=" + it.enabled +
+                ", required permission=" + (it.requiredPermission ?: "none") + ")"
+        })
+        appendDiffSection(this, "Exported components removed", diff.removedExportedComponents.map {
+            it.kind + ": " + it.className + " (enabled=" + it.enabled +
+                ", required permission=" + (it.requiredPermission ?: "none") + ")"
+        })
+        appendDiffSection(this, "Exported components changed", diff.changedExportedComponents.map { change ->
+            change.before.kind + ": " + change.before.className +
+                " — enabled " + change.before.enabled + " -> " + change.after.enabled +
+                "; required permission " + (change.before.requiredPermission ?: "none") +
+                " -> " + (change.after.requiredPermission ?: "none")
+        })
+        appendDiffSection(this, "Embedded catalog indicators added", diff.addedTrackerIndicators.map {
+            it.recordName + " [" + it.status + "] — " + it.indicatorType + ": " + it.indicator +
+                " (DEX: " + it.dexEntries.joinToString(", ") + ")"
+        })
+        appendDiffSection(this, "Embedded catalog indicators no longer found", diff.removedTrackerIndicators.map {
+            it.recordName + " [" + it.status + "] — " + it.indicatorType + ": " + it.indicator +
+                " (was in DEX: " + it.dexEntries.joinToString(", ") + ")"
+        })
+        appendDiffSection(this, "Embedded catalog indicators changed", diff.changedTrackerIndicators.map { change ->
+            change.before.recordName + " — " + change.before.indicatorType + ": " + change.before.indicator +
+                "; status " + change.before.status + " -> " + change.after.status +
+                "; DEX entries " + change.before.dexEntries.joinToString(", ") +
+                " -> " + change.after.dexEntries.joinToString(", ")
+        })
+        val signatureIssues = buildList {
+            baseline.signatureVerification.errors.take(5).forEach { add("baseline error: " + it) }
+            candidate.signatureVerification.errors.take(5).forEach { add("candidate error: " + it) }
+            baseline.signatureVerification.warnings.take(5).forEach { add("baseline warning: " + it) }
+            candidate.signatureVerification.warnings.take(5).forEach { add("candidate warning: " + it) }
+        }
+        appendDiffSection(this, "APK signature verifier details", signatureIssues)
+        val coverageWarnings = buildList {
+            baseline.trackerScan.warnings.forEach { add("baseline: " + it) }
+            candidate.trackerScan.warnings.forEach { add("candidate: " + it) }
+        }
+        appendDiffSection(this, "Static scan coverage warnings", coverageWarnings)
+        append("\n\nLIMITS: This comparison reports changes in manifest declarations and literal catalog strings found in bounded DEX scans. It does not prove SDK execution, network activity, data collection, safety, or malicious intent. No APK was installed or uploaded. Obfuscation, native code, encrypted strings, dynamic loading, split APKs, and bounded scan coverage can hide changes.")
+    }
+
+    private fun appendDiffSection(output: StringBuilder, title: String, items: List<String>) {
+        output.append("\n\n").append(title).append(" (").append(items.size).append("):")
+        if (items.isEmpty()) {
+            output.append("\nNone.")
+            return
+        }
+        items.take(MAX_AUDIT_ITEMS_TO_DISPLAY).forEach { output.append("\n• ").append(it) }
+        if (items.size > MAX_AUDIT_ITEMS_TO_DISPLAY) {
+            output.append("\n… ").append(items.size - MAX_AUDIT_ITEMS_TO_DISPLAY)
+                .append(" additional items omitted from this view.")
+        }
     }
 
     private fun previewDomainRule() {
@@ -2299,6 +2528,8 @@ class MainActivity : Activity() {
         private const val REQUEST_EXPORT_FILE = 4108
         private const val REQUEST_IMPORT_FILE = 4109
         private const val REQUEST_APK_AUDIT = 4110
+        private const val REQUEST_APK_DIFF_BASELINE = 4115
+        private const val REQUEST_APK_DIFF_CANDIDATE = 4116
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113
