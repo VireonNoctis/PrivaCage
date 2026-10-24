@@ -2,7 +2,7 @@ use pcage_audit::{MAX_CHECKPOINT_BYTES, verify_checkpoint_json};
 use std::{
     env,
     fs::File,
-    io::{self, Read},
+    io::Read,
     process,
 };
 
