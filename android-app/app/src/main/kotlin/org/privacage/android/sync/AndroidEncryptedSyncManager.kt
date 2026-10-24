@@ -1409,6 +1409,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     fun exportRecoveryBundle(recoveryPassphrase: String): ByteArray {
         requireRecoveryPassphrase(recoveryPassphrase)
         val record = requireRecord()
+        if (record.optBoolean(KEY_OWNER_ROTATION_HANDOFF_PENDING, false)) {
+            throw IOException("Complete the owner-key handoff before exporting recovery. The recovery bundle does not contain the saved public transition package.")
+        }
         if (record.has(KEY_PENDING_KEY_ROTATION)) {
             throw IOException("Finish the staged key rotation before exporting recovery. The recovery bundle contains only the currently active identity.")
         }
@@ -1430,6 +1433,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     @Throws(IOException::class)
     fun prepareRecoveryImport(recoveryBundle: ByteArray, recoveryPassphrase: String): JSONObject {
         requireRecoveryPassphrase(recoveryPassphrase)
+        if (store.loadRecord()?.optBoolean(KEY_OWNER_ROTATION_HANDOFF_PENDING, false) == true) {
+            throw IOException("Complete the owner-key handoff before restoring recovery. Replacing the protected record would discard the saved transition package.")
+        }
         if (recoveryBundle.isEmpty() || recoveryBundle.size > MAX_RECOVERY_BUNDLE_BYTES) {
             throw IOException("Recovery bundle is empty or exceeds the supported size.")
         }
@@ -1458,6 +1464,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     @Synchronized
     @Throws(IOException::class)
     fun commitRecoveryImport(importedRecord: JSONObject) {
+        if (store.loadRecord()?.optBoolean(KEY_OWNER_ROTATION_HANDOFF_PENDING, false) == true) {
+            throw IOException("Owner-key handoff is still pending. Copy the saved transition and confirm the handoff before replacing this protected record.")
+        }
         // Recovery import begins with a clean local trust/configuration state.
         store.saveRecord(importedRecord, replaceMissingKeystoreKey = true)
     }
