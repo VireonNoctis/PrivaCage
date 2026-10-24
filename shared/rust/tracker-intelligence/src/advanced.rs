@@ -4,6 +4,7 @@ use crate::{
     Observation, ReleaseManifest, IntelError,
 };
 use serde::{Deserialize, Serialize};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use std::{collections::{BTreeMap, BTreeSet}, fs, fs::OpenOptions, io::{Read, Write}, path::{Path, PathBuf}};
 
@@ -468,11 +469,13 @@ pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError
 
 
 #[derive(Debug,Clone,Serialize,Deserialize,PartialEq,Eq)]
-pub struct ReviewDecision { pub schema_version:u32, pub candidate:Candidate, pub decision:String, pub reviewer:String, pub reason:String, pub reviewed_at:String, pub automatic_promotion:bool, pub previous_record_sha256:Option<String>, pub record_sha256:String }
+pub struct ReviewDecision { pub schema_version:u32, pub candidate:Candidate, pub decision:String, pub reviewer:String, pub reason:String, pub reviewed_at:String, pub automatic_promotion:bool, pub previous_record_sha256:Option<String>, pub record_sha256:String, #[serde(default, skip_serializing_if="Option::is_none")] pub signer_public_key_hex:Option<String>, #[serde(default, skip_serializing_if="Option::is_none")] pub signature_hex:Option<String> }
 fn review_record_digest(record:&ReviewDecision)->Result<String,IntelError>{
     let mut value=serde_json::to_value(record).map_err(|e|IntelError::Json(e.to_string()))?;
     let object=value.as_object_mut().ok_or_else(||invalid("review record is not an object"))?;
     object.remove("record_sha256");
+    object.remove("signer_public_key_hex");
+    object.remove("signature_hex");
     let bytes=serde_json::to_vec(&value).map_err(|e|IntelError::Json(e.to_string()))?;
     Ok(sha256_hex(&bytes))
 }
@@ -503,11 +506,128 @@ pub fn record_candidate_review(queue_path:&Path,kind:&IndicatorKind,value:&str,d
         .ok_or_else(||invalid("candidate was not found in the review queue"))?;
     if let Some(parent)=ledger_path.parent(){fs::create_dir_all(parent).map_err(|e|IntelError::Io(e.to_string()))?;}
     let previous=verify_review_ledger(ledger_path)?;
-    let mut record=ReviewDecision{schema_version:1,candidate,decision:if decision=="accept"{"accepted_for_catalog_review".into()}else{"rejected".into()},reviewer:reviewer.trim().into(),reason:reason.trim().into(),reviewed_at:reviewed_at.into(),automatic_promotion:false,previous_record_sha256:previous,record_sha256:String::new()};
+    let mut record=ReviewDecision{schema_version:1,candidate,decision:if decision=="accept"{"accepted_for_catalog_review".into()}else{"rejected".into()},reviewer:reviewer.trim().into(),reason:reason.trim().into(),reviewed_at:reviewed_at.into(),automatic_promotion:false,previous_record_sha256:previous,record_sha256:String::new(),signer_public_key_hex:None,signature_hex:None};
     record.record_sha256=review_record_digest(&record)?;
     let mut file=OpenOptions::new().create(true).append(true).open(ledger_path).map_err(|e|IntelError::Io(format!("open review ledger: {e}")))?;
     let mut line=serde_json::to_vec(&record).map_err(|e|IntelError::Json(e.to_string()))?;line.push(b'\n');
     file.write_all(&line).map_err(|e|IntelError::Io(format!("append review ledger: {e}")))?;
+    Ok(record)
+}
+
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustedReviewerKey { pub id: String, pub public_key_hex: String, pub active: bool }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustedReviewerRegistry { pub schema_version: u32, pub reviewers: Vec<TrustedReviewerKey> }
+
+fn load_reviewer_registry(path: &Path) -> Result<TrustedReviewerRegistry, IntelError> {
+    let registry: TrustedReviewerRegistry = read_json(path)?;
+    if registry.schema_version != 1 { return Err(invalid("unsupported reviewer-key registry schema")); }
+    let mut ids = BTreeSet::new();
+    for reviewer in &registry.reviewers {
+        if reviewer.id.trim().is_empty() || !ids.insert(reviewer.id.to_ascii_lowercase()) {
+            return Err(invalid("reviewer IDs must be non-empty and unique"));
+        }
+        let key = hex::decode(&reviewer.public_key_hex)
+            .map_err(|e| invalid(format!("invalid public key for reviewer {}: {e}", reviewer.id)))?;
+        if key.len() != 32 { return Err(invalid(format!("reviewer {} public key must be 32 bytes", reviewer.id))); }
+    }
+    Ok(registry)
+}
+
+/// Verify every review record's hash chain, trusted reviewer mapping, and Ed25519 signature.
+/// Unsigned legacy records intentionally fail strict verification.
+pub fn verify_signed_review_ledger(ledger_path: &Path, reviewer_registry_path: &Path) -> Result<usize, IntelError> {
+    let registry = load_reviewer_registry(reviewer_registry_path)?;
+    let reviewers: BTreeMap<&str, &TrustedReviewerKey> = registry.reviewers.iter().map(|r| (r.id.as_str(), r)).collect();
+    if !ledger_path.exists() { return Ok(0); }
+    let text = fs::read_to_string(ledger_path).map_err(|e| IntelError::Io(format!("read signed review ledger: {e}")))?;
+    let mut previous: Option<String> = None;
+    let mut count = 0usize;
+    for (index, line) in text.lines().enumerate() {
+        if line.trim().is_empty() { continue; }
+        let record: ReviewDecision = serde_json::from_str(line)
+            .map_err(|e| IntelError::Json(format!("invalid review ledger line {}: {e}", index + 1)))?;
+        if record.previous_record_sha256 != previous {
+            return Err(invalid(format!("review ledger chain mismatch at line {}", index + 1)));
+        }
+        if review_record_digest(&record)? != record.record_sha256 {
+            return Err(invalid(format!("review ledger hash mismatch at line {}", index + 1)));
+        }
+        let trusted = reviewers.get(record.reviewer.as_str()).filter(|r| r.active)
+            .ok_or_else(|| invalid(format!("reviewer {} is not active in the trusted key registry", record.reviewer)))?;
+        let signer_hex = record.signer_public_key_hex.as_deref()
+            .ok_or_else(|| invalid(format!("unsigned legacy review at line {}", index + 1)))?;
+        if signer_hex != trusted.public_key_hex {
+            return Err(invalid(format!("reviewer key mismatch at line {}", index + 1)));
+        }
+        let key_bytes = hex::decode(signer_hex).map_err(|e| invalid(e.to_string()))?;
+        let key_bytes: [u8; 32] = key_bytes.try_into().map_err(|_| invalid("reviewer public key must be 32 bytes"))?;
+        let key = VerifyingKey::from_bytes(&key_bytes).map_err(|e| invalid(e.to_string()))?;
+        let signature_bytes = hex::decode(record.signature_hex.as_deref()
+            .ok_or_else(|| invalid(format!("missing review signature at line {}", index + 1)))?)
+            .map_err(|e| invalid(e.to_string()))?;
+        let signature = Signature::from_slice(&signature_bytes).map_err(|e| invalid(e.to_string()))?;
+        let digest = hex::decode(&record.record_sha256).map_err(|e| invalid(e.to_string()))?;
+        key.verify(&digest, &signature)
+            .map_err(|_| invalid(format!("review signature verification failed at line {}", index + 1)))?;
+        previous = Some(record.record_sha256);
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Record a review only when the supplied private seed matches the trusted public key
+/// assigned to the reviewer ID. Existing unsigned ledgers fail strict verification.
+pub fn record_candidate_review_signed(
+    queue_path: &Path, kind: &IndicatorKind, value: &str, decision: &str,
+    reviewer: &str, reason: &str, reviewed_at: &str, ledger_path: &Path,
+    signing_seed_hex: &str, reviewer_registry_path: &Path,
+) -> Result<ReviewDecision, IntelError> {
+    if !["accept", "reject"].contains(&decision) { return Err(invalid("decision must be accept or reject")); }
+    if reviewer.trim().is_empty() || reviewer.len() > 200 { return Err(invalid("reviewer must be 1-200 characters")); }
+    if reason.trim().is_empty() || reason.len() > 2000 { return Err(invalid("review reason must be 1-2000 characters")); }
+    if date_ordinal(reviewed_at).is_none() { return Err(invalid("reviewed_at must be a valid YYYY-MM-DD date")); }
+    let registry = load_reviewer_registry(reviewer_registry_path)?;
+    let trusted = registry.reviewers.iter().find(|r| r.id == reviewer && r.active)
+        .ok_or_else(|| invalid("reviewer is not active in the trusted reviewer-key registry"))?;
+    let seed_bytes = hex::decode(signing_seed_hex).map_err(|e| invalid(format!("signing seed must be hex: {e}")))?;
+    let seed: [u8; 32] = seed_bytes.try_into().map_err(|_| invalid("Ed25519 signing seed must be 32 bytes"))?;
+    let key = SigningKey::from_bytes(&seed);
+    let public_key_hex = hex::encode(key.verifying_key().as_bytes());
+    if public_key_hex != trusted.public_key_hex {
+        return Err(invalid("signing seed does not match the public key registered for this reviewer"));
+    }
+    verify_review_ledger(ledger_path)?;
+    verify_signed_review_ledger(ledger_path, reviewer_registry_path)?;
+    let queue: Vec<Candidate> = read_json(queue_path)?;
+    let target = normalized_candidate_value(kind, value);
+    let candidate = queue.into_iter().find(|c| c.kind == *kind && normalized_candidate_value(&c.kind, &c.value) == target)
+        .ok_or_else(|| invalid("candidate was not found in the review queue"))?;
+    if let Some(parent) = ledger_path.parent() { fs::create_dir_all(parent).map_err(|e| IntelError::Io(e.to_string()))?; }
+    let previous = verify_review_ledger(ledger_path)?;
+    let mut record = ReviewDecision {
+        schema_version: 1,
+        candidate,
+        decision: if decision == "accept" { "accepted_for_catalog_review".into() } else { "rejected".into() },
+        reviewer: reviewer.trim().into(),
+        reason: reason.trim().into(),
+        reviewed_at: reviewed_at.into(),
+        automatic_promotion: false,
+        previous_record_sha256: previous,
+        record_sha256: String::new(),
+        signer_public_key_hex: Some(public_key_hex),
+        signature_hex: None,
+    };
+    record.record_sha256 = review_record_digest(&record)?;
+    let digest = hex::decode(&record.record_sha256).map_err(|e| invalid(e.to_string()))?;
+    record.signature_hex = Some(hex::encode(key.sign(&digest).to_bytes()));
+    let mut file = OpenOptions::new().create(true).append(true).open(ledger_path)
+        .map_err(|e| IntelError::Io(format!("open review ledger: {e}")))?;
+    let mut line = serde_json::to_vec(&record).map_err(|e| IntelError::Json(e.to_string()))?;
+    line.push(b'\n');
+    file.write_all(&line).map_err(|e| IntelError::Io(format!("append signed review ledger: {e}")))?;
     Ok(record)
 }
 
@@ -691,6 +811,27 @@ mod advanced_tests {
         assert!(verify_review_ledger(&ledger).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test] fn signed_review_ledger_authenticates_reviewer_and_detects_tampering() {
+        let dir=std::env::temp_dir().join(format!("pcage-signed-review-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(&dir).unwrap();
+        let queue=dir.join("queue.json");
+        let ledger=dir.join("signed-reviews.jsonl");
+        let keys=dir.join("reviewer-keys.json");
+        let seed="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let seed_bytes: [u8;32]=hex::decode(seed).unwrap().try_into().unwrap();
+        let public_key=hex::encode(SigningKey::from_bytes(&seed_bytes).verifying_key().as_bytes());
+        fs::write(&keys,serde_json::to_vec(&json!({"schema_version":1,"reviewers":[{"id":"maintainer","public_key_hex":public_key,"active":true}]})).unwrap()).unwrap();
+        let candidate=Candidate{value:"review.example.com".into(),kind:IndicatorKind::Domain,first_seen_context:Some("fixture".into()),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()};
+        fs::write(&queue,serde_json::to_vec(&vec![candidate]).unwrap()).unwrap();
+        record_candidate_review_signed(&queue,&IndicatorKind::Domain,"review.example.com","accept","maintainer","confirmed by source documentation","2026-10-24",&ledger,seed,&keys).unwrap();
+        assert_eq!(verify_signed_review_ledger(&ledger,&keys).unwrap(),1);
+        let edited=fs::read_to_string(&ledger).unwrap().replace("confirmed by source documentation","changed after signing");
+        fs::write(&ledger,edited).unwrap();
+        assert!(verify_signed_review_ledger(&ledger,&keys).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test] fn release_store_publishes_verifies_and_lists(){
         let dir=std::env::temp_dir().join(format!("pcage-release-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&dir).unwrap();
         let catalog=dir.join("catalog.json");fs::write(&catalog,serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
