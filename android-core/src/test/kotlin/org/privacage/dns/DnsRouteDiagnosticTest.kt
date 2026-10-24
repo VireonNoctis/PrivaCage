@@ -21,7 +21,7 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun reportsValidNoErrorAnswerAsResolved() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { query -> response(query, 0x8180, answer = true) })
+        val result = DnsRouteDiagnostic.run(transport { query -> response(query, 0x8180, answer = true) })
         assertTrue(result.responseReceived)
         assertTrue(result.validDnsResponse)
         assertTrue(result.resolved)
@@ -31,7 +31,7 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun distinguishesResolverReachabilityFromNxdomain() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { query -> response(query, 0x8183) })
+        val result = DnsRouteDiagnostic.run(transport { query -> response(query, 0x8183) })
         assertTrue(result.responseReceived)
         assertTrue(result.validDnsResponse)
         assertFalse(result.resolved)
@@ -41,7 +41,7 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun noErrorWithoutAnswerDoesNotClaimTheProbeResolved() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { query -> response(query, 0x8180) })
+        val result = DnsRouteDiagnostic.run(transport { query -> response(query, 0x8180) })
         assertTrue(result.responseReceived)
         assertTrue(result.validDnsResponse)
         assertFalse(result.resolved)
@@ -51,7 +51,7 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun rejectsMismatchedTransactionId() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { query ->
+        val result = DnsRouteDiagnostic.run(transport { query ->
             response(query, 0x8180).also { it[1] = (it[1].toInt() xor 1).toByte() }
         })
         assertTrue(result.responseReceived)
@@ -62,7 +62,7 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun reportsTimeoutWithoutClaimingTheResolverResponded() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { throw SocketTimeoutException("receive timed out") })
+        val result = DnsRouteDiagnostic.run(transport { throw SocketTimeoutException("receive timed out") })
         assertFalse(result.responseReceived)
         assertFalse(result.validDnsResponse)
         assertFalse(result.resolved)
@@ -71,13 +71,18 @@ class DnsRouteDiagnosticTest {
 
     @Test
     fun rejectsResponseQuestionThatDoesNotMatchProbe() {
-        val result = DnsRouteDiagnostic.run(DnsUpstreamTransport { query ->
+        val result = DnsRouteDiagnostic.run(transport { query ->
             response(query, 0x8180).also { it[13] = 'n'.code.toByte() }
         })
         assertTrue(result.responseReceived)
         assertFalse(result.validDnsResponse)
         assertTrue(result.message.contains("question does not match"))
     }
+
+    private fun transport(responder: (ByteArray) -> ByteArray): DnsUpstreamTransport =
+        object : DnsUpstreamTransport {
+            override fun forward(query: ByteArray): ByteArray = responder(query)
+        }
 
     private fun response(query: ByteArray, flags: Int, answer: Boolean = false): ByteArray {
         val headerAndQuestion = query.copyOf()
