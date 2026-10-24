@@ -2,6 +2,7 @@ package org.privacage.android
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.DatePickerDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.Context
@@ -24,6 +25,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
+import org.privacage.audit.AuditExportRequest
+import org.privacage.audit.LocalAuditExporter
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
@@ -35,6 +38,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.time.LocalDate
 import java.security.MessageDigest
 
 class MainActivity : Activity() {
@@ -61,6 +65,15 @@ class MainActivity : Activity() {
     private var lastImportedTrackerDomains: Set<String> = emptySet()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
+    private var pendingAuditExport: ByteArray? = null
+    private var auditExportStartDate = LocalDate.now().minusDays(6)
+    private var auditExportEndDate = LocalDate.now()
+    private lateinit var auditExportStartButton: Button
+    private lateinit var auditExportEndButton: Button
+    private lateinit var auditExportBlockedCheck: CheckBox
+    private lateinit var auditExportForwardedCheck: CheckBox
+    private lateinit var auditExportHostnamesCheck: CheckBox
+    private lateinit var auditExportSocketOwnerCheck: CheckBox
     private var pendingMetadataInput: File? = null
     private var pendingApkDiffBaseline: ApkManifestAuditReport? = null
     private var pendingScrubbedMedia: File? = null
@@ -504,6 +517,49 @@ class MainActivity : Activity() {
                     .show()
             }
         }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "PRIVACY AUDIT EXPORT"
+            textSize = 16f
+            setPadding(0, dp(20), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Build a local JSON export from the saved DNS history only (at most 100 records). Select a date range and decisions, then review the redaction preview before saving. New recording is not enabled by this feature."
+            textSize = 12f
+        }, matchWidth())
+        auditExportStartButton = Button(this).apply {
+            text = "Start date (inclusive, local time): $auditExportStartDate"
+            setOnClickListener { chooseAuditExportDate(startDate = true) }
+        }
+        root.addView(auditExportStartButton, matchWidth())
+        auditExportEndButton = Button(this).apply {
+            text = "End date (inclusive, local time): $auditExportEndDate"
+            setOnClickListener { chooseAuditExportDate(startDate = false) }
+        }
+        root.addView(auditExportEndButton, matchWidth())
+        auditExportBlockedCheck = CheckBox(this).apply {
+            text = "Include blocked DNS decisions"
+            isChecked = true
+        }
+        root.addView(auditExportBlockedCheck, matchWidth())
+        auditExportForwardedCheck = CheckBox(this).apply {
+            text = "Include forwarded DNS decisions"
+            isChecked = true
+        }
+        root.addView(auditExportForwardedCheck, matchWidth())
+        auditExportHostnamesCheck = CheckBox(this).apply {
+            text = "Include raw queried hostnames (privacy-sensitive)"
+            isChecked = false
+        }
+        root.addView(auditExportHostnamesCheck, matchWidth())
+        auditExportSocketOwnerCheck = CheckBox(this).apply {
+            text = "Include socket-owner labels (best-effort; may identify apps)"
+            isChecked = false
+        }
+        root.addView(auditExportSocketOwnerCheck, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Preview redacted audit export"
+            setOnClickListener { previewLocalAuditExport() }
+        }, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "ENCRYPTED DEVICE SYNC"
@@ -775,6 +831,7 @@ class MainActivity : Activity() {
                 else statusText.text = "VPN permission was not granted; filtering did not start."
             }
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
+            REQUEST_AUDIT_EXPORT -> writeLocalAuditExport(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
             REQUEST_APK_DIFF_BASELINE -> auditApkDiffBaseline(resultCode, data?.data)
@@ -791,6 +848,8 @@ class MainActivity : Activity() {
         pendingEncryptedBackup = null
         pendingImportBackup?.fill(0)
         pendingImportBackup = null
+        pendingAuditExport?.fill(0)
+        pendingAuditExport = null
         pendingMetadataInput?.delete()
         pendingMetadataInput = null
         pendingScrubbedMedia?.delete()
@@ -2032,6 +2091,111 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseAuditExportDate(startDate: Boolean) {
+        val current = if (startDate) auditExportStartDate else auditExportEndDate
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                val selected = LocalDate.of(year, month + 1, day)
+                if (startDate) {
+                    auditExportStartDate = selected
+                    auditExportStartButton.text = "Start date (inclusive, local time): $selected"
+                } else {
+                    auditExportEndDate = selected
+                    auditExportEndButton.text = "End date (inclusive, local time): $selected"
+                }
+            },
+            current.year,
+            current.monthValue - 1,
+            current.dayOfMonth
+        ).show()
+    }
+
+    private fun previewLocalAuditExport() {
+        val categories = buildSet {
+            if (auditExportBlockedCheck.isChecked) add("BLOCKED")
+            if (auditExportForwardedCheck.isChecked) add("FORWARDED")
+        }
+        val prepared = try {
+            LocalAuditExporter.prepare(
+                events = LocalDnsEventHistory.readForExport(this),
+                request = AuditExportRequest(
+                    startDate = auditExportStartDate,
+                    endDate = auditExportEndDate,
+                    categories = categories,
+                    includeHostnames = auditExportHostnamesCheck.isChecked,
+                    includeSocketOwnerLabels = auditExportSocketOwnerCheck.isChecked
+                )
+            )
+        } catch (exception: Exception) {
+            statusText.text = "Could not prepare audit export: " + (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+
+        pendingAuditExport?.fill(0)
+        pendingAuditExport = prepared.json.toByteArray(StandardCharsets.UTF_8)
+        AlertDialog.Builder(this)
+            .setTitle("Review audit export")
+            .setMessage(prepared.previewText)
+            .setNegativeButton("Cancel and discard") { _, _ ->
+                pendingAuditExport?.fill(0)
+                pendingAuditExport = null
+                statusText.text = "Audit export discarded; no file was saved."
+            }
+            .setPositiveButton("Choose save location") { _, _ ->
+                chooseAuditExportDestination()
+            }
+            .setOnCancelListener {
+                pendingAuditExport?.fill(0)
+                pendingAuditExport = null
+                statusText.text = "Audit export discarded; no file was saved."
+            }
+            .show()
+    }
+
+    private fun chooseAuditExportDestination() {
+        if (pendingAuditExport == null) {
+            statusText.text = "The audit export is no longer available. Preview it again."
+            return
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "privacage-audit-" + LocalDate.now() + ".json")
+        }
+        try {
+            startActivityForResult(intent, REQUEST_AUDIT_EXPORT)
+        } catch (exception: Exception) {
+            pendingAuditExport?.fill(0)
+            pendingAuditExport = null
+            statusText.text = "Could not open Android's save picker. The export was discarded."
+        }
+    }
+
+    private fun writeLocalAuditExport(resultCode: Int, uri: Uri?) {
+        val bytes = pendingAuditExport
+        pendingAuditExport = null
+        if (resultCode != RESULT_OK || uri == null) {
+            bytes?.fill(0)
+            statusText.text = "Audit export cancelled; no file was saved."
+            return
+        }
+        try {
+            val content = bytes ?: throw IOException("The prepared audit export is missing.")
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IOException("The chosen destination could not be opened.")
+            output.use { stream ->
+                stream.write(content)
+                stream.flush()
+            }
+            statusText.text = "Audit export saved. The JSON is unencrypted; check the destination and any cloud-sync behavior."
+        } catch (exception: Exception) {
+            statusText.text = "Could not write the audit export. Choose a writable destination and preview again."
+        } finally {
+            bytes?.fill(0)
+        }
+    }
+
     private fun refreshDnsStats() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
         statsText.text = buildString {
@@ -2530,6 +2694,7 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_AUDIT = 4110
         private const val REQUEST_APK_DIFF_BASELINE = 4115
         private const val REQUEST_APK_DIFF_CANDIDATE = 4116
+        private const val REQUEST_AUDIT_EXPORT = 4117
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113

@@ -59,7 +59,10 @@ Explain VPN replacement behavior and data handling before consent. Report actual
 **Limits:** these are manifest and bounded DEX-string differences, not runtime observations. A removed string does not prove a tracker was removed; a new string does not prove it executes or transmits data. Split APKs, native code, obfuscation, encrypted strings, dynamic loading, and bounded scan coverage can hide changes. The app rejects package-ID mismatches and does not produce a private/not-private score.
 
 ### Minimal, redacted audit export
-Let users choose the date range and event categories, preview redactions, and exclude raw DNS names, packet payloads, internal paths, and identifiers by default.
+
+**Implemented Android slice (24 October 2026):** exports the retained optional DNS history (up to 100 entries) to a user-selected JSON destination. Users filter by inclusive local dates and `BLOCKED`/`FORWARDED` decisions, preview up to five sanitized records, and opt in separately to raw hostnames and best-effort socket-owner labels. Those fields are redacted by default; device identifiers, internal paths and packet payloads are never added. Malformed timestamps or unsupported actions are counted, and unreadable stored JSON stops the export rather than being silently treated as an empty log.
+
+**Limits:** this is not a complete system audit log. It cannot export events PrivaCage never recorded, and socket-owner labels are not reliable attribution. JSON is unencrypted and may be copied to cloud storage if the user selects a synced destination.
 
 ### Offline breach-exposure lookup
 Use a sourced, appropriately licensed local dataset with an explicit refresh date and coverage limitations. Do not send a raw email address to a third-party lookup service by default.

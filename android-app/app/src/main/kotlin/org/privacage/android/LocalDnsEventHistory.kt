@@ -7,6 +7,8 @@ import android.os.Process
 import android.system.OsConstants
 import org.json.JSONArray
 import org.json.JSONObject
+import org.privacage.audit.AuditExportEvent
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.time.Instant
@@ -60,6 +62,27 @@ internal object LocalDnsEventHistory {
         for (index in events.length() - 1 downTo start) {
             val event = events.optJSONObject(index) ?: continue
             result += "${event.optString("timestamp")}  [${event.optString("action")}] ${event.optString("domain")}\nSocket owner: ${event.optString("socket_owner", "Unknown")}"
+        }
+        return result
+    }
+
+    fun readForExport(context: Context): List<AuditExportEvent> {
+        val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
+        val events = try {
+            JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
+        } catch (exception: Exception) {
+            throw IOException("Stored DNS history is unreadable; export cancelled instead of silently omitting events.", exception)
+        }
+        val result = ArrayList<AuditExportEvent>(events.length())
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index)
+                ?: throw IOException("Stored DNS history contains a malformed record at index $index; export cancelled.")
+            result += AuditExportEvent(
+                timestamp = event.optString("timestamp", ""),
+                category = event.optString("action", ""),
+                hostname = event.optString("domain", ""),
+                socketOwnerLabel = event.optString("socket_owner", "Unknown")
+            )
         }
         return result
     }
