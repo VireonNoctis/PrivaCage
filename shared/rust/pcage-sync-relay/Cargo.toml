@@ -1,0 +1,20 @@
+[package]
+name = "pcage-sync-relay"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+description = "Opaque ciphertext relay for PrivaCage E2EE sync"
+
+[dependencies]
+axum = "=0.8.4"
+rusqlite = { version = "=0.32.1", features = ["bundled"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+sha2 = "=0.10.9"
+subtle = "=2.6.1"
+tokio = { version = "=1.45.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+
+[dev-dependencies]
+tempfile = "=3.20.0"

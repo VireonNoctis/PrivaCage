@@ -76,3 +76,10 @@ The file is encrypted before it is written through Android's Storage Access Fram
 `shared/rust/pcage-sync` defines device identities using Ed25519 signing keys and X25519 encryption keys. Device cards expose public keys and a SHA-256 fingerprint; the receiving user must verify the fingerprint through a separate trusted channel before trusting the card. Each sync packet uses ephemeral X25519, HKDF-SHA-256, ChaCha20-Poly1305 with an authenticated header, and an Ed25519 signature. The receiver checks sender and recipient binding, signature, expiry, and AEAD authentication, then durably records the message ID before returning plaintext. The crate also creates old-key-signed rotation statements and PCAGE01-encrypted recovery bundles.
 
 This is protocol code only. No relay or account service is implemented; no Android/iOS/Windows keystore adapter or UI is wired to it. The relay will still observe routing metadata, timing, and packet sizes. Group membership, revocation, sequence-order enforcement, conflict resolution, and independent cryptographic review remain required before claiming a complete sync product.
+
+
+## Opaque encrypted-sync relay
+
+`shared/rust/pcage-sync-relay` is a persistent SQLite-backed HTTP relay. It stores packet bytes as opaque payloads, indexes them by space and message ID, exposes cursor-based reads, expires records after seven days, rejects duplicate IDs, and caps each space at 10,000 queued messages. Space creation, capability rotation, and deletion require a separate admin bearer token; each space capability is stored as a SHA-256 hash. The server never receives a private key or profile plaintext.
+
+The service refuses to bind to a non-loopback address. Remote deployment requires a TLS reverse proxy on the same host forwarding to the loopback listener. The relay still sees space IDs, message IDs, timestamps, packet sizes, and access patterns. Capability tokens are shared by every device in a space, so revoking one device individually requires the future signed roster/revocation layer. The Android/iOS/Windows apps are not yet wired to this service.
