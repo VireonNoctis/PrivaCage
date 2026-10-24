@@ -32,6 +32,7 @@ import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
 import org.privacage.android.sync.AndroidEncryptedSyncManager
+import org.privacage.android.sync.OwnerRotationResult
 import org.privacage.android.sync.SyncRelayClient
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -651,6 +652,14 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(Button(this).apply {
+            text = "Rotate roster owner key"
+            setOnClickListener { showOwnerKeyRotationPrompt() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import owner-key rotation package"
+            setOnClickListener { showOwnerKeyRotationImport() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
             text = "Import owner-signed device roster"
             setOnClickListener { showSignedDeviceRosterImport() }
         }, matchWidth())
@@ -1074,6 +1083,86 @@ class MainActivity : Activity() {
                     " copied. Import it on every trusted device; revocation takes effect there only after importing a newer revision."
             }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showOwnerKeyRotationPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Rotate roster owner key?")
+            .setMessage(
+                "This operation replaces this installation's owner identity with a new key epoch and signs a transition with both the current and replacement keys. It binds the exact relay space and current roster revision, then creates the next owner-signed roster. The replacement private identity stays in this device's encrypted local record and is never included in the package.\n\nShare the public package with every trusted device. Each device must independently confirm the new full fingerprint through a separate trusted channel before it changes its pinned owner. This does not rotate relay credentials or revoke the old key at the relay."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Generate owner transition") { _, _ ->
+                runSyncTask(
+                    progress = "Creating the next owner identity, dual-signed transition and replacement roster...",
+                    task = { encryptedSyncManager.rotateRosterOwnerKey() },
+                    onSuccess = { result -> showOwnerKeyRotationPackage(result) }
+                )
+            }
+            .show()
+    }
+
+    private fun showOwnerKeyRotationPackage(result: OwnerRotationResult) {
+        val packageJson = result.packageJson
+        val message = buildString {
+            append("Previous owner fingerprint:\\n").append(result.previousFingerprint).append("\\n\\n")
+            append("Replacement owner fingerprint:\\n").append(result.nextFingerprint).append("\\n\\n")
+            append("New roster revision: ").append(result.rosterRevision).append("\\n")
+            append(result.publicationMessage).append("\\n\\n")
+            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\\n")
+            append(packageJson)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Owner-key rotation package")
+            .setMessage(message)
+            .setPositiveButton("Copy public package") { _, _ ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText("PrivaCage owner-key rotation", packageJson)
+                )
+                syncStatusText.text = result.publicationMessage + " Public owner-key rotation package copied; distribute it over a trusted channel."
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showOwnerKeyRotationImport() {
+        val packageInput = EditText(this).apply {
+            hint = "Paste the complete owner-key rotation package JSON"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP
+            minLines = 6
+            maxLines = 14
+        }
+        val fingerprintInput = EditText(this).apply {
+            hint = "Independently confirmed new owner SHA-256 fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "The transition must be signed by both the currently pinned owner key and the replacement key, and the signed roster must be exactly the next revision in the same relay space. Compare the complete new fingerprint through a separate trusted channel; do not accept a key based only on a package received from the relay."
+                textSize = 14f
+            }, matchWidth())
+            addView(fingerprintInput, matchWidth())
+            addView(packageInput, matchWidth())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Verify owner-key rotation")
+            .setView(fields)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Verify and update owner pin") { _, _ ->
+                val packageJson = packageInput.text.toString().trim()
+                val confirmedFingerprint = fingerprintInput.text.toString().trim().lowercase()
+                runSyncTask(
+                    progress = "Checking the previous owner pin, both signatures, revision linkage, fingerprint and new roster...",
+                    task = {
+                        encryptedSyncManager.importOwnerKeyRotationPackage(packageJson, confirmedFingerprint)
+                    }
+                )
+            }
             .show()
     }
 
