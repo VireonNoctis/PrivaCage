@@ -28,7 +28,8 @@ data class AuditExportResult(
     val recordsRead: Int,
     val recordsSkippedInvalid: Int,
     val recordsExcludedByFilters: Int,
-    val previewText: String
+    val previewText: String,
+    val chainHeadSha256: String
 )
 
 /**
@@ -82,7 +83,19 @@ object LocalAuditExporter {
                 event.category in request.categories
         }
         val excludedByFilters = valid.size - selected.size
-        val json = renderJson(events.size, recordsSkippedInvalid, excludedByFilters, selected, request, generatedAt)
+        val chainRecords = AuditIntegrityChain.create(selected.map { event ->
+            AuditChainInput(
+                timestamp = event.timestamp.toString(),
+                localDate = event.localDate.toString(),
+                category = event.category,
+                queriedHostname = if (request.includeHostnames) event.hostname else "[REDACTED]",
+                socketOwnerLabel = if (request.includeSocketOwnerLabels) event.socketOwnerLabel else "[REDACTED]"
+            )
+        })
+        val chainHead = chainRecords.lastOrNull()?.recordSha256 ?: AuditIntegrityChain.GENESIS_SHA256
+        val json = renderJson(
+            events.size, recordsSkippedInvalid, excludedByFilters, selected, request, generatedAt, chainRecords, chainHead
+        )
         val preview = renderPreview(events.size, recordsSkippedInvalid, excludedByFilters, selected, request, generatedAt)
 
         return AuditExportResult(
@@ -91,7 +104,8 @@ object LocalAuditExporter {
             recordsRead = events.size,
             recordsSkippedInvalid = recordsSkippedInvalid,
             recordsExcludedByFilters = excludedByFilters,
-            previewText = preview
+            previewText = preview,
+            chainHeadSha256 = chainHead
         )
     }
 
@@ -109,7 +123,9 @@ object LocalAuditExporter {
         recordsExcludedByFilters: Int,
         events: List<NormalizedEvent>,
         request: AuditExportRequest,
-        generatedAt: Instant
+        generatedAt: Instant,
+        chainRecords: List<AuditChainRecord>,
+        chainHeadSha256: String
     ): String = buildString {
         append("{\n")
         append("  \"schema_version\": 1,\n")
@@ -123,6 +139,10 @@ object LocalAuditExporter {
             .append("},\n")
         append("  \"selected_categories\": ")
             .append(jsonArray(request.categories.sorted().map(::jsonString))).append(",\n")
+        append("  \"integrity\": {\"algorithm\": ").append(jsonString(AuditIntegrityChain.ALGORITHM))
+            .append(", \"genesis_sha256\": ").append(jsonString(AuditIntegrityChain.GENESIS_SHA256))
+            .append(", \"chain_head_sha256\": ").append(jsonString(chainHeadSha256))
+            .append(", \"record_count\": ").append(chainRecords.size).append("},\n")
         append("  \"redactions\": {\n")
         append("    \"queried_hostnames\": ").append(!request.includeHostnames).append(",\n")
         append("    \"socket_owner_labels\": ").append(!request.includeSocketOwnerLabels).append(",\n")
@@ -136,8 +156,8 @@ object LocalAuditExporter {
         append("  \"event_count\": ").append(events.size).append(",\n")
         append("  \"events\": [")
         if (events.isNotEmpty()) append('\n')
-        events.forEachIndexed { index, event ->
-            append("    ").append(eventJson(event, request))
+        events.forEachIndexed { index, _ ->
+            append("    ").append(eventJson(chainRecords[index]))
             if (index != events.lastIndex) append(',')
             append('\n')
         }
@@ -172,7 +192,7 @@ object LocalAuditExporter {
         } else {
             events.take(PREVIEW_EVENT_LIMIT).forEachIndexed { index, event ->
                 if (index > 0) append('\n')
-                append(eventJson(event, request))
+                append(previewEventJson(event, request))
             }
             if (events.size > PREVIEW_EVENT_LIMIT) {
                 append("\n… ").append(events.size - PREVIEW_EVENT_LIMIT).append(" more matching records in the saved file.")
@@ -182,7 +202,18 @@ object LocalAuditExporter {
         append("\nA hostname or socket-owner label is included only when its corresponding checkbox is selected.")
     }
 
-    private fun eventJson(event: NormalizedEvent, request: AuditExportRequest): String = buildString {
+    private fun eventJson(record: AuditChainRecord): String = buildString {
+        append("{\"timestamp\": ").append(jsonString(record.timestamp))
+        append(", \"local_date\": ").append(jsonString(record.localDate))
+        append(", \"category\": ").append(jsonString(record.category))
+        append(", \"queried_hostname\": ").append(jsonString(record.queriedHostname))
+        append(", \"socket_owner_label\": ").append(jsonString(record.socketOwnerLabel))
+        append(", \"previous_record_sha256\": ").append(jsonString(record.previousRecordSha256))
+        append(", \"record_sha256\": ").append(jsonString(record.recordSha256))
+        append('}')
+    }
+
+    private fun previewEventJson(event: NormalizedEvent, request: AuditExportRequest): String = buildString {
         append("{\"timestamp\": ").append(jsonString(event.timestamp.toString()))
         append(", \"local_date\": ").append(jsonString(event.localDate.toString()))
         append(", \"category\": ").append(jsonString(event.category))
