@@ -3,13 +3,13 @@
 //! Portable verification for schema-v1 PrivaCage signed audit checkpoints.
 //! Cryptographic validity does not establish signer identity, time accuracy, or log completeness.
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
 use p256::pkcs8::DecodePublicKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use time::{format_description, format_description::well_known::Rfc3339, Date, OffsetDateTime};
+use time::{Date, OffsetDateTime, format_description, format_description::well_known::Rfc3339};
 
 pub const MAX_CHECKPOINT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
@@ -154,11 +154,15 @@ pub fn verify_checkpoint_json(input: &str) -> Result<VerificationReport, VerifyE
         return Err(invalid("checkpoint exceeds the 2 MiB input limit"));
     }
 
-    let envelope: CheckpointEnvelope = serde_json::from_str(input)
-        .map_err(|_| invalid("checkpoint JSON is malformed, ambiguous, or has unsupported fields"))?;
+    let envelope: CheckpointEnvelope = serde_json::from_str(input).map_err(|_| {
+        invalid("checkpoint JSON is malformed, ambiguous, or has unsupported fields")
+    })?;
 
-    if envelope.format != CHECKPOINT_FORMAT || envelope.schema_version != CHECKPOINT_SCHEMA_VERSION {
-        return Err(invalid("unsupported PrivaCage audit checkpoint format or schema version"));
+    if envelope.format != CHECKPOINT_FORMAT || envelope.schema_version != CHECKPOINT_SCHEMA_VERSION
+    {
+        return Err(invalid(
+            "unsupported PrivaCage audit checkpoint format or schema version",
+        ));
     }
     if envelope.signature_algorithm != CHECKPOINT_SIGNATURE_ALGORITHM {
         return Err(invalid("unsupported checkpoint signature algorithm"));
@@ -167,7 +171,9 @@ pub fn verify_checkpoint_json(input: &str) -> Result<VerificationReport, VerifyE
         return Err(invalid("embedded audit payload exceeds the 1 MiB limit"));
     }
     if envelope.event_count > MAX_EVENTS as u64 {
-        return Err(invalid("event count exceeds the 100-record schema-v1 limit"));
+        return Err(invalid(
+            "event count exceeds the 100-record schema-v1 limit",
+        ));
     }
     let event_count = envelope.event_count as usize;
 
@@ -178,7 +184,9 @@ pub fn verify_checkpoint_json(input: &str) -> Result<VerificationReport, VerifyE
 
     let payload_hash = sha256_hex(envelope.payload_json.as_bytes());
     if payload_hash != envelope.payload_sha256 {
-        return Err(invalid("embedded payload SHA-256 does not match the signed digest"));
+        return Err(invalid(
+            "embedded payload SHA-256 does not match the signed digest",
+        ));
     }
 
     if envelope.signer_public_key_x509_base64.len() > 512 {
@@ -195,7 +203,9 @@ pub fn verify_checkpoint_json(input: &str) -> Result<VerificationReport, VerifyE
 
     let actual_fingerprint = sha256_hex(&public_key_der);
     if actual_fingerprint != envelope.signer_public_key_sha256 {
-        return Err(invalid("signer public-key fingerprint does not match the key bytes"));
+        return Err(invalid(
+            "signer public-key fingerprint does not match the key bytes",
+        ));
     }
 
     if envelope.signature_base64.len() > 256 {
@@ -219,10 +229,13 @@ pub fn verify_checkpoint_json(input: &str) -> Result<VerificationReport, VerifyE
     );
     verifying_key
         .verify(signing_bytes.as_bytes(), &signature)
-        .map_err(|_| invalid("checkpoint signature does not validate against its embedded P-256 key"))?;
+        .map_err(|_| {
+            invalid("checkpoint signature does not validate against its embedded P-256 key")
+        })?;
 
-    let payload: ExportPayload = serde_json::from_str(&envelope.payload_json)
-        .map_err(|_| invalid("embedded audit payload is malformed, ambiguous, or has unsupported fields"))?;
+    let payload: ExportPayload = serde_json::from_str(&envelope.payload_json).map_err(|_| {
+        invalid("embedded audit payload is malformed, ambiguous, or has unsupported fields")
+    })?;
     validate_payload(&payload, &envelope, event_count)?;
 
     Ok(VerificationReport {
@@ -278,14 +291,18 @@ fn validate_payload(
         || payload.event_count != envelope.event_count
         || payload.events.len() != event_count
     {
-        return Err(invalid("checkpoint and payload integrity metadata disagree"));
+        return Err(invalid(
+            "checkpoint and payload integrity metadata disagree",
+        ));
     }
 
     if payload.records_read > MAX_EVENTS as u64
         || payload.records_skipped_invalid > MAX_EVENTS as u64
         || payload.records_excluded_by_filters > MAX_EVENTS as u64
     {
-        return Err(invalid("payload record counters exceed the retained-history limit"));
+        return Err(invalid(
+            "payload record counters exceed the retained-history limit",
+        ));
     }
     let accounted = payload
         .records_skipped_invalid
@@ -293,14 +310,18 @@ fn validate_payload(
         .and_then(|n| n.checked_add(payload.event_count))
         .ok_or_else(|| invalid("payload record counters overflow"))?;
     if accounted != payload.records_read {
-        return Err(invalid("payload record counters do not account for every stored record"));
+        return Err(invalid(
+            "payload record counters do not account for every stored record",
+        ));
     }
 
     if !payload.redactions.device_identifiers
         || !payload.redactions.internal_file_paths
         || !payload.redactions.packet_payloads
     {
-        return Err(invalid("payload falsely claims device identifiers, paths, or packet data were redacted"));
+        return Err(invalid(
+            "payload falsely claims device identifiers, paths, or packet data were redacted",
+        ));
     }
 
     let mut previous_hash = GENESIS_SHA256.to_owned();
@@ -308,61 +329,105 @@ fn validate_payload(
         validate_utc_instant(&event.timestamp, "event timestamp")?;
         let local_date = parse_date(&event.local_date)?;
         if local_date < start_date || local_date > end_date {
-            return Err(invalid(format!("event {} is outside the declared inclusive date range", index + 1)));
+            return Err(invalid(format!(
+                "event {} is outside the declared inclusive date range",
+                index + 1
+            )));
         }
-        if !payload.selected_categories.iter().any(|category| category == &event.category) {
-            return Err(invalid(format!("event {} category was not selected for export", index + 1)));
+        if !payload
+            .selected_categories
+            .iter()
+            .any(|category| category == &event.category)
+        {
+            return Err(invalid(format!(
+                "event {} category was not selected for export",
+                index + 1
+            )));
         }
         if event.category != "BLOCKED" && event.category != "FORWARDED" {
-            return Err(invalid(format!("event {} has an unsupported category", index + 1)));
+            return Err(invalid(format!(
+                "event {} has an unsupported category",
+                index + 1
+            )));
         }
 
         if payload.redactions.queried_hostnames {
             if event.queried_hostname != "[REDACTED]" {
-                return Err(invalid(format!("event {} contains a hostname while the payload claims hostnames were redacted", index + 1)));
+                return Err(invalid(format!(
+                    "event {} contains a hostname while the payload claims hostnames were redacted",
+                    index + 1
+                )));
             }
         } else {
             validate_hostname(&event.queried_hostname, index + 1)?;
         }
         if payload.redactions.socket_owner_labels {
             if event.socket_owner_label != "[REDACTED]" {
-                return Err(invalid(format!("event {} contains a socket-owner label while the payload claims those labels were redacted", index + 1)));
+                return Err(invalid(format!(
+                    "event {} contains a socket-owner label while the payload claims those labels were redacted",
+                    index + 1
+                )));
             }
         } else if event.socket_owner_label.is_empty() || event.socket_owner_label.len() > 4096 {
-            return Err(invalid(format!("event {} socket-owner label is empty or too long", index + 1)));
+            return Err(invalid(format!(
+                "event {} socket-owner label is empty or too long",
+                index + 1
+            )));
         }
 
         validate_digest(&event.previous_record_sha256, "record previous-hash")?;
         validate_digest(&event.record_sha256, "record hash")?;
         if event.previous_record_sha256 != previous_hash {
-            return Err(invalid(format!("previous-hash mismatch at event {}", index + 1)));
+            return Err(invalid(format!(
+                "previous-hash mismatch at event {}",
+                index + 1
+            )));
         }
         let calculated = record_digest(&previous_hash, event);
         if calculated != event.record_sha256 {
-            return Err(invalid(format!("record hash mismatch at event {}", index + 1)));
+            return Err(invalid(format!(
+                "record hash mismatch at event {}",
+                index + 1
+            )));
         }
         previous_hash = calculated;
     }
 
     if previous_hash != envelope.chain_head_sha256 {
-        return Err(invalid("event chain head does not match the signed checkpoint"));
+        return Err(invalid(
+            "event chain head does not match the signed checkpoint",
+        ));
     }
     Ok(())
 }
 
 fn validate_hostname(value: &str, index: usize) -> Result<(), VerifyError> {
-    if value.is_empty() || value.len() > 253 || !value.is_ascii() || value != value.to_ascii_lowercase() {
-        return Err(invalid(format!("event {} hostname is empty, too long, or not normalized ASCII", index)));
+    if value.is_empty()
+        || value.len() > 253
+        || !value.is_ascii()
+        || value != value.to_ascii_lowercase()
+    {
+        return Err(invalid(format!(
+            "event {} hostname is empty, too long, or not normalized ASCII",
+            index
+        )));
     }
     let labels = value.split('.');
-    if !value.contains('.') || labels.clone().any(|label| {
-        label.is_empty()
-            || label.len() > 63
-            || label.starts_with('-')
-            || label.ends_with('-')
-            || !label.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    }) {
-        return Err(invalid(format!("event {} hostname is not a valid normalized domain", index)));
+    if !value.contains('.')
+        || labels.clone().any(|label| {
+            label.is_empty()
+                || label.len() > 63
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        })
+    {
+        return Err(invalid(format!(
+            "event {} hostname is not a valid normalized domain",
+            index
+        )));
     }
     Ok(())
 }
@@ -373,7 +438,8 @@ fn parse_date(value: &str) -> Result<Date, VerifyError> {
     }
     let format = format_description::parse("[year]-[month]-[day]")
         .map_err(|_| invalid("internal date parser configuration is invalid"))?;
-    let date = Date::parse(value, &format).map_err(|_| invalid("audit date is not a real calendar date"))?;
+    let date = Date::parse(value, &format)
+        .map_err(|_| invalid("audit date is not a real calendar date"))?;
     if date.to_string() != value {
         return Err(invalid("audit date is not canonical YYYY-MM-DD"));
     }
@@ -382,7 +448,9 @@ fn parse_date(value: &str) -> Result<Date, VerifyError> {
 
 fn validate_utc_instant(value: &str, description: &str) -> Result<(), VerifyError> {
     if value.len() > 40 || !value.ends_with('Z') || !value.is_ascii() {
-        return Err(invalid(format!("{description} must be a bounded UTC RFC 3339 instant ending in Z")));
+        return Err(invalid(format!(
+            "{description} must be a bounded UTC RFC 3339 instant ending in Z"
+        )));
     }
     let parsed = OffsetDateTime::parse(value, &Rfc3339)
         .map_err(|_| invalid(format!("{description} is not a valid RFC 3339 instant")))?;
@@ -393,8 +461,14 @@ fn validate_utc_instant(value: &str, description: &str) -> Result<(), VerifyErro
 }
 
 fn validate_digest(value: &str, description: &str) -> Result<(), VerifyError> {
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
-        return Err(invalid(format!("{description} must be 64 lowercase hexadecimal characters")));
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(invalid(format!(
+            "{description} must be 64 lowercase hexadecimal characters"
+        )));
     }
     Ok(())
 }
@@ -450,7 +524,7 @@ fn record_digest(previous_hash: &str, event: &AuditEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{signature::Signer, SigningKey};
+    use p256::ecdsa::{SigningKey, signature::Signer};
     use p256::pkcs8::EncodePublicKey;
 
     fn test_key() -> SigningKey {
@@ -544,7 +618,8 @@ mod tests {
     #[test]
     fn verifies_fixed_cross_implementation_checkpoint_vector() {
         let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1.json");
-        let result = verify_checkpoint_json(checkpoint).expect("checked-in Android-format vector must verify");
+        let result = verify_checkpoint_json(checkpoint)
+            .expect("checked-in Android-format vector must verify");
         assert_eq!(result.event_count, 1);
         assert_eq!(result.created_at, "2026-10-24T10:01:00Z");
         assert_eq!(
@@ -559,18 +634,25 @@ mod tests {
         let result = verify_checkpoint_json(&valid_checkpoint()).expect("checkpoint must verify");
         assert_eq!(result.event_count, 1);
         assert!(!result.signer_identity_established);
-        assert_eq!(result.chain_head_sha256, "ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb");
+        assert_eq!(
+            result.chain_head_sha256,
+            "ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb"
+        );
     }
 
     #[test]
     fn rejects_payload_and_metadata_tampering() {
         let checkpoint = valid_checkpoint();
         let mut envelope: CheckpointEnvelope = serde_json::from_str(&checkpoint).unwrap();
-        envelope.payload_json = envelope.payload_json.replace("[REDACTED]", "private.example");
-        assert!(verify_checkpoint_json(&serde_json::to_string(&envelope).unwrap())
-            .expect_err("changed exact payload bytes must fail")
-            .to_string()
-            .contains("payload SHA-256"));
+        envelope.payload_json = envelope
+            .payload_json
+            .replace("[REDACTED]", "private.example");
+        assert!(
+            verify_checkpoint_json(&serde_json::to_string(&envelope).unwrap())
+                .expect_err("changed exact payload bytes must fail")
+                .to_string()
+                .contains("payload SHA-256")
+        );
 
         let mut value: serde_json::Value = serde_json::from_str(&checkpoint).unwrap();
         value["event_count"] = serde_json::json!(0);
@@ -583,7 +665,8 @@ mod tests {
         payload.events[0].record_sha256 = "f".repeat(64);
         payload.integrity.chain_head_sha256 = "f".repeat(64);
         let checkpoint = sign_payload(&payload, &test_key(), &"f".repeat(64));
-        let error = verify_checkpoint_json(&checkpoint).expect_err("a signed broken chain must fail");
+        let error =
+            verify_checkpoint_json(&checkpoint).expect_err("a signed broken chain must fail");
         assert!(error.to_string().contains("record hash mismatch"));
     }
 
@@ -595,14 +678,19 @@ mod tests {
         let head = payload.events[0].record_sha256.clone();
         payload.integrity.chain_head_sha256 = head.clone();
         let checkpoint = sign_payload(&payload, &test_key(), &head);
-        let error = verify_checkpoint_json(&checkpoint).expect_err("false redaction claim must fail");
+        let error =
+            verify_checkpoint_json(&checkpoint).expect_err("false redaction claim must fail");
         assert!(error.to_string().contains("claims hostnames were redacted"));
     }
 
     #[test]
     fn rejects_duplicate_or_unknown_json_fields() {
         let checkpoint = valid_checkpoint();
-        let duplicated = checkpoint.replacen("\"event_count\":1", "\"event_count\":1,\"event_count\":1", 1);
+        let duplicated = checkpoint.replacen(
+            "\"event_count\":1",
+            "\"event_count\":1,\"event_count\":1",
+            1,
+        );
         assert!(verify_checkpoint_json(&duplicated).is_err());
 
         let mut value: serde_json::Value = serde_json::from_str(&checkpoint).unwrap();
