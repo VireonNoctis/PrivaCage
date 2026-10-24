@@ -23,7 +23,6 @@ import org.json.JSONObject
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
-import org.privacage.metadata.JpegMetadataScrubber
 import org.privacage.android.sync.AndroidEncryptedSyncManager
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -47,7 +46,11 @@ class MainActivity : Activity() {
     private var lastImportedTrackerDomains: Set<String> = emptySet()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
-    private var pendingScrubbedJpeg: File? = null
+    private var pendingMetadataInput: File? = null
+    private var pendingScrubbedMedia: File? = null
+    private var pendingScrubbedMediaExtension: String? = null
+    private var pendingScrubbedMediaMime: String? = null
+    private val metadataScrubber by lazy { NativeMetadataScrubber() }
     private var pendingSyncRecoveryExport: ByteArray? = null
     private var pendingSyncRecoveryImport: ByteArray? = null
     private lateinit var syncStatusText: TextView
@@ -178,8 +181,8 @@ class MainActivity : Activity() {
         }, matchWidth())
         root.addView(TextView(this).apply { text = "DNS PRIVACY"; textSize = 16f; setPadding(0, dp(18), 0, dp(4)) })
         root.addView(Button(this).apply {
-            text = "Remove photo metadata (JPEG)"
-            setOnClickListener { chooseJpegForScrubbing() }
+            text = "Inspect / scrub image metadata (JPEG, PNG, WebP)"
+            setOnClickListener { chooseMetadataFile() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Inspect APK manifest offline"
@@ -683,8 +686,8 @@ class MainActivity : Activity() {
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
-            REQUEST_JPEG_SCRUB_INPUT -> scrubSelectedJpeg(resultCode, data?.data)
-            REQUEST_JPEG_SCRUB_OUTPUT -> saveScrubbedJpeg(resultCode, data?.data)
+            REQUEST_METADATA_SCRUB_INPUT -> inspectSelectedMedia(resultCode, data?.data)
+            REQUEST_METADATA_SCRUB_OUTPUT -> saveScrubbedMedia(resultCode, data?.data)
             REQUEST_SYNC_RECOVERY_EXPORT -> writeSyncRecoveryBundle(resultCode, data?.data)
             REQUEST_SYNC_RECOVERY_IMPORT -> readSyncRecoveryBundle(resultCode, data?.data)
         }
@@ -695,8 +698,10 @@ class MainActivity : Activity() {
         pendingEncryptedBackup = null
         pendingImportBackup?.fill(0)
         pendingImportBackup = null
-        pendingScrubbedJpeg?.delete()
-        pendingScrubbedJpeg = null
+        pendingMetadataInput?.delete()
+        pendingMetadataInput = null
+        pendingScrubbedMedia?.delete()
+        pendingScrubbedMedia = null
         pendingSyncRecoveryExport?.fill(0)
         pendingSyncRecoveryExport = null
         pendingSyncRecoveryImport?.fill(0)
@@ -1148,100 +1153,191 @@ class MainActivity : Activity() {
         devicePrivacyText.text = DevicePrivacySnapshot.capture(this).render()
     }
 
-    private fun chooseJpegForScrubbing() {
+    private fun chooseMetadataFile() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "image/jpeg"
+            type = "image/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/jpeg", "image/png", "image/webp"))
         }
-        startActivityForResult(intent, REQUEST_JPEG_SCRUB_INPUT)
+        startActivityForResult(intent, REQUEST_METADATA_SCRUB_INPUT)
     }
 
-    private fun scrubSelectedJpeg(resultCode: Int, uri: Uri?) {
+    private fun inspectSelectedMedia(resultCode: Int, uri: Uri?) {
         if (resultCode != RESULT_OK || uri == null) {
-            statusText.text = "Photo metadata removal cancelled."
+            statusText.text = "Image metadata inspection cancelled."
             return
         }
-        pendingScrubbedJpeg?.delete()
-        pendingScrubbedJpeg = null
-        statusText.text = "Removing common JPEG metadata locally. The image is not uploaded."
+        pendingMetadataInput?.delete()
+        pendingMetadataInput = null
+        pendingScrubbedMedia?.delete()
+        pendingScrubbedMedia = null
+        statusText.text = "Inspecting the selected image locally. No network request is made."
         Thread({
             var staged: File? = null
+            try {
+                staged = stageSelectedMedia(uri)
+                val inspection = metadataScrubber.inspect(staged)
+                val inspectedFile = staged
+                staged = null
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        pendingMetadataInput = inspectedFile
+                        showMetadataInspection(inspectedFile, inspection)
+                    } else {
+                        inspectedFile.delete()
+                    }
+                }
+            } catch (exception: Exception) {
+                val message = exception.message ?: "The selected file could not be inspected safely."
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        statusText.text = "Image metadata inspection failed: " + message
+                    }
+                }
+            } finally {
+                staged?.delete()
+            }
+        }, "PrivaCage-metadata-inspect").start()
+    }
+
+    private fun showMetadataInspection(input: File, report: NativeMetadataReport) {
+        val limitations = report.warnings.joinToString(separator = "\n- ", prefix = "\n\nLimits:\n- ")
+        val message = buildString {
+            append("Format: ").append(report.format.uppercase()).append("\n")
+            append("Input size: ").append(report.inputBytes).append(" bytes\n\n")
+            append(report.removedSummary())
+            if (report.metadataSegmentsRemoved == 0L) {
+                append("\n\nNo metadata entries recognized by this parser were found.")
+            } else {
+                append("\n\nThese recognized entries can be removed without recompressing image pixels.")
+            }
+            append("\n\nThe original file will remain unchanged.")
+            append(limitations)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Image metadata inspection")
+            .setMessage(message)
+            .setNegativeButton("Cancel") { _, _ ->
+                if (pendingMetadataInput == input) pendingMetadataInput = null
+                input.delete()
+                statusText.text = "Inspection cancelled. The selected original was not changed."
+            }
+            .setPositiveButton("Create cleaned copy") { _, _ ->
+                if (pendingMetadataInput == input) pendingMetadataInput = null
+                createScrubbedMedia(input, report.format)
+            }
+            .setOnCancelListener {
+                if (pendingMetadataInput == input) pendingMetadataInput = null
+                input.delete()
+                statusText.text = "Inspection dismissed. Temporary input copy deleted."
+            }
+            .show()
+    }
+
+    private fun createScrubbedMedia(input: File, format: String) {
+        val extension = metadataExtension(format)
+        val mimeType = metadataMimeType(format)
+        statusText.text = "Removing recognized metadata in the Rust core and re-checking the output..."
+        Thread({
             var cleaned: File? = null
             try {
-                staged = stageSelectedJpeg(uri)
-                val originalBytes = staged.length()
-                cleaned = File.createTempFile("privacage-cleaned-", ".jpg", cacheDir)
-                val result = JpegMetadataScrubber.scrub(staged, cleaned)
-                val verificationFile = File.createTempFile("privacage-jpeg-verify-", ".jpg", cacheDir)
-                try {
-                    val verification = JpegMetadataScrubber.scrub(cleaned, verificationFile)
-                    if (verification.metadataSegmentsRemoved != 0 || verificationFile.length() != cleaned.length()) {
-                        throw IOException("The cleaned JPEG did not pass the metadata-removal verification check.")
-                    }
-                } finally {
-                    verificationFile.delete()
+                cleaned = File.createTempFile("privacage-cleaned-", ".$extension", cacheDir)
+                val result = metadataScrubber.scrub(input, cleaned)
+                val verification = metadataScrubber.inspect(cleaned)
+                if (verification.format != format || verification.metadataSegmentsRemoved != 0L ||
+                    verification.outputBytes != cleaned.length()
+                ) {
+                    throw IOException("The cleaned image did not pass the second metadata inspection.")
                 }
-                staged.delete()
-                staged = null
                 val completedFile = cleaned
                 cleaned = null
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        pendingScrubbedJpeg = completedFile
-                        val report = buildString {
-                            append("LOCAL JPEG METADATA REPORT\n\n")
-                            append("Input size: ").append(originalBytes).append(" bytes\n")
-                            append("Cleaned size: ").append(result.outputBytesWritten).append(" bytes\n\n")
-                            append("Removed APP1 segments (EXIF/XMP): ").append(result.app1SegmentsRemoved).append("\n")
-                            append("Removed APP13 segments (IPTC/Photoshop): ").append(result.app13SegmentsRemoved).append("\n")
-                            append("Removed JPEG comment segments: ").append(result.commentSegmentsRemoved).append("\n")
-                            append("Total removed: ").append(result.metadataSegmentsRemoved)
-                                .append(" segments / ").append(result.metadataBytesRemoved).append(" bytes\n\n")
-                            append("Verification: a second pass found no remaining APP1, APP13, or COM segments.\n\n")
-                            append("LIMITATION: other JPEG APP markers may contain metadata and are preserved. ")
-                            append("This report does not enumerate every embedded field or guarantee that all identifying metadata is gone.")
-                        }
-                        statusText.text = "JPEG processed locally. Review the metadata report before saving."
-                        AlertDialog.Builder(this@MainActivity)
-                            .setTitle("JPEG metadata inspection")
-                            .setMessage(report)
-                            .setNegativeButton("Discard cleaned copy") { _, _ ->
-                                pendingScrubbedJpeg?.delete()
-                                pendingScrubbedJpeg = null
-                                statusText.text = "Cleaned copy discarded. The original file was not changed."
-                            }
-                            .setPositiveButton("Save cleaned copy") { _, _ ->
-                                val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                                    addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "image/jpeg"
-                                    putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.jpg")
-                                }
-                                startActivityForResult(saveIntent, REQUEST_JPEG_SCRUB_OUTPUT)
-                            }
-                            .setOnCancelListener {
-                                pendingScrubbedJpeg?.delete()
-                                pendingScrubbedJpeg = null
-                                statusText.text = "Inspection cancelled. The temporary cleaned copy was deleted."
-                            }
-                            .show()
+                        pendingScrubbedMedia = completedFile
+                        pendingScrubbedMediaExtension = extension
+                        pendingScrubbedMediaMime = mimeType
+                        showScrubbedMediaReport(result, verification)
                     } else {
-                        completedFile?.delete()
+                        completedFile.delete()
                     }
                 }
             } catch (exception: Exception) {
-                val message = exception.message ?: "The JPEG could not be safely scrubbed."
+                val message = exception.message ?: "The image could not be safely scrubbed."
                 runOnUiThread {
-                    if (!isFinishing && !isDestroyed) statusText.text = "Photo metadata removal failed: " + message
+                    if (!isFinishing && !isDestroyed) {
+                        statusText.text = "Metadata removal failed: " + message + ". The original was not modified."
+                    }
                 }
             } finally {
-                staged?.delete()
+                input.delete()
                 cleaned?.delete()
             }
-        }, "PrivaCage-JPEG-scrub").start()
+        }, "PrivaCage-metadata-scrub").start()
     }
 
-    private fun stageSelectedJpeg(uri: Uri): File {
-        val staged = File.createTempFile("privacage-jpeg-input-", ".jpg", cacheDir)
+    private fun showScrubbedMediaReport(
+        removed: NativeMetadataReport,
+        verification: NativeMetadataReport
+    ) {
+        val extension = pendingScrubbedMediaExtension ?: metadataExtension(removed.format)
+        val mimeType = pendingScrubbedMediaMime ?: metadataMimeType(removed.format)
+        val message = buildString {
+            append("Format: ").append(removed.format.uppercase()).append("\n")
+            append("Input: ").append(removed.inputBytes).append(" bytes\n")
+            append("Cleaned copy: ").append(removed.outputBytes).append(" bytes\n\n")
+            append(removed.removedSummary())
+            append("\n\nVerification: a second Rust parser pass found zero remaining recognized metadata entries.")
+            if (verification.metadataSegmentsRemoved != 0L) {
+                append("\nVerification failed; this copy must not be saved.")
+            }
+            removed.warnings.forEach { append("\n\nLIMITATION: ").append(it) }
+            append("\n\nThis removes recognized container metadata only. It does not hide identifying details visible in the image pixels.")
+        }
+        statusText.text = "Image processed locally. Review the metadata report before saving."
+        AlertDialog.Builder(this)
+            .setTitle("Cleaned image report")
+            .setMessage(message)
+            .setNegativeButton("Discard cleaned copy") { _, _ ->
+                pendingScrubbedMedia?.delete()
+                pendingScrubbedMedia = null
+                pendingScrubbedMediaExtension = null
+                pendingScrubbedMediaMime = null
+                statusText.text = "Cleaned copy discarded. The original file was not changed."
+            }
+            .setPositiveButton("Save cleaned copy") { _, _ ->
+                val saveIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = mimeType
+                    putExtra(Intent.EXTRA_TITLE, "privacage-cleaned.$extension")
+                }
+                startActivityForResult(saveIntent, REQUEST_METADATA_SCRUB_OUTPUT)
+            }
+            .setOnCancelListener {
+                pendingScrubbedMedia?.delete()
+                pendingScrubbedMedia = null
+                pendingScrubbedMediaExtension = null
+                pendingScrubbedMediaMime = null
+                statusText.text = "Report dismissed. The temporary cleaned copy was deleted."
+            }
+            .show()
+    }
+
+    private fun metadataExtension(format: String): String = when (format) {
+        "jpeg" -> "jpg"
+        "png" -> "png"
+        "webp" -> "webp"
+        else -> throw IOException("Unsupported image format returned by the metadata core.")
+    }
+
+    private fun metadataMimeType(format: String): String = when (format) {
+        "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        else -> throw IOException("Unsupported image format returned by the metadata core.")
+    }
+
+    private fun stageSelectedMedia(uri: Uri): File {
+        val staged = File.createTempFile("privacage-metadata-input-", ".bin", cacheDir)
         val buffer = ByteArray(8_192)
         var totalBytes = 0L
         try {
@@ -1253,8 +1349,8 @@ class MainActivity : Activity() {
                         val count = input.read(buffer)
                         if (count < 0) break
                         if (count == 0) continue
-                        if (totalBytes > 100L * 1024 * 1024 - count) {
-                            throw IOException("JPEG exceeds the 100 MiB local processing limit.")
+                        if (totalBytes > NativeMetadataScrubber.DEFAULT_MAX_BYTES - count) {
+                            throw IOException("Selected file exceeds the 100 MiB local processing limit.")
                         }
                         output.write(buffer, 0, count)
                         totalBytes += count
@@ -1262,7 +1358,7 @@ class MainActivity : Activity() {
                     output.flush()
                 }
             }
-            if (totalBytes == 0L) throw IOException("The selected image is empty.")
+            if (totalBytes == 0L) throw IOException("The selected file is empty.")
             return staged
         } catch (exception: Exception) {
             staged.delete()
@@ -1272,19 +1368,21 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveScrubbedJpeg(resultCode: Int, uri: Uri?) {
-        val cleaned = pendingScrubbedJpeg
-        pendingScrubbedJpeg = null
+    private fun saveScrubbedMedia(resultCode: Int, uri: Uri?) {
+        val cleaned = pendingScrubbedMedia
+        pendingScrubbedMedia = null
+        pendingScrubbedMediaExtension = null
+        pendingScrubbedMediaMime = null
         if (resultCode != RESULT_OK || uri == null) {
             cleaned?.delete()
-            statusText.text = "Cleaned JPEG was not saved; the temporary copy was deleted."
+            statusText.text = "Cleaned image was not saved; temporary output deleted."
             return
         }
         if (cleaned == null || !cleaned.isFile) {
-            statusText.text = "Cleaned JPEG is no longer available; run metadata removal again."
+            statusText.text = "Cleaned image is no longer available; inspect and scrub the file again."
             return
         }
-        statusText.text = "Saving the cleaned JPEG locally."
+        statusText.text = "Saving the verified cleaned image locally."
         Thread({
             val buffer = ByteArray(8_192)
             try {
@@ -1302,19 +1400,19 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        statusText.text = "Cleaned JPEG saved. Pixel data was not recompressed; APP1, APP13, and comment segments were removed."
+                        statusText.text = "Verified cleaned image saved. The selected original was never modified."
                     }
                 }
             } catch (exception: Exception) {
-                val message = exception.message ?: "The cleaned JPEG could not be saved."
+                val message = exception.message ?: "The cleaned image could not be saved."
                 runOnUiThread {
-                    if (!isFinishing && !isDestroyed) statusText.text = "Saving cleaned JPEG failed: " + message
+                    if (!isFinishing && !isDestroyed) statusText.text = "Saving cleaned image failed: " + message
                 }
             } finally {
                 buffer.fill(0)
                 cleaned.delete()
             }
-        }, "PrivaCage-JPEG-save").start()
+        }, "PrivaCage-metadata-save").start()
     }
 
     private fun chooseApkForAudit() {
@@ -1871,8 +1969,8 @@ class MainActivity : Activity() {
         private const val REQUEST_EXPORT_FILE = 4108
         private const val REQUEST_IMPORT_FILE = 4109
         private const val REQUEST_APK_AUDIT = 4110
-        private const val REQUEST_JPEG_SCRUB_INPUT = 4111
-        private const val REQUEST_JPEG_SCRUB_OUTPUT = 4112
+        private const val REQUEST_METADATA_SCRUB_INPUT = 4111
+        private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113
         private const val REQUEST_SYNC_RECOVERY_IMPORT = 4114
         private const val MAX_AUDIT_ITEMS_TO_DISPLAY = 80

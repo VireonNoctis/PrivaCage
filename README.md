@@ -18,8 +18,9 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, virtual DNS endpoint, TUN loop, locally configured blocked domains, a user-selected IPv4 resolver, and optional DNS-over-TLS with certificate hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust share v1/v2 schema support and decrypt a known-answer vector. No account or remote sync; DNS-over-TLS is optional |
-| E2EE sync protocol core | Rust protocol + Android client integration | Android Keystore-protected identity and relay capability; JNI-based packet cryptography; explicit fingerprint confirmation; HTTPS relay send/receive; user-approved settings import; passphrase-protected recovery; persistent local peer denylist; per-device relay credentials with Ed25519 request proof-of-possession and selective server-side revocation. No iOS/Windows client, owner-signed roster, conflict resolution, or physical-device lifecycle validation yet |
+| E2EE sync protocol core | Rust protocol + Android client integration | Keystore-protected identity; JNI packet cryptography; explicit peer fingerprint confirmation; encrypted HTTPS relay transfer; user-approved settings import; recovery bundle; per-device relay proof-of-possession and selective server revocation; owner-signed device rosters with pinned owner fingerprint and monotonic revisions. Roster updates are manual; no iOS/Windows client, conflict resolution, or physical-device lifecycle validation yet |
 | Opaque sync relay | Rust + SQLite loopback service | Legacy per-space capability migration plus admin-managed per-device tokens, validated public cards, signed HTTP proof-of-possession, 120-second timestamp window, durable nonce replay rejection, selective credential revocation, bounded opaque storage, 7-day retention, duplicate-ID rejection, and bounded cursor pagination. Remote use requires a TLS reverse proxy |
+| Multi-format metadata inspector | Rust core + Android JNI + selected-file UI | Local inspection and separate cleaned copies for JPEG, PNG, and WebP; bounded streaming parsers, PNG CRC checks, malformed-file rejection, output re-parse before save, no image recompression or upload. Color profiles and unknown extension chunks can retain metadata; pixel content is not anonymized |
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
@@ -47,8 +48,10 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
 - `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
 - `CONTRIBUTING.md` — evidence and review requirements.
-- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK manifest audit and DEX indicator scan, JPEG metadata removal, and Android build workflow.
-- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — streaming JPEG marker parser that removes common EXIF/XMP, IPTC/Photoshop, and comment segments without re-encoding image pixels; reports removal counts by marker class for the local pre-save inspection report.
+- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK audit, Rust-powered JPEG/PNG/WebP metadata inspection and scrubbing, and Android build workflow.
+- `shared/rust/pcage-metadata/` — platform-neutral Rust metadata inspection/scrubbing core and local CLI for JPEG, PNG, and WebP.
+- `shared/rust/pcage-metadata-jni/` — Android native bridge for the Rust metadata core. The Android flow previews recognized metadata, creates a separate copy, re-inspects it, and only then offers save.
+- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — legacy Kotlin JPEG-only parser retained for compatibility/tests; the current Android UI uses the Rust multi-format core.
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
@@ -90,10 +93,14 @@ The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compati
 
 The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
-The Rust encrypted-profile implementation requires Rust 1.85 or newer:
+The Rust encrypted-profile and metadata implementations require Rust 1.85 or newer:
 
     cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
+    cargo test --manifest-path shared/rust/pcage-metadata/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
+    cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
 
 The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
 

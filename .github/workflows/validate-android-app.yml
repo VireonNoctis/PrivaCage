@@ -8,6 +8,8 @@ on:
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
       - "shared/rust/pcage-crypto/**"
+      - "shared/rust/pcage-metadata/**"
+      - "shared/rust/pcage-metadata-jni/**"
       - "shared/tracker-db/**"
       - "shared/scripts/**"
       - "tests/**"
@@ -19,6 +21,8 @@ on:
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
       - "shared/rust/pcage-crypto/**"
+      - "shared/rust/pcage-metadata/**"
+      - "shared/rust/pcage-metadata-jni/**"
       - "shared/tracker-db/**"
       - "shared/scripts/**"
       - "tests/**"
@@ -56,10 +60,18 @@ jobs:
         run: |
           cargo install cargo-ndk --version 3.5.4 --locked
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-      - name: Test JNI bridge on the host
-        run: cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
+      - name: Test Rust sync and metadata JNI bridges on the host
+        run: |
+          cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
+          cargo test --manifest-path shared/rust/pcage-metadata/Cargo.toml
+          cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
+          cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
       - name: Build Rust sync JNI libraries
         working-directory: shared/rust/pcage-sync-jni
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+      - name: Build Rust metadata JNI library
+        working-directory: shared/rust/pcage-metadata-jni
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
       - uses: gradle/actions/setup-gradle@v4
         with:

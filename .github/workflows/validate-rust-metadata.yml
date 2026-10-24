@@ -1,0 +1,45 @@
+name: Validate Rust metadata privacy core
+
+on:
+  push:
+    paths:
+      - "shared/rust/pcage-metadata/**"
+      - "shared/rust/pcage-metadata-jni/**"
+      - ".github/workflows/validate-rust-metadata.yml"
+  pull_request:
+    paths:
+      - "shared/rust/pcage-metadata/**"
+      - "shared/rust/pcage-metadata-jni/**"
+      - ".github/workflows/validate-rust-metadata.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            shared/rust/pcage-metadata
+            shared/rust/pcage-metadata-jni
+      - name: Format Rust metadata crates
+        run: |
+          cargo fmt --manifest-path shared/rust/pcage-metadata/Cargo.toml --all
+          cargo fmt --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all
+      - name: Test parser and file lifecycle
+        run: cargo test --manifest-path shared/rust/pcage-metadata/Cargo.toml
+      - name: Test JNI bridge
+        run: cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
+      - name: Clippy metadata core
+        run: cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy JNI bridge
+        run: cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
