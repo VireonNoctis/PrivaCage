@@ -22,36 +22,44 @@ class SyncRelayClientTest {
     }
 
     @Test
-    fun memberRevocationParserRequiresActiveModeAndKnownTarget() {
+    fun memberRevocationPolicyRecognizesActiveAndAlreadyRevokedMembers() {
         val fingerprint = "a".repeat(64)
-        val active = """{"member_mode":true,"members":[{"fingerprint":"$fingerprint","created_at_unix":100,"revoked_at_unix":null}]}"""
-        assertFalse(SyncRelayClient.parseMemberRevocationState(active, fingerprint).alreadyRevoked)
+        val active = listOf(RelayMemberEntry(fingerprint, null))
+        assertFalse(
+            SyncRelayClient.evaluateMemberRevocationState(true, active, fingerprint).alreadyRevoked
+        )
 
-        val revoked = """{"member_mode":true,"members":[{"fingerprint":"$fingerprint","created_at_unix":100,"revoked_at_unix":200}]}"""
-        assertTrue(SyncRelayClient.parseMemberRevocationState(revoked, fingerprint).alreadyRevoked)
+        val revoked = listOf(RelayMemberEntry(fingerprint, 200L))
+        assertTrue(
+            SyncRelayClient.evaluateMemberRevocationState(true, revoked, fingerprint).alreadyRevoked
+        )
     }
 
     @Test
-    fun memberRevocationParserFailsClosedForLegacyModeUnknownTargetsAndMalformedState() {
+    fun memberRevocationPolicyFailsClosedForLegacyModeUnknownTargetsAndMalformedState() {
         val fingerprint = "a".repeat(64)
         assertIoFails {
-            SyncRelayClient.parseMemberRevocationState(
-                """{"member_mode":false,"members":[{"fingerprint":"$fingerprint","revoked_at_unix":null}]}""",
-                fingerprint
+            SyncRelayClient.evaluateMemberRevocationState(
+                false, listOf(RelayMemberEntry(fingerprint, null)), fingerprint
             )
         }
         assertIoFails {
-            SyncRelayClient.parseMemberRevocationState(
-                """{"member_mode":true,"members":[]}""",
-                fingerprint
+            SyncRelayClient.evaluateMemberRevocationState(true, emptyList(), fingerprint)
+        }
+        assertIoFails {
+            SyncRelayClient.evaluateMemberRevocationState(
+                true, listOf(RelayMemberEntry(fingerprint, 0L)), fingerprint
             )
         }
         assertIoFails {
-            SyncRelayClient.parseMemberRevocationState("{bad-json", fingerprint)
+            SyncRelayClient.evaluateMemberRevocationState(
+                true, listOf(RelayMemberEntry("BAD", null)), fingerprint
+            )
         }
         assertIoFails {
-            SyncRelayClient.parseMemberRevocationState(
-                """{"member_mode":true,"members":[{"fingerprint":"$fingerprint","revoked_at_unix":0}]}""",
+            SyncRelayClient.evaluateMemberRevocationState(
+                true,
+                listOf(RelayMemberEntry(fingerprint, null), RelayMemberEntry(fingerprint, 100L)),
                 fingerprint
             )
         }

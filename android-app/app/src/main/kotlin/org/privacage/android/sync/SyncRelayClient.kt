@@ -20,6 +20,7 @@ internal data class RelayedRoster(
     val insertedAtUnix: Long
 )
 internal data class RosterPage(val nextRevision: Long, val rosters: List<RelayedRoster>)
+internal data class RelayMemberEntry(val fingerprint: String, val revokedAtUnix: Long?)
 internal data class RelayMemberRevocationResult(val alreadyRevoked: Boolean)
 
 /**
@@ -401,9 +402,6 @@ internal class SyncRelayClient(
             responseJson: String,
             targetFingerprint: String
         ): RelayMemberRevocationResult {
-            if (!isValidFingerprint(targetFingerprint)) {
-                throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
-            }
             val response = try {
                 JSONObject(responseJson)
             } catch (exception: Exception) {
@@ -417,42 +415,61 @@ internal class SyncRelayClient(
             } catch (exception: Exception) {
                 throw IOException("Relay administrator response contains an invalid member-mode state.", exception)
             }
-            if (!memberMode) {
-                throw IOException(
-                    "Per-device member mode is not active. Selective revocation would not disable the legacy shared capability; rotate that capability through the relay administrator first."
-                )
-            }
-            val members = response.optJSONArray("members")
+            val rawMembers = response.optJSONArray("members")
                 ?: throw IOException("Relay administrator response omitted the member list.")
-            var targetFound = false
-            var targetRevokedAt: Long? = null
-            for (index in 0 until members.length()) {
-                val member = members.optJSONObject(index)
+            val members = ArrayList<RelayMemberEntry>(rawMembers.length())
+            for (index in 0 until rawMembers.length()) {
+                val member = rawMembers.optJSONObject(index)
                     ?: throw IOException("Relay administrator response contains a malformed member.")
                 val fingerprint = member.optString("fingerprint", "")
                 if (!isValidFingerprint(fingerprint)) {
                     throw IOException("Relay administrator response contains an invalid member fingerprint.")
                 }
-                if (fingerprint != targetFingerprint) continue
-                if (targetFound) {
-                    throw IOException("Relay administrator response contains a duplicate target member.")
-                }
-                targetFound = true
                 if (!member.has("revoked_at_unix")) {
-                    throw IOException("Relay administrator response omitted the target revocation state.")
+                    throw IOException("Relay administrator response omitted a member revocation state.")
                 }
-                if (!member.isNull("revoked_at_unix")) {
-                    val revokedAt = member.optLong("revoked_at_unix", -1L)
-                    if (revokedAt <= 0L) {
-                        throw IOException("Relay administrator response contains an invalid revocation timestamp.")
+                val revokedAt = if (member.isNull("revoked_at_unix")) {
+                    null
+                } else {
+                    member.optLong("revoked_at_unix", -1L).also {
+                        if (it <= 0L) {
+                            throw IOException("Relay administrator response contains an invalid revocation timestamp.")
+                        }
                     }
-                    targetRevokedAt = revokedAt
+                }
+                members += RelayMemberEntry(fingerprint, revokedAt)
+            }
+            return evaluateMemberRevocationState(memberMode, members, targetFingerprint)
+        }
+
+        internal fun evaluateMemberRevocationState(
+            memberMode: Boolean,
+            members: List<RelayMemberEntry>,
+            targetFingerprint: String
+        ): RelayMemberRevocationResult {
+            if (!isValidFingerprint(targetFingerprint)) {
+                throw IOException("Target fingerprint must be a full lowercase SHA-256 hex digest.")
+            }
+            if (!memberMode) {
+                throw IOException(
+                    "Per-device member mode is not active. Selective revocation would not disable the legacy shared capability; rotate that capability through the relay administrator first."
+                )
+            }
+            for (member in members) {
+                if (!isValidFingerprint(member.fingerprint)) {
+                    throw IOException("Relay administrator response contains an invalid member fingerprint.")
+                }
+                if (member.revokedAtUnix != null && member.revokedAtUnix <= 0L) {
+                    throw IOException("Relay administrator response contains an invalid revocation timestamp.")
                 }
             }
-            if (!targetFound) {
-                throw IOException("This fingerprint has no registered relay member credential in this space.")
+            val matches = members.filter { it.fingerprint == targetFingerprint }
+            if (matches.size > 1) {
+                throw IOException("Relay administrator response contains a duplicate target member.")
             }
-            return RelayMemberRevocationResult(alreadyRevoked = targetRevokedAt != null)
+            val target = matches.singleOrNull()
+                ?: throw IOException("This fingerprint has no registered relay member credential in this space.")
+            return RelayMemberRevocationResult(alreadyRevoked = target.revokedAtUnix != null)
         }
 
         private fun isValidFingerprint(value: String): Boolean =
