@@ -414,15 +414,14 @@ fn validate_hostname(value: &str, index: usize) -> Result<(), VerifyError> {
     }
     let labels = value.split('.');
     if labels.clone().any(|label| {
-            label.is_empty()
-                || label.len() > 63
-                || label.starts_with('-')
-                || label.ends_with('-')
-                || !label
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        })
-    {
+        label.is_empty()
+            || label.len() > 63
+            || label.starts_with('-')
+            || label.ends_with('-')
+            || !label
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    }) {
         return Err(invalid(format!(
             "event {} hostname is not a valid normalized domain",
             index
