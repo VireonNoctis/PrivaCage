@@ -3,10 +3,11 @@ package org.privacage.audit
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class LocalAuditExporterTest {
     private val utc = ZoneId.of("UTC")
@@ -89,18 +90,22 @@ class LocalAuditExporterTest {
         assertFalse(result.json.contains("quote\"and\nnewline.example"))
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun rejectsEmptyCategorySelection() {
-        LocalAuditExporter.prepare(emptyList(), request(categories = emptySet()), generatedAt)
+        assertFailsWith<IllegalArgumentException> {
+            LocalAuditExporter.prepare(emptyList(), request(categories = emptySet()), generatedAt)
+        }
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun rejectsReversedDateRange() {
-        LocalAuditExporter.prepare(
-            emptyList(),
-            AuditExportRequest(date, date.minusDays(1), setOf("BLOCKED"), timeZone = utc),
-            generatedAt
-        )
+        assertFailsWith<IllegalArgumentException> {
+            LocalAuditExporter.prepare(
+                emptyList(),
+                AuditExportRequest(date, date.minusDays(1), setOf("BLOCKED"), timeZone = utc),
+                generatedAt
+            )
+        }
     }
 
     private fun request(
