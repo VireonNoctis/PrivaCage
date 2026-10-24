@@ -27,6 +27,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.UUID
 
 class PrivacyDnsVpnService : VpnService() {
     @Volatile private var running = false
@@ -38,6 +39,10 @@ class PrivacyDnsVpnService : VpnService() {
             return START_NOT_STICKY
         }
         if (running) return START_NOT_STICKY
+        publishState(
+            VpnSessionStatus.STATE_STARTING,
+            "Start requested; validating configuration and establishing the virtual DNS interface."
+        )
 
         try {
             val prefs = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
@@ -79,7 +84,13 @@ class PrivacyDnsVpnService : VpnService() {
             running = true
             persistStats(engine.stats.snapshot())
             startVpnForeground()
-            Thread({ pumpPackets(descriptor, engine) }, "PrivaCage-DNS-TUN").apply {
+            Thread({
+                publishState(
+                    VpnSessionStatus.STATE_ACTIVE,
+                    "The virtual DNS interface was established and the packet loop started."
+                )
+                pumpPackets(descriptor, engine)
+            }, "PrivaCage-DNS-TUN").apply {
                 isDaemon = true
                 start()
             }
@@ -88,6 +99,10 @@ class PrivacyDnsVpnService : VpnService() {
             running = false
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
+            publishState(
+                VpnSessionStatus.STATE_ERROR,
+                "DNS filtering could not start. Check configuration and Android VPN permissions."
+            )
             postFailureNotification("DNS filtering could not start. Check configuration and Android VPN permissions.")
             stopSelf(startId)
         }
@@ -95,7 +110,10 @@ class PrivacyDnsVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        stopVpn()
+        running = false
+        closeTunnel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        publishState(VpnSessionStatus.STATE_STOPPED, "Android revoked VPN access; DNS filtering is stopped.")
         super.onRevoke()
     }
 
@@ -167,9 +185,23 @@ class PrivacyDnsVpnService : VpnService() {
             running = false
             closeTunnel()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            if (failureMessage != null) postFailureNotification(failureMessage)
+            if (failureMessage != null) {
+                publishState(VpnSessionStatus.STATE_ERROR, failureMessage)
+                postFailureNotification(failureMessage)
+            } else {
+                publishState(VpnSessionStatus.STATE_STOPPED, "DNS filtering stopped.")
+            }
             stopSelf()
         }
+    }
+
+    private fun publishState(state: String, message: String) {
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE).edit()
+            .putString(VpnSessionStatus.KEY_STATE, state)
+            .putString(VpnSessionStatus.KEY_MESSAGE, message)
+            .putString(VpnSessionStatus.KEY_PROCESS_ID, PROCESS_SESSION_ID)
+            .apply()
+        sendBroadcast(Intent(ACTION_STATE_CHANGED).setPackage(packageName))
     }
 
     private fun persistStats(snapshot: DnsTunnelStatsSnapshot) {
@@ -226,9 +258,13 @@ class PrivacyDnsVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        val hadTunnel = running || tunnel != null
         running = false
         closeTunnel()
         stopForeground(STOP_FOREGROUND_REMOVE)
+        if (hadTunnel) {
+            publishState(VpnSessionStatus.STATE_STOPPED, "DNS filtering stopped.")
+        }
     }
 
     @Synchronized
@@ -262,6 +298,8 @@ class PrivacyDnsVpnService : VpnService() {
         const val KEY_STATS_UNSUPPORTED = "dns_stats_unsupported"
         const val KEY_STATS_UPSTREAM_FAILURES = "dns_stats_upstream_failures"
         const val ACTION_START = "org.privacage.android.action.START_DNS_VPN"
+        const val ACTION_STATE_CHANGED = "org.privacage.android.action.DNS_VPN_STATE_CHANGED"
+        internal val PROCESS_SESSION_ID: String = UUID.randomUUID().toString()
         private const val TAG = "PrivaCageDnsVpn"
         private const val CHANNEL_ID = "privacage_dns_filtering"
         private const val NOTIFICATION_ID = 4108

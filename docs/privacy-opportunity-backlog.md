@@ -10,6 +10,8 @@ People often share GPS coordinates, device details, timestamps, author names, an
 ### DNS protection status and leak diagnostics
 Users may believe a VPN or DNS blocker is active when a configuration change, IPv6 path, captive portal, or encrypted-DNS setting bypasses expectations. Show tunnel/resolver state, test configured paths, log rule hits and failures, and explain what cannot be observed. A diagnostic cannot prove every service uses the expected path.
 
+**Implemented slice (24 October 2026):** Android now presents a preflight disclosure about VPN replacement, upstream DNS encryption, and its limited IPv4 UDP DNS route. A process-aware lifecycle panel reports startup, active, stopped, and error states and ignores active/starting records from an earlier app process. This does not implement route/leak diagnostics; real-device and network-handover validation remain outstanding.
+
 ### Permission drift and unused access review
 Compare available OS permission state over time where public APIs permit it; create reminders and links to native settings. Do not pretend an ordinary app can universally revoke other apps' permissions.
 

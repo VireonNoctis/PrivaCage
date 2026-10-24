@@ -2,12 +2,16 @@ package org.privacage.android
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ClipData
+import android.content.Context
+import android.content.IntentFilter
 import android.content.ClipboardManager
 import android.content.Intent
 import android.provider.Settings
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -41,6 +45,13 @@ class MainActivity : Activity() {
     private lateinit var statsText: TextView
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
+    private lateinit var vpnStateText: TextView
+    private var vpnStateReceiverRegistered = false
+    private val vpnStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == PrivacyDnsVpnService.ACTION_STATE_CHANGED) refreshVpnState()
+        }
+    }
     private lateinit var devicePrivacyText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
@@ -393,20 +404,22 @@ class MainActivity : Activity() {
             text = "Enable DNS filtering"
             setOnClickListener {
                 if (!saveConfiguration()) return@setOnClickListener
-                val consent = VpnService.prepare(this@MainActivity)
-                if (consent == null) startVpnService() else {
-                    @Suppress("DEPRECATION")
-                    startActivityForResult(consent, REQUEST_VPN_PERMISSION)
-                }
+                showVpnPreflight()
             }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Stop DNS filtering"
             setOnClickListener {
                 stopService(Intent(this@MainActivity, PrivacyDnsVpnService::class.java))
-                statusText.text = "Stop requested. Confirm disconnection using Android's VPN indicator."
+                statusText.text = "Stop requested. Waiting for the service lifecycle update."
             }
         }, matchWidth())
+        vpnStateText = TextView(this).apply {
+            text = "DNS filtering service state has not been refreshed."
+            textSize = 13f
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        root.addView(vpnStateText, matchWidth())
         root.addView(TextView(this).apply {
             text = "Privacy-preserving DNS counters"
             setPadding(0, dp(16), 0, 0)
@@ -669,7 +682,7 @@ class MainActivity : Activity() {
         }, matchWidth())
 
         statusText = TextView(this).apply {
-            text = "Not connected (service state is not inferred by this screen)."
+            text = "Local actions and service messages appear here."
             setPadding(0, dp(12), 0, 0)
         }
         root.addView(statusText, matchWidth())
@@ -694,10 +707,32 @@ class MainActivity : Activity() {
         refreshDevicePrivacySnapshot()
     }
 
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(PrivacyDnsVpnService.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(vpnStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(vpnStateReceiver, filter)
+        }
+        vpnStateReceiverRegistered = true
+        refreshVpnState()
+    }
+
+    override fun onStop() {
+        if (vpnStateReceiverRegistered) {
+            unregisterReceiver(vpnStateReceiver)
+            vpnStateReceiverRegistered = false
+        }
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::statsText.isInitialized) refreshDnsStats()
         if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
+        if (::vpnStateText.isInitialized) refreshVpnState()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -2087,10 +2122,60 @@ class MainActivity : Activity() {
         catch (exception: Exception) { statusText.text = "This Android build does not expose the $label shortcut. Open it manually in Settings." }
     }
 
+    private fun showVpnPreflight() {
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val upstreamDescription = if (prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)) {
+            "DNS-over-TLS is enabled. PrivaCage verifies the configured certificate hostname and drops queries if TLS fails; the selected resolver can still see the DNS names."
+        } else {
+            "Plain upstream DNS is selected. Queries from PrivaCage to the resolver are not encrypted."
+        }
+        val message = buildString {
+            append("Starting PrivaCage may disconnect the VPN you currently use. Android allows only one active VPN service per user/profile.\n\n")
+            append("Coverage is deliberately narrow: only IPv4 UDP DNS packets addressed to PrivaCage's virtual DNS endpoint are routed here. This is not a full-device VPN. DNS-over-TCP from apps, IPv6 DNS, DNS-over-HTTPS, DNS-over-QUIC, HTTPS contents, and OS/OEM telemetry are outside this implementation. Other DNS paths may bypass these rules.\n\n")
+            append(upstreamDescription)
+            append("\n\nContinue to Android's VPN permission step?")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Before enabling DNS filtering")
+            .setMessage(message)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Continue") { _, _ -> requestVpnPermissionAndStart() }
+            .show()
+    }
+
+    private fun requestVpnPermissionAndStart() {
+        val consent = VpnService.prepare(this)
+        if (consent == null) {
+            startVpnService()
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityForResult(consent, REQUEST_VPN_PERMISSION)
+        }
+    }
+
+    private fun refreshVpnState() {
+        if (!::vpnStateText.isInitialized) return
+        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val snapshot = VpnSessionStatus.resolve(
+            state = prefs.getString(VpnSessionStatus.KEY_STATE, null),
+            message = prefs.getString(VpnSessionStatus.KEY_MESSAGE, null),
+            processId = prefs.getString(VpnSessionStatus.KEY_PROCESS_ID, null),
+            currentProcessId = PrivacyDnsVpnService.PROCESS_SESSION_ID
+        )
+        vpnStateText.text = buildString {
+            append("PrivaCage DNS service: ").append(snapshot.state.uppercase()).append("\n")
+            append(snapshot.message)
+            if (snapshot.stale) {
+                append("\n\nA prior app process recorded this state, so it is treated as stopped.")
+            }
+            append("\n\nCoverage note: this status reflects PrivaCage's own service lifecycle only. It does not prove every DNS route or every app is filtered.")
+        }
+    }
+
     private fun startVpnService() {
         val intent = Intent(this, PrivacyDnsVpnService::class.java).setAction(PrivacyDnsVpnService.ACTION_START)
         startForegroundService(intent)
-        statusText.text = "Start requested. Check the persistent notification and Android VPN indicator for actual state."
+        statusText.text = "Start requested. Waiting for the service to establish the virtual DNS interface."
     }
 
     private fun isIpv4Address(value: String): Boolean {

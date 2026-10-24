@@ -18,6 +18,8 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - Lets users explicitly import only `active` domain indicators into the rule editor; changes still require saving. `review` and `retired` records are never imported by this action, and SDK class patterns are informational only.
 - Exports and restores the resolver plus domain-rule profile as a passphrase-encrypted `.pcage` file using Argon2id v1.3 and AES-256-GCM. The file is encrypted before being written through Android's document provider.
 - Local-only settings in Android SharedPreferences.
+- Preflight disclosure before Android VPN consent, including the possibility of replacing the currently active VPN, the chosen upstream DNS transport, and the supported routing scope.
+- A local VPN lifecycle status panel that follows service start, establishment, shutdown, revocation, and errors. Active/starting status from a previous app process is treated as stale rather than live.
 - Explicit `VpnService.prepare()` consent.
 - A `VpnService` with a virtual DNS address and a route only to that address.
 - A blocking TUN read/write loop that processes supported IPv4 UDP DNS packets and returns responses.
@@ -51,5 +53,6 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 - This code has not been tested on an emulator or physical device. CI and device validation are required before calling it release-ready.
 - Catalog parsing is strict and fails visibly in the UI if its schema is invalid; manual rules remain usable. The catalog is bundled at build time, not remotely updated.
 - Platform/device policy can prevent VPN or foreground-service startup. Failures stop the service; DNS query names are not logged.
+- The lifecycle panel reports PrivaCage's recorded service state, not a DNS leak test. It cannot prove all apps use the virtual DNS endpoint, and it does not cover IPv6 DNS, DNS-over-TCP from apps, DNS-over-HTTPS, DNS-over-QUIC, or HTTPS payloads.
 
 - JPEG scrubber limits: JPEG only; APP1, APP13, and COM markers are removed. Other APP markers remain, so vendor-specific metadata may survive. Files with trailing data after EOI are rejected.
