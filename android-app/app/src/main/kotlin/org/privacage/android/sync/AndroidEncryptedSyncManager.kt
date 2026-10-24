@@ -397,7 +397,25 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Save a valid HTTPS relay URL, space ID and capability first.")
         }
         return try {
-            SyncRelayClient(url, space, capability)
+            val localCard = JSONObject(record.getString(KEY_CARD_JSON))
+            SyncRelayClient(
+                url,
+                space,
+                capability,
+                localCard.getString("fingerprint_sha256")
+            ) { method, pathAndQuery, timestamp, nonce, body ->
+                parseNative(
+                    bridge.nativeSignRelayRequest(
+                        record.getString(KEY_BUNDLE_BASE64),
+                        record.getString(KEY_LOCAL_PASSPHRASE),
+                        method,
+                        pathAndQuery,
+                        timestamp,
+                        nonce,
+                        body
+                    )
+                ).getString("signature_hex")
+            }
         } catch (exception: IllegalArgumentException) {
             throw IOException(exception.message ?: "Relay configuration is invalid.", exception)
         }

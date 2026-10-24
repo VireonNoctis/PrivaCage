@@ -2,12 +2,13 @@
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{DefaultBodyLimit, OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
     Json, Router,
 };
+use pcage_sync::{verify_relay_request_signature, IdentityCard};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,6 +28,8 @@ const MAX_MESSAGES_PER_SPACE: u64 = 10_000;
 const MAX_MEMBERS_PER_SPACE: usize = 128;
 const PAGE_SIZE: usize = 100;
 const RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
+const REQUEST_CLOCK_SKEW_SECS: u64 = 120;
+const REQUEST_NONCE_RETENTION_SECS: u64 = 300;
 
 #[derive(Clone)]
 struct AppState { store: Arc<Store> }
@@ -69,13 +72,29 @@ impl Store {
                space_id TEXT NOT NULL REFERENCES spaces(space_id) ON DELETE CASCADE,
                fingerprint TEXT NOT NULL,
                capability_hash BLOB NOT NULL,
+               device_card_json TEXT,
                created_at INTEGER NOT NULL,
                revoked_at INTEGER,
                PRIMARY KEY(space_id, fingerprint),
                UNIQUE(space_id, capability_hash)
              );
+             CREATE TABLE IF NOT EXISTS space_request_nonces (
+               space_id TEXT NOT NULL REFERENCES spaces(space_id) ON DELETE CASCADE,
+               fingerprint TEXT NOT NULL,
+               nonce TEXT NOT NULL,
+               created_at INTEGER NOT NULL,
+               PRIMARY KEY(space_id, fingerprint, nonce)
+             );
              CREATE INDEX IF NOT EXISTS messages_space_cursor ON messages(space_id, cursor);"
         )?;
+        let has_device_card_column: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('space_members') WHERE name='device_card_json')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_device_card_column {
+            connection.execute("ALTER TABLE space_members ADD COLUMN device_card_json TEXT", [])?;
+        }
         Ok(Self { connection: Mutex::new(connection), admin_hash: hash_token(admin_token) })
     }
 
@@ -106,7 +125,10 @@ impl Store {
         let mut seen_fingerprints = HashSet::new();
         let mut seen_token_hashes = HashSet::new();
         for member in members {
-            if !valid_fingerprint(&member.fingerprint) || !valid_capability(&member.capability_token) {
+            if !valid_fingerprint(&member.fingerprint) || !valid_capability(&member.capability_token)
+                || member.device_card.verify().is_err()
+                || member.device_card.fingerprint_sha256 != member.fingerprint
+            {
                 return Err(StoreError::Invalid);
             }
             if !seen_fingerprints.insert(member.fingerprint.as_str())
@@ -131,9 +153,15 @@ impl Store {
         let tx = conn.transaction().map_err(|_| StoreError::Database)?;
         for member in members {
             tx.execute(
-                "INSERT INTO space_members(space_id, fingerprint, capability_hash, created_at, revoked_at)
-                 VALUES (?1, ?2, ?3, ?4, NULL)",
-                params![space_id, member.fingerprint, hash_token(&member.capability_token).as_slice(), now as i64],
+                "INSERT INTO space_members(space_id, fingerprint, capability_hash, device_card_json, created_at, revoked_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL)",
+                params![
+                    space_id,
+                    member.fingerprint,
+                    hash_token(&member.capability_token).as_slice(),
+                    serde_json::to_string(&member.device_card).map_err(|_| StoreError::Database)?,
+                    now as i64
+                ],
             ).map_err(|error| {
                 if matches!(error, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) {
                     StoreError::Conflict
@@ -163,12 +191,25 @@ impl Store {
         if exists == 0 {
             return Err(StoreError::Unauthorized);
         }
+        let already_active: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM space_member_mode WHERE space_id=?1)",
+            [space_id],
+            |row| row.get(0),
+        ).map_err(|_| StoreError::Database)?;
+        if already_active != 0 {
+            return Ok(());
+        }
         let active_members: i64 = conn.query_row(
             "SELECT COUNT(*) FROM space_members WHERE space_id=?1 AND revoked_at IS NULL",
             [space_id],
             |row| row.get(0),
         ).map_err(|_| StoreError::Database)?;
-        if active_members == 0 {
+        let members_without_cards: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM space_members WHERE space_id=?1 AND revoked_at IS NULL AND device_card_json IS NULL",
+            [space_id],
+            |row| row.get(0),
+        ).map_err(|_| StoreError::Database)?;
+        if active_members == 0 || members_without_cards != 0 {
             return Err(StoreError::Invalid);
         }
         conn.execute(
@@ -247,11 +288,14 @@ impl Store {
         space_id: &str,
         fingerprint: &str,
         capability: &str,
+        device_card: &IdentityCard,
     ) -> Result<(), StoreError> {
         if !constant_eq(&self.admin_hash, &hash_token(admin_token)) {
             return Err(StoreError::Unauthorized);
         }
-        if !valid_space_id(space_id) || !valid_fingerprint(fingerprint) || !valid_capability(capability) {
+        if !valid_space_id(space_id) || !valid_fingerprint(fingerprint) || !valid_capability(capability)
+            || device_card.verify().is_err() || device_card.fingerprint_sha256 != fingerprint
+        {
             return Err(StoreError::Invalid);
         }
         let now = unix_now().map_err(|_| StoreError::Database)?;
@@ -266,9 +310,15 @@ impl Store {
             return Err(StoreError::Invalid);
         }
         let changed = conn.execute(
-            "UPDATE space_members SET capability_hash=?1, created_at=?2, revoked_at=NULL
-             WHERE space_id=?3 AND fingerprint=?4",
-            params![hash_token(capability).as_slice(), now as i64, space_id, fingerprint],
+            "UPDATE space_members SET capability_hash=?1, device_card_json=?2, created_at=?3, revoked_at=NULL
+             WHERE space_id=?4 AND fingerprint=?5",
+            params![
+                hash_token(capability).as_slice(),
+                serde_json::to_string(device_card).map_err(|_| StoreError::Database)?,
+                now as i64,
+                space_id,
+                fingerprint
+            ],
         ).map_err(|error| {
             if matches!(error, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) {
                 StoreError::Conflict
@@ -313,6 +363,7 @@ impl Store {
         Ok(())
     }
 
+    #[cfg(test)]
     fn authorize(&self, space_id: &str, capability: &str) -> Result<(), StoreError> {
         if !valid_space_id(space_id) || !valid_capability(capability) { return Err(StoreError::Unauthorized); }
         let conn = self.connection.lock().map_err(|_| StoreError::Database)?;
@@ -345,6 +396,99 @@ impl Store {
         ).optional().map_err(|_| StoreError::Database)?;
         let Some(expected) = expected else { return Err(StoreError::Unauthorized); };
         if expected.len() != 32 || !constant_eq(&expected, &candidate_hash) { return Err(StoreError::Unauthorized); }
+        Ok(())
+    }
+
+    fn authorize_request(
+        &self,
+        space_id: &str,
+        capability: &str,
+        method: &str,
+        path_and_query: &str,
+        body: &[u8],
+        headers: &HeaderMap,
+    ) -> Result<(), StoreError> {
+        if !valid_space_id(space_id) || !valid_capability(capability) {
+            return Err(StoreError::Unauthorized);
+        }
+        let fingerprint = headers
+            .get("x-pcage-device-fingerprint")
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| valid_fingerprint(value));
+        let conn = self.connection.lock().map_err(|_| StoreError::Database)?;
+        let member_mode: i64 = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM space_member_mode WHERE space_id=?1)",
+            [space_id],
+            |row| row.get(0),
+        ).map_err(|_| StoreError::Database)?;
+        if let Some(fingerprint) = fingerprint {
+            let member: Option<(Vec<u8>, Option<String>)> = conn.query_row(
+                "SELECT capability_hash, device_card_json FROM space_members
+                 WHERE space_id=?1 AND fingerprint=?2 AND revoked_at IS NULL",
+                params![space_id, fingerprint],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional().map_err(|_| StoreError::Database)?;
+            if let Some((expected_hash, card_json)) = member {
+                if expected_hash.len() == 32 && constant_eq(&expected_hash, &hash_token(capability)) {
+                    let timestamp = headers
+                        .get("x-pcage-timestamp")
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .ok_or(StoreError::Unauthorized)?;
+                    let nonce = headers
+                        .get("x-pcage-nonce")
+                        .and_then(|value| value.to_str().ok())
+                        .filter(|value| valid_nonce(value))
+                        .ok_or(StoreError::Unauthorized)?;
+                    let signature = headers
+                        .get("x-pcage-signature")
+                        .and_then(|value| value.to_str().ok())
+                        .filter(|value| valid_signature(value))
+                        .ok_or(StoreError::Unauthorized)?;
+                    let now = unix_now().map_err(|_| StoreError::Database)?;
+                    if now.abs_diff(timestamp) > REQUEST_CLOCK_SKEW_SECS {
+                        return Err(StoreError::Unauthorized);
+                    }
+                    let card_json = card_json.ok_or(StoreError::Unauthorized)?;
+                    let card: IdentityCard = serde_json::from_str(&card_json).map_err(|_| StoreError::Unauthorized)?;
+                    if card.fingerprint_sha256 != fingerprint
+                        || verify_relay_request_signature(
+                            &card, method, path_and_query, timestamp, nonce, body, signature
+                        ).is_err()
+                    {
+                        return Err(StoreError::Unauthorized);
+                    }
+                    conn.execute(
+                        "DELETE FROM space_request_nonces WHERE created_at <= ?1",
+                        [now.saturating_sub(REQUEST_NONCE_RETENTION_SECS) as i64],
+                    ).map_err(|_| StoreError::Database)?;
+                    conn.execute(
+                        "INSERT INTO space_request_nonces(space_id, fingerprint, nonce, created_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![space_id, fingerprint, nonce, now as i64],
+                    ).map_err(|error| {
+                        if matches!(error, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) {
+                            StoreError::Unauthorized
+                        } else {
+                            StoreError::Database
+                        }
+                    })?;
+                    return Ok(());
+                }
+            }
+        }
+        if member_mode != 0 {
+            return Err(StoreError::Unauthorized);
+        }
+        let expected: Option<Vec<u8>> = conn.query_row(
+            "SELECT capability_hash FROM spaces WHERE space_id=?1",
+            [space_id],
+            |row| row.get(0),
+        ).optional().map_err(|_| StoreError::Database)?;
+        let Some(expected) = expected else { return Err(StoreError::Unauthorized); };
+        if expected.len() != 32 || !constant_eq(&expected, &hash_token(capability)) {
+            return Err(StoreError::Unauthorized);
+        }
         Ok(())
     }
 
@@ -404,11 +548,11 @@ struct ProvisionMembersRequest { members: Vec<ProvisionMemberRequest> }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProvisionMemberRequest { fingerprint: String, capability_token: String }
+struct ProvisionMemberRequest { fingerprint: String, capability_token: String, device_card: IdentityCard }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ReplaceMemberRequest { capability_token: String }
+struct ReplaceMemberRequest { capability_token: String, device_card: IdentityCard }
 
 #[derive(Serialize)]
 struct MemberList { member_mode: bool, members: Vec<MemberSummary> }
@@ -534,26 +678,34 @@ async fn replace_member_token(
     Json(body): Json<ReplaceMemberRequest>,
 ) -> Result<StatusCode, ApiFailure> {
     let admin_token = bearer(&headers)?;
-    state.store.replace_member_token(admin_token, &space_id, &fingerprint, &body.capability_token).map_err(ApiFailure)?;
+    state.store.replace_member_token(admin_token, &space_id, &fingerprint, &body.capability_token, &body.device_card).map_err(ApiFailure)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn put_message(
-    State(state): State<AppState>, Path((space_id, message_id)): Path<(String, String)>,
-    headers: HeaderMap, body: Bytes,
+    State(state): State<AppState>,
+    Path((space_id, message_id)): Path<(String, String)>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, ApiFailure> {
     let token = bearer(&headers)?;
-    state.store.authorize(&space_id, token).map_err(ApiFailure)?;
+    let path = uri.path_and_query().map(|value| value.as_str()).unwrap_or_else(|| uri.path());
+    state.store.authorize_request(&space_id, token, "PUT", path, &body, &headers).map_err(ApiFailure)?;
     state.store.put(&space_id, &message_id, &body).map_err(ApiFailure)?;
     Ok(StatusCode::CREATED)
 }
 
 async fn list_messages(
-    State(state): State<AppState>, Path(space_id): Path<String>, Query(cursor): Query<CursorQuery>,
+    State(state): State<AppState>,
+    Path(space_id): Path<String>,
+    Query(cursor): Query<CursorQuery>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Result<Json<MessagePage>, ApiFailure> {
     let token = bearer(&headers)?;
-    state.store.authorize(&space_id, token).map_err(ApiFailure)?;
+    let path = uri.path_and_query().map(|value| value.as_str()).unwrap_or_else(|| uri.path());
+    state.store.authorize_request(&space_id, token, "GET", path, &[], &headers).map_err(ApiFailure)?;
     state.store.list(
         &space_id,
         cursor.after.unwrap_or(0),
@@ -577,6 +729,14 @@ fn valid_message_id(id: &str) -> bool {
 fn valid_fingerprint(fingerprint: &str) -> bool {
     fingerprint.len() == 64
         && fingerprint.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+fn valid_nonce(nonce: &str) -> bool {
+    nonce.len() == 32
+        && nonce.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+fn valid_signature(signature: &str) -> bool {
+    signature.len() == 128
+        && signature.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 fn unix_now() -> Result<u64, ()> {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).map_err(|_| ())
@@ -695,6 +855,25 @@ mod tests {
         }).collect()
     }
 
+    fn signed_member_headers(
+        identity: &DeviceIdentity,
+        token: &str,
+        method: &str,
+        path: &str,
+        timestamp: u64,
+        nonce: &str,
+        body: &[u8],
+    ) -> HeaderMap {
+        let signature = identity.sign_relay_request(method, path, timestamp, nonce, body).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, format!("Bearer {token}").parse().unwrap());
+        headers.insert("x-pcage-device-fingerprint", identity.card.fingerprint_sha256.parse().unwrap());
+        headers.insert("x-pcage-timestamp", timestamp.to_string().parse().unwrap());
+        headers.insert("x-pcage-nonce", nonce.parse().unwrap());
+        headers.insert("x-pcage-signature", signature.parse().unwrap());
+        headers
+    }
+
     #[tokio::test]
     async fn member_credentials_can_be_activated_and_revoked_individually_over_http() {
         let dir = tempdir().unwrap();
@@ -702,8 +881,10 @@ mod tests {
         let legacy = "0".repeat(64);
         let first_token = "1".repeat(64);
         let second_token = "2".repeat(64);
-        let first_fingerprint = "b".repeat(64);
-        let second_fingerprint = "c".repeat(64);
+        let first_identity = DeviceIdentity::from_seeds([51; 32], [52; 32], 1).unwrap();
+        let second_identity = DeviceIdentity::from_seeds([53; 32], [54; 32], 1).unwrap();
+        let first_fingerprint = first_identity.card.fingerprint_sha256.clone();
+        let second_fingerprint = second_identity.card.fingerprint_sha256.clone();
         let store = Arc::new(Store::open(&dir.path().join("relay.sqlite3"), &admin).unwrap());
         let app = build_app(store.clone());
 
@@ -723,8 +904,8 @@ mod tests {
 
         let provision = serde_json::json!({
             "members": [
-                {"fingerprint": first_fingerprint, "capability_token": first_token},
-                {"fingerprint": second_fingerprint, "capability_token": second_token}
+                {"fingerprint": first_fingerprint, "capability_token": first_token, "device_card": first_identity.card},
+                {"fingerprint": second_fingerprint, "capability_token": second_token, "device_card": second_identity.card}
             ]
         });
         let response = app.clone().oneshot(
@@ -751,8 +932,83 @@ mod tests {
         ).await.unwrap();
         assert_eq!(activate.status(), StatusCode::NO_CONTENT);
         assert!(matches!(store.authorize("device-space-0001", &legacy), Err(StoreError::Unauthorized)));
-        store.authorize("device-space-0001", &first_token).unwrap();
-        store.authorize("device-space-0001", &second_token).unwrap();
+        let write_path = "/v1/spaces/device-space-0001/messages/0123456789abcdef0123456789abcdef";
+        let write_body = br#"{"ciphertext":"opaque"}"#;
+        let write_headers = signed_member_headers(
+            &first_identity, &first_token, "PUT", write_path, unix_now().unwrap(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", write_body
+        );
+        let signed_write = app.clone().oneshot(
+            Request::builder().method("PUT").uri(write_path)
+                .header(header::AUTHORIZATION, write_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", write_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", write_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", write_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", write_headers["x-pcage-signature"].clone())
+                .body(Body::from(write_body.to_vec())).unwrap()
+        ).await.unwrap();
+        assert_eq!(signed_write.status(), StatusCode::CREATED);
+
+        let read_path = "/v1/spaces/device-space-0001/messages?after=0&limit=1";
+        let read_headers = signed_member_headers(
+            &first_identity, &first_token, "GET", read_path, unix_now().unwrap(),
+            "11111111111111111111111111111111", &[]
+        );
+        let signed_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, read_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", read_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", read_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", read_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", read_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(signed_read.status(), StatusCode::OK);
+        let read_page = to_bytes(signed_read.into_body(), MAX_BODY).await.unwrap();
+        let read_json: serde_json::Value = serde_json::from_slice(&read_page).unwrap();
+        assert_eq!(read_json["messages"][0]["message_id"], "0123456789abcdef0123456789abcdef");
+
+        let stale_timestamp = unix_now().unwrap().saturating_sub(REQUEST_CLOCK_SKEW_SECS + 1);
+        let stale_headers = signed_member_headers(
+            &first_identity, &first_token, "GET", read_path, stale_timestamp,
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", &[]
+        );
+        let stale_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, stale_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", stale_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", stale_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", stale_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", stale_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(stale_read.status(), StatusCode::UNAUTHORIZED);
+
+        let replayed_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, read_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", read_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", read_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", read_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", read_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(replayed_read.status(), StatusCode::UNAUTHORIZED);
+        let mut forged_headers = signed_member_headers(
+            &second_identity, &first_token, "GET", read_path, unix_now().unwrap(),
+            "22222222222222222222222222222222", &[]
+        );
+        forged_headers.insert("x-pcage-device-fingerprint", first_fingerprint.parse().unwrap());
+        let forged_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, forged_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", forged_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", forged_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", forged_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", forged_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(forged_read.status(), StatusCode::UNAUTHORIZED);
         assert!(matches!(
             store.rotate_space(&admin, "device-space-0001", &"3".repeat(64)),
             Err(StoreError::Conflict)
@@ -778,7 +1034,34 @@ mod tests {
             store.authorize("device-space-0001", &first_token),
             Err(StoreError::Unauthorized)
         ));
-        store.authorize("device-space-0001", &second_token).unwrap();
+        let revoked_headers = signed_member_headers(
+            &first_identity, &first_token, "GET", read_path, unix_now().unwrap(),
+            "33333333333333333333333333333333", &[]
+        );
+        let revoked_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, revoked_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", revoked_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", revoked_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", revoked_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", revoked_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(revoked_read.status(), StatusCode::UNAUTHORIZED);
+        let remaining_headers = signed_member_headers(
+            &second_identity, &second_token, "GET", read_path, unix_now().unwrap(),
+            "44444444444444444444444444444444", &[]
+        );
+        let remaining_read = app.clone().oneshot(
+            Request::builder().method("GET").uri(read_path)
+                .header(header::AUTHORIZATION, remaining_headers[header::AUTHORIZATION].clone())
+                .header("x-pcage-device-fingerprint", remaining_headers["x-pcage-device-fingerprint"].clone())
+                .header("x-pcage-timestamp", remaining_headers["x-pcage-timestamp"].clone())
+                .header("x-pcage-nonce", remaining_headers["x-pcage-nonce"].clone())
+                .header("x-pcage-signature", remaining_headers["x-pcage-signature"].clone())
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(remaining_read.status(), StatusCode::OK);
 
         let roster = app.clone().oneshot(
             Request::builder()
@@ -797,7 +1080,7 @@ mod tests {
         ));
 
         let replacement_token = "4".repeat(64);
-        let replacement_body = serde_json::json!({"capability_token": replacement_token});
+        let replacement_body = serde_json::json!({"capability_token": replacement_token, "device_card": first_identity.card});
         let replacement = app.oneshot(
             Request::builder()
                 .method("PUT")

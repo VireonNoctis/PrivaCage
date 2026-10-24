@@ -20,10 +20,10 @@ Never expose the plain HTTP listener directly to the network. It deliberately re
 - `GET /healthz` — process health only.
 - `POST /v1/spaces` — admin bearer token; JSON body `{"space_id":"device-space-0001","capability_token":"<64 lowercase hex characters>" }`.
 - `POST /v1/spaces/{space_id}/rotate` — admin bearer token; replace the legacy shared capability. This is rejected after per-device mode is activated.
-- `POST /v1/spaces/{space_id}/members` — admin bearer token; provision 1–128 distinct per-device credentials using `{"members":[{"fingerprint":"<64 lowercase hex>","capability_token":"<64 lowercase hex>"}]}`. The relay stores only token hashes.
+- `POST /v1/spaces/{space_id}/members` — admin bearer token; provision 1–128 distinct per-device credentials using `{"members":[{"fingerprint":"<full SHA-256 fingerprint>","capability_token":"<64 lowercase hex>","device_card":{...validated public device card...}}]}`. The supplied card must validate and its fingerprint must match the member fingerprint. The relay stores the card and token hash, never the token.
 - `POST /v1/spaces/{space_id}/members/activate` — admin bearer token; permanently switches the space to per-device authorization. At least one active member must exist; the old shared token stops working.
 - `GET /v1/spaces/{space_id}/members` — admin bearer token; list fingerprints, provisioning timestamps, revocation timestamps, and whether per-device mode is active; never returns credentials.
-- `PUT /v1/spaces/{space_id}/members/{fingerprint}` — admin bearer token; rotate one member's token using `{"capability_token":"<64 lowercase hex>"}`. Explicit replacement also reactivates that fingerprint if it was revoked.
+- `PUT /v1/spaces/{space_id}/members/{fingerprint}` — admin bearer token; replace one member's token and update its validated card using `{"capability_token":"<64 lowercase hex>","device_card":{...validated public device card...}}`. Explicit replacement also reactivates that fingerprint if it was revoked.
 - `DELETE /v1/spaces/{space_id}/members/{fingerprint}` — admin bearer token; revoke one fingerprint's credential immediately. Repeated revocation is safe.
 - `DELETE /v1/spaces/{space_id}` — admin bearer token; delete the space and queued messages.
 - `PUT /v1/spaces/{space_id}/messages/{message_id}` — space capability bearer token; raw serialized sync packet body.
@@ -34,12 +34,15 @@ Space IDs use 8–80 ASCII letters, digits, underscores, or hyphens. Message IDs
 ### Migrating a space to per-device authorization
 
 1. Generate a separate random 32-byte capability for every trusted device. Never reuse the legacy shared token as a member token.
-2. Use `POST /v1/spaces/{space_id}/members` to provision all fingerprints and distinct tokens. Provisioning accepts new credentials while the old shared capability still works, so devices can be prepared before the switch.
-3. Configure each Android installation with its own token in the existing relay configuration UI. The owner/operator must distribute each credential to its intended device through a secure out-of-band channel.
-4. After all devices have unique tokens configured, call `POST /v1/spaces/{space_id}/members/activate`. The shared token is then rejected. The mode is intentionally one-way; if a member is missing or needs replacement, provision or replace that device's credential instead of turning legacy access back on.
+2. Use `POST /v1/spaces/{space_id}/members` to provision all fingerprints, validated public cards, and distinct tokens. Provisioning accepts new credentials while the old shared capability still works, so devices can be prepared before the switch.
+3. If members were provisioned by an older relay version, use `PUT /v1/spaces/{space_id}/members/{fingerprint}` to replace each member token and supply that device's current validated `device_card`. Older rows have no stored public card and cannot authenticate in signed member mode until refreshed.
+4. Configure each Android installation with its own token in the existing relay configuration UI. The owner/operator must distribute each credential to its intended device through a secure out-of-band channel.
+5. After every active member has a valid stored card and its unique token configured, call `POST /v1/spaces/{space_id}/members/activate`. The shared token is then rejected. The mode is intentionally one-way; if a member is missing or needs replacement, provision or replace that device's credential instead of turning legacy access back on.
 5. Use `GET /v1/spaces/{space_id}/members` to inspect member status. Revoke just one device using `DELETE /v1/spaces/{space_id}/members/{fingerprint}`; rotate its credential with `PUT` if it remains trusted and should reconnect.
 
-The admin API is an operator control plane, not an end-user account system. Keep `PCAGE_RELAY_ADMIN_TOKEN` server-side; never put it in the Android app. Per-device credentials authorize access to the relay but do not bind a bearer token cryptographically to the private signing key. A stolen device token can still access ciphertext until revoked.
+In per-device mode, requests include `X-PCAGE-Device-Fingerprint`, `X-PCAGE-Timestamp`, `X-PCAGE-Nonce`, and `X-PCAGE-Signature`. The Ed25519 signature binds the HTTP method, exact path and query, Unix timestamp, nonce, and SHA-256 digest of the request body. The relay verifies it against the validated public card enrolled for that fingerprint, limits clock skew to 120 seconds, and durably rejects a reused nonce. Android produces signatures through the shared Rust core via JNI. Legacy shared-capability mode remains bearer-only until the administrator activates member mode; activate only after every device is provisioned with its card and unique token.
+
+The admin API is an operator control plane, not an end-user account system. Keep `PCAGE_RELAY_ADMIN_TOKEN` server-side; never put it in the Android app. The administrator controls which card/fingerprint/token tuples are enrolled, so this is not an owner-signed roster. If both a device token and its identity private keys are compromised, request signing cannot protect that device.
 
 ## Data handling and limits
 
@@ -48,11 +51,11 @@ The admin API is an operator control plane, not an end-user account system. Keep
 - Stored packets expire after seven days; expired records are purged on reads and writes.
 - Duplicate message IDs within one space are rejected.
 - Legacy space capability rotation invalidates the old shared capability for every device and is disabled after per-device mode is activated.
-- Per-device mode accepts a distinct random bearer capability for each fingerprint. Admin-provisioned credentials can be revoked or replaced individually. The old shared capability is rejected after the explicit one-way activation step.
+- Per-device mode accepts a distinct random bearer capability and requires a valid Ed25519 proof-of-possession signature for each fingerprint. Credentials can be revoked or replaced individually. The old shared capability is rejected after the explicit one-way activation step; request signatures have a 120-second timestamp window and durable per-device nonce replay protection.
 - Android's existing per-peer revoke action remains local trust revocation; it does not call the admin API. Server-side revocation is performed by the relay operator through the admin endpoint described above.
-- The relay does not parse or verify packet signatures and cannot prove clients encrypted payloads correctly. Clients must verify packet signatures, fingerprints, recipient binding, expiry, and replay protection.
+- The relay does not decrypt or inspect packet contents. In per-device mode it verifies the HTTP request signature against the enrolled card; the receiving client still checks packet signatures, peer trust, recipient binding, expiry, and message replay protection.
 - Metadata such as space ID, message ID, timing, payload length, and access patterns remains visible to the relay operator.
-- The Android client performs trust revocation locally using its encrypted fingerprint denylist. The relay now supports admin-authenticated per-device credential provisioning, status listing, credential replacement, and selective revocation. It still has no account identity or cryptographically owner-signed roster, and the relay does not validate the relationship between a member fingerprint and the credential holder's signing key.
+- The Android client performs trust revocation locally using its encrypted fingerprint denylist. The relay supports admin-authenticated per-device credential provisioning, status listing, credential replacement, and selective revocation. Member-mode requests prove possession of the Ed25519 key in the stored public card. The service still has no account identity or owner-signed roster, and the administrator can decide which card/token pair is enrolled.
 
 
 ## Validation

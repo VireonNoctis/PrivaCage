@@ -81,9 +81,72 @@ impl IdentityCard {
     }
 }
 
+const MAX_RELAY_REQUEST_BYTES: usize = 3 * 1024 * 1024;
+
+/// Canonical bytes signed by devices for per-device relay access. The exact request target,
+/// timestamp, nonce and body digest are bound to prevent request substitution and replay.
+pub fn relay_request_signing_bytes(
+    method: &str,
+    path_and_query: &str,
+    timestamp_unix: u64,
+    nonce: &str,
+    body: &[u8],
+) -> Result<Vec<u8>, SyncError> {
+    if !matches!(method, "GET" | "PUT")
+        || !path_and_query.starts_with("/v1/spaces/")
+        || path_and_query.len() > 4096
+        || path_and_query.chars().any(|c| c.is_ascii_whitespace() || c == '#' || c == '\\')
+        || timestamp_unix == 0
+        || nonce.len() != 32
+        || !nonce.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || body.len() > MAX_RELAY_REQUEST_BYTES
+    {
+        return Err(SyncError::InvalidInput("invalid relay request signing input"));
+    }
+    let digest = Sha256::digest(body);
+    Ok(format!(
+        "PrivaCage relay request v1\n{method}\n{path_and_query}\n{timestamp_unix}\n{nonce}\n{}\n",
+        hex(&digest)
+    ).into_bytes())
+}
+
+/// Verifies a relay request's proof of possession against a fully validated public device card.
+pub fn verify_relay_request_signature(
+    card: &IdentityCard,
+    method: &str,
+    path_and_query: &str,
+    timestamp_unix: u64,
+    nonce: &str,
+    body: &[u8],
+    signature_hex: &str,
+) -> Result<(), SyncError> {
+    card.verify()?;
+    if signature_hex.len() != 128
+        || !signature_hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(SyncError::InvalidSignature);
+    }
+    let message = relay_request_signing_bytes(method, path_and_query, timestamp_unix, nonce, body)?;
+    let key = VerifyingKey::from_bytes(&unhex::<32>(&card.signing_public_key_hex)?)
+        .map_err(|_| SyncError::InvalidIdentity)?;
+    let signature = Signature::from_bytes(&unhex::<64>(signature_hex)?);
+    key.verify(&message, &signature).map_err(|_| SyncError::InvalidSignature)
+}
+
 pub struct DeviceIdentity { signing: SigningKey, encryption: StaticSecret, pub card: IdentityCard }
 impl DeviceIdentity {
     pub fn generate(epoch: u64) -> Result<Self, SyncError> { Self::from_seeds(random()?, random()?, epoch) }
+    pub fn sign_relay_request(
+        &self,
+        method: &str,
+        path_and_query: &str,
+        timestamp_unix: u64,
+        nonce: &str,
+        body: &[u8],
+    ) -> Result<String, SyncError> {
+        let message = relay_request_signing_bytes(method, path_and_query, timestamp_unix, nonce, body)?;
+        Ok(hex(&self.signing.sign(&message).to_bytes()))
+    }
     pub fn from_seeds(signing_seed: [u8; 32], encryption_seed: [u8; 32], epoch: u64) -> Result<Self, SyncError> {
         if epoch == 0 { return Err(SyncError::InvalidInput("key epoch must be positive")); }
         let signing = SigningKey::from_bytes(&signing_seed);
@@ -270,6 +333,21 @@ mod tests {
         assert_eq!(b.open_packet(&p, &c.card, 1010, &path), Err(SyncError::UntrustedSender));
         assert_eq!(c.open_packet(&p, &a.card, 1010, &path), Err(SyncError::WrongRecipient));
         let _ = fs::remove_file(path);
+    }
+    #[test] fn relay_request_signatures_bind_method_path_timestamp_nonce_and_body() {
+        let identity = DeviceIdentity::from_seeds([41; 32], [42; 32], 3).unwrap();
+        let method = "PUT";
+        let path = "/v1/spaces/device-space-0001/messages/0123456789abcdef0123456789abcdef";
+        let timestamp = 1_800_000_123;
+        let nonce = "0123456789abcdef0123456789abcdef";
+        let body = br#"{"ciphertext":"opaque"}"#;
+        let signature = identity.sign_relay_request(method, path, timestamp, nonce, body).unwrap();
+        assert_eq!(verify_relay_request_signature(&identity.card, method, path, timestamp, nonce, body, &signature), Ok(()));
+        assert!(verify_relay_request_signature(&identity.card, "GET", path, timestamp, nonce, body, &signature).is_err());
+        assert!(verify_relay_request_signature(&identity.card, method, "/v1/spaces/device-space-0001/messages?after=2", timestamp, nonce, body, &signature).is_err());
+        assert!(verify_relay_request_signature(&identity.card, method, path, timestamp, nonce, b"changed", &signature).is_err());
+        assert!(relay_request_signing_bytes("DELETE", path, timestamp, nonce, body).is_err());
+        assert!(relay_request_signing_bytes(method, path, timestamp, "bad", body).is_err());
     }
     #[test] fn rotation_is_signed_by_previous_identity() {
         let a = DeviceIdentity::from_seeds([7;32], [8;32], 4).unwrap();

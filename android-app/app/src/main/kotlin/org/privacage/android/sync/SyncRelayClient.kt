@@ -9,6 +9,7 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
 
 internal data class RelayedMessage(val cursor: Long, val messageId: String, val packetJson: String)
 internal data class RelayPage(val nextCursor: Long, val messages: List<RelayedMessage>)
@@ -20,13 +21,16 @@ internal data class RelayPage(val nextCursor: Long, val messages: List<RelayedMe
 internal class SyncRelayClient(
     baseUrl: String,
     private val spaceId: String,
-    private val capabilityToken: String
+    private val capabilityToken: String,
+    private val deviceFingerprint: String,
+    private val requestSigner: (String, String, Long, String, String) -> String
 ) {
     private val baseUrl = validateBaseUrl(baseUrl)
 
     init {
         require(isValidSpaceId(spaceId)) { "Space ID must be 8–80 ASCII letters, digits, underscores, or hyphens." }
         require(isValidCapability(capabilityToken)) { "Space capability must be 64 lowercase hexadecimal characters." }
+        require(isValidFingerprint(deviceFingerprint)) { "Device fingerprint must be a full lowercase SHA-256 digest." }
     }
 
     @Throws(IOException::class)
@@ -127,7 +131,15 @@ internal class SyncRelayClient(
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.useCaches = false
+        val timestamp = System.currentTimeMillis() / 1000L
+        val nonce = randomNonce()
+        val requestBodyText = body?.let { String(it, StandardCharsets.UTF_8) } ?: ""
+        val signature = requestSigner(method, path, timestamp, nonce, requestBodyText)
         connection.setRequestProperty("Authorization", "Bearer $capabilityToken")
+        connection.setRequestProperty("X-PCAGE-Device-Fingerprint", deviceFingerprint)
+        connection.setRequestProperty("X-PCAGE-Timestamp", timestamp.toString())
+        connection.setRequestProperty("X-PCAGE-Nonce", nonce)
+        connection.setRequestProperty("X-PCAGE-Signature", signature)
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Cache-Control", "no-store")
         connection.setRequestProperty("Pragma", "no-cache")
@@ -180,6 +192,16 @@ internal class SyncRelayClient(
         }
     }
 
+    private fun randomNonce(): String {
+        val bytes = ByteArray(16)
+        SecureRandom().nextBytes(bytes)
+        return try {
+            bytes.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     private fun decodeHex(value: String): ByteArray {
         val output = ByteArray(value.length / 2)
         for (index in output.indices) {
@@ -225,6 +247,9 @@ internal class SyncRelayClient(
             }
 
         fun isValidCapability(value: String): Boolean =
+            value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+        private fun isValidFingerprint(value: String): Boolean =
             value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
 
         private fun isValidMessageId(value: String): Boolean =

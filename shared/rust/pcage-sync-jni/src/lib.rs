@@ -105,6 +105,29 @@ pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeVe
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeSignRelayRequest(
+    mut env: JNIEnv, _this: JObject,
+    local_bundle_base64: JString, local_passphrase: JString, method: JString,
+    path_and_query: JString, timestamp_unix: jlong, nonce: JString, body: JString,
+) -> jstring {
+    let result = (|| {
+        let bundle = read_string(&mut env, local_bundle_base64)?;
+        let passphrase = read_string(&mut env, local_passphrase)?;
+        let method = read_string(&mut env, method)?;
+        let path_and_query = read_string(&mut env, path_and_query)?;
+        let timestamp_unix = u64::try_from(timestamp_unix).map_err(|_| "Invalid relay timestamp".to_owned())?;
+        let nonce = read_string(&mut env, nonce)?;
+        let body = read_string(&mut env, body)?;
+        let identity = restore_identity(&bundle, &passphrase)?;
+        let signature_hex = identity.sign_relay_request(
+            &method, &path_and_query, timestamp_unix, &nonce, body.as_bytes()
+        ).map_err(|_| "Could not sign relay request".to_owned())?;
+        Ok(json!({ "ok": true, "signature_hex": signature_hex }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeSealPacket(
     mut env: JNIEnv, _this: JObject,
     bundle_base64: JString, passphrase: JString, recipient_card_json: JString,

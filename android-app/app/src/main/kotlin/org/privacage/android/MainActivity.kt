@@ -545,7 +545,7 @@ class MainActivity : Activity() {
             setSingleLine(true)
         }
         root.addView(syncSpaceIdInput, matchWidth())
-        root.addView(TextView(this).apply { text = "Relay space capability (secret; saved encrypted)" })
+        root.addView(TextView(this).apply { text = "Relay capability (secret; saved encrypted)" })
         syncCapabilityInput = EditText(this).apply {
             hint = "64 lowercase hexadecimal characters"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
