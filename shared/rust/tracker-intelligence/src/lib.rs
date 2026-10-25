@@ -194,7 +194,7 @@ fn release_date_ordinal(value: &str) -> Option<i64> {
     Some(ordinal + day as i64 - 1)
 }
 
-fn release_date_plus_days(value: &str, days: usize) -> Result<String, IntelError> {
+pub fn release_expiry_after_days(value: &str, days: usize) -> Result<String, IntelError> {
     if release_date_ordinal(value).is_none() {
         return Err(IntelError::Invalid(format!("invalid release date {value}; expected canonical YYYY-MM-DD")));
     }
@@ -244,7 +244,7 @@ fn valid_sha256_hex(value: &str) -> bool {
 }
 
 pub fn build_release(bytes: &[u8], created_at: &str, seed_hex: &str) -> Result<ReleaseManifest, IntelError> {
-    let expires_at = release_date_plus_days(created_at, 365)?;
+    let expires_at = release_expiry_after_days(created_at, 365)?;
     build_release_with_metadata(bytes, 1, None, created_at, &expires_at, seed_hex)
 }
 
