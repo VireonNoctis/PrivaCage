@@ -121,6 +121,113 @@ class DnsTunnelEngineTest {
         assertEquals(0L, snapshot.upstreamFailures)
     }
 
+    @Test
+    fun dispatchesAllowedIpv6DnsThroughUpstreamAndBuildsValidIpv6Reply() {
+        val query = dnsQuery("news.example.org")
+        val expectedResponse = dnsResponse(query)
+        val forwarded = AtomicBoolean(false)
+        val transport = object : DnsUpstreamTransport {
+            override fun forward(queryPayload: ByteArray): ByteArray {
+                forwarded.set(true)
+                assertContentEquals(query, queryPayload)
+                return expectedResponse
+            }
+        }
+        val policy = DnsPolicyEngine(setOf("tracker.example"))
+        val engine = DnsTunnelEngine(DnsPacketProcessor(policy), transport)
+
+        val result = assertIs<DnsTunnelResult.Response>(
+            engine.processIpPacket(ipv6UdpPacket(query))
+        )
+        assertTrue(forwarded.get(), "Allowed IPv6 DNS must reach the configured upstream transport")
+        assertEquals("news.example.org", result.domain)
+        assertEquals(DnsTunnelAction.FORWARDED, result.action)
+        assertEquals(1L, engine.stats.snapshot().forwardedQueries)
+        assertContentEquals(expectedResponse, result.packet.copyOfRange(48, result.packet.size))
+        assertEquals(6, (result.packet[0].toInt() ushr 4) and 0x0f)
+        assertEquals(17, result.packet[6].toInt() and 0xff)
+        assertContentEquals(result.packet.copyOfRange(24, 40), result.packet.copyOfRange(8, 24))
+        assertContentEquals(
+            byteArrayOf(0xfd.toByte(), 0x42, 0x11, 0x11, 0x22, 0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2),
+            result.packet.copyOfRange(24, 40)
+        )
+        assertEquals(53, u16(result.packet, 40))
+        assertEquals(53000, u16(result.packet, 42))
+        assertEquals(0, ipv6UdpChecksum(result.packet, 40, u16(result.packet, 44)))
+    }
+
+    @Test
+    fun blockedIpv6DnsReturnsRefusedWithoutCallingUpstream() {
+        val forwarded = AtomicBoolean(false)
+        val transport = object : DnsUpstreamTransport {
+            override fun forward(queryPayload: ByteArray): ByteArray {
+                forwarded.set(true)
+                throw IOException("Blocked query must not be forwarded")
+            }
+        }
+        val policy = DnsPolicyEngine(setOf("tracker.example"))
+        val engine = DnsTunnelEngine(DnsPacketProcessor(policy), transport)
+
+        val result = assertIs<DnsTunnelResult.Response>(
+            engine.processIpPacket(ipv6UdpPacket(dnsQuery("sub.tracker.example")))
+        )
+        assertTrue(!forwarded.get(), "Blocked IPv6 DNS must not reach the upstream transport")
+        assertEquals("sub.tracker.example", result.domain)
+        assertEquals(DnsTunnelAction.BLOCKED, result.action)
+        assertEquals(1L, engine.stats.snapshot().blockedQueries)
+        assertEquals(0L, engine.stats.snapshot().forwardedQueries)
+        assertEquals(0x8105, u16(result.packet, 50))
+        assertEquals(0, ipv6UdpChecksum(result.packet, 40, u16(result.packet, 44)))
+    }
+
+    @Test
+    fun ipPacketDispatcherRejectsUnknownVersionWithoutForwarding() {
+        val forwarded = AtomicBoolean(false)
+        val transport = object : DnsUpstreamTransport {
+            override fun forward(queryPayload: ByteArray): ByteArray {
+                forwarded.set(true)
+                return dnsResponse(queryPayload)
+            }
+        }
+        val engine = DnsTunnelEngine(DnsPacketProcessor(DnsPolicyEngine(emptySet())), transport)
+        assertIs<DnsTunnelResult.Drop>(engine.processIpPacket(byteArrayOf(0x70, 0, 0, 0)))
+        assertTrue(!forwarded.get())
+        assertEquals(1L, engine.stats.snapshot().unsupportedOrMalformedPackets)
+    }
+
+    private fun ipv6UdpPacket(dnsPayload: ByteArray): ByteArray {
+        val udpLength = 8 + dnsPayload.size
+        val packet = ByteArray(40 + udpLength)
+        packet[0] = 0x60
+        putU16(packet, 4, udpLength)
+        packet[6] = 17
+        packet[7] = 64
+        InetAddress.getByName("2001:db8::2").address.copyInto(packet, 8)
+        InetAddress.getByName("fd42:1111:2222::2").address.copyInto(packet, 24)
+        putU16(packet, 40, 53000)
+        putU16(packet, 42, 53)
+        putU16(packet, 44, udpLength)
+        putU16(packet, 46, 0)
+        dnsPayload.copyInto(packet, 48)
+        putU16(packet, 46, ipv6UdpChecksum(packet, 40, udpLength).let { if (it == 0) 0xffff else it })
+        return packet
+    }
+
+    private fun ipv6UdpChecksum(packet: ByteArray, offset: Int, length: Int): Int {
+        var sum = 0L
+        for (index in 8 until 40 step 2) sum += u16(packet, index).toLong()
+        sum += length.toLong()
+        sum += 17L
+        var index = offset
+        val end = offset + length
+        while (index + 1 < end) {
+            sum += u16(packet, index).toLong()
+            index += 2
+        }
+        if (index < end) sum += ((packet[index].toInt() and 0xff) shl 8).toLong()
+        return foldChecksum(sum)
+    }
+
     private fun dnsQuery(name: String): ByteArray {
         val qname = name.split('.').flatMap { label ->
             val bytes = label.toByteArray(Charsets.US_ASCII)
