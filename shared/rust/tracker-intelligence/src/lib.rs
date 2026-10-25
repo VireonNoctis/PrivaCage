@@ -43,6 +43,7 @@ pub struct MatchResult { pub entry_id: String, pub name: String, #[serde(default
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Candidate { pub value: String, pub kind: IndicatorKind, pub first_seen_context: Option<String>, pub disposition: String }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseManifest {
     pub format_version: u32,
     pub catalog_sha256: String,
@@ -347,5 +348,40 @@ fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),ent
 #[test]fn duplicate_ids_rejected(){let mut c=sample();c.entries.push(c.entries[0].clone());assert!(validate_catalog(&c).is_err());}
 #[test]fn match_does_not_claim_runtime(){let c=sample();let r=match_observations(&c,&[Observation{value:"x.collector.example.com".into(),kind:IndicatorKind::Domain,context:None}]);assert_eq!(r.len(),1);assert!(r[0].confidence.behavior.contains("not established"));}
 #[test]fn unknown_is_candidate(){let r=discover_candidates(&sample(),&[Observation{value:"new.example.net".into(),kind:IndicatorKind::Domain,context:None}]);assert_eq!(r.len(),1);assert!(r[0].disposition.contains("not_a_maliciousness_finding"));}
-#[test]fn signed_release_detects_tampering(){let b=br#"{"schema_version":1,"entries":[]}"#;let m=build_release(b,"2026-10-23","0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20").unwrap();verify_release(b,&m,&m.signer_public_key_hex).unwrap();assert!(verify_release(b"tampered",&m,&m.signer_public_key_hex).is_err());}
+ #[test]
+ fn signed_release_rejects_catalog_and_metadata_tampering() {
+     let bytes = br#"{"schema_version":1,"entries":[]}"#;
+     let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+     let manifest = build_release(bytes, "2026-10-23", seed).unwrap();
+     verify_release(bytes, &manifest, &manifest.signer_public_key_hex).unwrap();
+     assert!(verify_release(b"tampered", &manifest, &manifest.signer_public_key_hex).is_err());
+
+     let mut changed = manifest.clone();
+     changed.created_at = "2026-10-24".into();
+     assert!(verify_release(bytes, &changed, &manifest.signer_public_key_hex).is_err());
+
+     let mut changed = manifest.clone();
+     changed.expires_at = "2028-10-23".into();
+     assert!(verify_release(bytes, &changed, &manifest.signer_public_key_hex).is_err());
+
+     let mut changed = manifest.clone();
+     changed.sequence = 2;
+     changed.previous_manifest_sha256 = Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
+     assert!(verify_release(bytes, &changed, &manifest.signer_public_key_hex).is_err());
+
+     let mut changed = manifest.clone();
+     changed.format_version = 1;
+     assert!(verify_release(bytes, &changed, &manifest.signer_public_key_hex).is_err());
+ }
+
+ #[test]
+ fn release_sequence_and_expiry_inputs_are_validated() {
+     let bytes = br#"{"schema_version":1,"entries":[]}"#;
+     let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+     assert!(build_release_with_metadata(bytes, 0, None, "2026-10-23", "2027-10-23", seed).is_err());
+     assert!(build_release_with_metadata(bytes, 2, None, "2026-10-23", "2027-10-23", seed).is_err());
+     assert!(build_release_with_metadata(bytes, 1, Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()), "2026-10-23", "2027-10-23", seed).is_err());
+     assert!(build_release_with_metadata(bytes, 1, None, "2026-02-30", "2027-10-23", seed).is_err());
+     assert!(build_release_with_metadata(bytes, 1, None, "2026-10-23", "2026-10-23", seed).is_err());
+ }
 }
