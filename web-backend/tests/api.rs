@@ -8,7 +8,12 @@ use tower::ServiceExt;
 async fn health_reports_rust_backend_without_claiming_device_connection() {
     let app = build_app(load_embedded_catalog().expect("catalog should load"));
     let response = app
-        .oneshot(Request::builder().uri("/api/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -25,11 +30,20 @@ async fn health_reports_rust_backend_without_claiming_device_connection() {
 async fn summary_is_derived_from_the_bundled_catalog() {
     let catalog = load_embedded_catalog().expect("catalog should load");
     let expected_total = catalog.entries.len();
-    let expected_active = catalog.entries.iter().filter(|entry| entry.status == "active").count();
+    let expected_active = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.status == "active")
+        .count();
     let app = build_app(catalog);
 
     let response = app
-        .oneshot(Request::builder().uri("/api/v1/summary").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/summary")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -62,7 +76,12 @@ async fn tracker_endpoint_returns_evidence_linked_records() {
 
     assert!(first["id"].as_str().is_some());
     assert!(first["indicators"]["domains"].is_array());
-    assert!(first["evidence"][0]["url"].as_str().unwrap().starts_with("https://"));
+    assert!(
+        first["evidence"][0]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("https://")
+    );
 }
 
 #[tokio::test]
@@ -88,5 +107,10 @@ async fn capabilities_mark_device_activity_unavailable_until_a_source_is_attache
         .unwrap();
 
     assert_eq!(device_activity["status"], "not_connected");
-    assert!(device_activity["explanation"].as_str().unwrap().contains("No activity events"));
+    assert!(
+        device_activity["explanation"]
+            .as_str()
+            .unwrap()
+            .contains("No activity events")
+    );
 }
