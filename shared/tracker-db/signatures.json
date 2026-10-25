@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-23",
+  "updated_at": "2026-10-25",
   "entries": [
     {
       "id": "google-analytics-collection",
@@ -353,6 +353,139 @@
         {
           "url": "https://dev.appsflyer.com/hc/docs/android-sdk-reference",
           "description": "Official AppsFlyer Android SDK reference lists AppsFlyerLib in the com.appsflyer package hierarchy."
+        }
+      ]
+    },
+    {
+      "id": "amplitude-android-sdk",
+      "name": "Amplitude Android analytics SDK",
+      "category": "analytics",
+      "indicators": {
+        "sdk_patterns": [
+          "com.amplitude.android.Amplitude"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://www.amplitude.com/docs/sdks/analytics/android/android-kotlin-sdk",
+          "description": "Amplitude documents its Android Kotlin analytics SDK and event collection. A byte-string match identifies a possible embedded SDK class, not proof that the host app initializes it or sends events."
+        }
+      ]
+    },
+    {
+      "id": "firebase-crashlytics-android-sdk",
+      "name": "Firebase Crashlytics Android SDK",
+      "category": "crash_reporting",
+      "indicators": {
+        "sdk_patterns": [
+          "com.google.firebase.crashlytics.FirebaseCrashlytics"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://firebase.google.com/docs/crashlytics/android/get-started",
+          "description": "Firebase documents Android Crashlytics integration for collecting crash reports and diagnostics. A byte-string match does not prove runtime reporting is enabled."
+        }
+      ]
+    },
+    {
+      "id": "branch-android-sdk",
+      "name": "Branch Android linking and attribution SDK",
+      "category": "mobile_attribution",
+      "indicators": {
+        "sdk_patterns": [
+          "io.branch.referral.Branch"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://help.branch.io/developer-hub/android-basic-integration",
+          "description": "Branch's Android integration documents its SDK and deep-linking/attribution flows. A class indicator does not prove attribution events are emitted by the scanned application."
+        }
+      ]
+    },
+    {
+      "id": "posthog-android-sdk",
+      "name": "PostHog Android SDK",
+      "category": "analytics",
+      "indicators": {
+        "sdk_patterns": [
+          "com.posthog.android.PostHogAndroid"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://posthog.com/docs/libraries/android",
+          "description": "PostHog documents its Android SDK for analytics and product events. A static class match is an indicator only and does not establish which events are configured or transmitted."
+        }
+      ]
+    },
+    {
+      "id": "sentry-android-sdk",
+      "name": "Sentry Android SDK",
+      "category": "crash_reporting",
+      "indicators": {
+        "sdk_patterns": [
+          "io.sentry.Sentry"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://docs.sentry.io/platforms/android/",
+          "description": "Sentry documents Android error monitoring and diagnostic event capture. A class match does not prove runtime initialization, collection scope, or network transmission."
+        }
+      ]
+    },
+    {
+      "id": "mixpanel-android-sdk",
+      "name": "Mixpanel Android analytics SDK",
+      "category": "analytics",
+      "indicators": {
+        "sdk_patterns": [
+          "com.mixpanel.android.mpmetrics.MixpanelAPI"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://github.com/mixpanel/mixpanel-android",
+          "description": "Mixpanel's official Android SDK repository identifies MixpanelAPI as its Android analytics integration. A string match indicates possible embedding, not proof that the app sends events."
+        }
+      ]
+    },
+    {
+      "id": "onesignal-android-sdk",
+      "name": "OneSignal Android engagement SDK",
+      "category": "push_messaging",
+      "indicators": {
+        "sdk_patterns": [
+          "com.onesignal.OneSignal"
+        ]
+      },
+      "confidence": "medium",
+      "status": "active",
+      "last_verified": "2026-10-25",
+      "evidence": [
+        {
+          "url": "https://github.com/OneSignal/OneSignal-Android-SDK",
+          "description": "OneSignal's official Android SDK provides push notification and engagement integrations. A class match does not show that notifications, analytics, or any optional feature is enabled."
         }
       ]
     }
