@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.dns.DnsPolicyEngine
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.URI
 import java.time.LocalDate
@@ -13,9 +14,7 @@ import java.time.format.DateTimeParseException
 internal object TrackerSignatureCatalog {
     private const val ASSET_NAME = "signatures.json"
     private const val SUPPORTED_SCHEMA_VERSION = 1
-    private const val RELEASE_FLOOR_PREFERENCES = "privacage_tracker_release_floor"
-    private const val KEY_ACCEPTED_SEQUENCE = "accepted_sequence"
-    private const val KEY_ACCEPTED_MANIFEST_SHA256 = "accepted_manifest_sha256"
+    private const val MAX_CATALOG_BYTES = 5 * 1024 * 1024
     private val topLevelKeys = setOf("schema_version", "updated_at", "entries")
     private val entryKeys = setOf("id", "name", "category", "indicators", "confidence", "status", "last_verified", "evidence")
     private val evidenceKeys = setOf("url", "description")
@@ -25,12 +24,20 @@ internal object TrackerSignatureCatalog {
     private val sdkPatternRegex = Regex("^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+(?:\\.(?:\\*|\\*\\*))?$")
 
     fun load(context: Context): List<TrackerSignature> {
-        val catalogBytes = NativeTrackerReleaseVerifier.readBoundedAsset(context, ASSET_NAME, NativeTrackerReleaseVerifier.MAX_CATALOG_BYTES)
-        val verifiedRelease = NativeTrackerReleaseVerifier.verify(context, catalogBytes)
-        val releasePreferences = context.getSharedPreferences(RELEASE_FLOOR_PREFERENCES, Context.MODE_PRIVATE)
-        val acceptedSequence = releasePreferences.getLong(KEY_ACCEPTED_SEQUENCE, 0L)
-        val acceptedManifestSha256 = releasePreferences.getString(KEY_ACCEPTED_MANIFEST_SHA256, null)
-        ensureReleaseFloor(verifiedRelease, acceptedSequence, acceptedManifestSha256)
+        val catalogBytes = context.assets.open(ASSET_NAME).use { input ->
+            val output = ByteArrayOutputStream(minOf(MAX_CATALOG_BYTES, 8192))
+            val buffer = ByteArray(4096)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (output.size().toLong() + count > MAX_CATALOG_BYTES.toLong()) {
+                    throw IOException("Tracker catalog exceeds the $MAX_CATALOG_BYTES-byte size limit")
+                }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
         val text = String(catalogBytes, Charsets.UTF_8)
         val root = try {
             JSONObject(text)
@@ -105,34 +112,7 @@ internal object TrackerSignatureCatalog {
                 requiredString(item, "last_verified", contextLabel), evidence
             )
         }
-        if (verifiedRelease.sequence > acceptedSequence) {
-            val stored = releasePreferences.edit()
-                .putLong(KEY_ACCEPTED_SEQUENCE, verifiedRelease.sequence)
-                .putString(KEY_ACCEPTED_MANIFEST_SHA256, verifiedRelease.manifestSha256)
-                .commit()
-            if (!stored) throw IOException("Could not persist tracker release rollback protection; catalog remains unavailable")
-        }
         return parsedEntries
-    }
-
-    internal fun ensureReleaseFloor(
-        release: VerifiedTrackerRelease,
-        acceptedSequence: Long,
-        acceptedManifestSha256: String?
-    ) {
-        if (acceptedSequence < 0L) throw IOException("Stored tracker release sequence is invalid")
-        if (acceptedSequence == 0L && acceptedManifestSha256 != null) {
-            throw IOException("Stored tracker release rollback state is inconsistent")
-        }
-        if (acceptedSequence > 0L && (acceptedManifestSha256 == null || !Regex("^[0-9a-f]{64}$").matches(acceptedManifestSha256))) {
-            throw IOException("Stored tracker release rollback state is incomplete or invalid")
-        }
-        if (release.sequence < acceptedSequence) {
-            throw IOException("Tracker release rollback rejected: sequence ${release.sequence} is below the stored sequence ${acceptedSequence}")
-        }
-        if (release.sequence == acceptedSequence && acceptedSequence > 0L && release.manifestSha256 != acceptedManifestSha256) {
-            throw IOException("Tracker release replacement rejected: a sequence cannot identify two different manifests")
-        }
     }
 
     internal fun isSupportedSchemaVersion(value: Any?): Boolean =
