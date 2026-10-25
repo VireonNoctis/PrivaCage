@@ -51,6 +51,7 @@ internal object TrackerSignatureCatalog {
             ?: throw IOException("Tracker catalog entries must be an array")
         val seenIds = mutableSetOf<String>()
         val parsedEntries = mutableListOf<TrackerSignature>()
+        val allCatalogDomains = linkedSetOf<String>()
 
         for (index in 0 until entries.length()) {
             val contextLabel = "entries[$index]"
@@ -82,13 +83,7 @@ internal object TrackerSignatureCatalog {
             for (domain in domains) {
                 if (domain != domain.lowercase() || domain.endsWith(".")) throw IOException("$contextLabel has a non-normalized domain: $domain")
             }
-            if (domains.isNotEmpty()) {
-                try {
-                    DnsPolicyEngine(domains.toSet())
-                } catch (exception: IllegalArgumentException) {
-                    throw IOException("$contextLabel contains an invalid DNS domain", exception)
-                }
-            }
+            allCatalogDomains.addAll(domains)
 
             val evidenceArray = item.opt("evidence") as? JSONArray ?: throw IOException("$contextLabel.evidence must be an array")
             if (evidenceArray.length() == 0) throw IOException("$contextLabel.evidence must not be empty")
@@ -111,6 +106,13 @@ internal object TrackerSignatureCatalog {
                 id, name, category, domains, sdkPatterns, confidence, status,
                 requiredString(item, "last_verified", contextLabel), evidence
             )
+        }
+        if (allCatalogDomains.isNotEmpty()) {
+            try {
+                DnsPolicyEngine(allCatalogDomains)
+            } catch (exception: IllegalArgumentException) {
+                throw IOException("Tracker catalog contains an invalid DNS domain", exception)
+            }
         }
         return parsedEntries
     }
