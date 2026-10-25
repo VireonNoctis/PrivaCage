@@ -11,10 +11,18 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
     private val ruleRoot = RuleNode()
 
     init {
-        blockedDomains.map(::normalizeRule).toSet().forEach { rule ->
+        // Normalize and insert each rule directly. A temporary mapped list/set and split/reverse
+        // label lists are unnecessary because inserting an already-seen normalized rule is idempotent.
+        for (rawRule in blockedDomains) {
+            val rule = normalizeRule(rawRule)
             var node = ruleRoot
-            for (label in rule.split('.').asReversed()) {
-                node = node.children.getOrPut(label) { RuleNode() }
+            var end = rule.length
+            while (end > 0) {
+                val separator = rule.lastIndexOf('.', end - 1)
+                val labelStart = separator + 1
+                node = node.children.getOrPut(rule.substring(labelStart, end)) { RuleNode() }
+                if (separator < 0) break
+                end = separator
             }
             node.terminalRule = rule
         }
