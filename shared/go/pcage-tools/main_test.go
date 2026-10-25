@@ -161,6 +161,13 @@ func TestTrackerDatabaseRejectsUnknownFieldsAtEveryLevel(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "fields must be exactly") {
 		t.Fatalf("unknown field was not rejected clearly: %v", err)
 	}
+
+	indicatorUnknown := strings.Replace(string(data), "\"sdk_patterns\":[\"org.example.analytics.**\"]", "\"unsupported\":[],\"sdk_patterns\":[\"org.example.analytics.**\"]", 1)
+	path = writeTempFile(t, "unknown-indicator-field.json", indicatorUnknown)
+	_, err = readTrackerDatabase(path)
+	if err == nil || !strings.Contains(err.Error(), "unsupported indicators field") {
+		t.Fatalf("unknown indicator field was not rejected: %v", err)
+	}
 }
 
 func TestTrackerDatabaseRejectsNonCanonicalAndMissingFields(t *testing.T) {
@@ -184,6 +191,54 @@ func TestSDKTerminalWildcardsRemainValid(t *testing.T) {
 	document.Entries[0].Indicators.SDKPatterns = []string{"org.example.analytics.*", "org.example.crash.**"}
 	if errorsFound := validateFixture(document, nil, today); len(errorsFound) != 0 {
 		t.Fatalf("valid terminal wildcards rejected: %v", errorsFound)
+	}
+}
+
+func TestTrackerIndicatorArraysAreOptionalButNonEmptyWhenPresent(t *testing.T) {
+	today, _ := parseDate("2026-10-23", "today")
+	domainOnly := fixtureDatabase()
+	domainOnly.Entries[0].Indicators.SDKPatterns = nil
+	if errorsFound := validateFixture(domainOnly, nil, today); len(errorsFound) != 0 {
+		t.Fatalf("domain-only tracker record rejected: %v", errorsFound)
+	}
+
+	patternOnly := fixtureDatabase()
+	patternOnly.Entries[0].Indicators.Domains = nil
+	if errorsFound := validateFixture(patternOnly, nil, today); len(errorsFound) != 0 {
+		t.Fatalf("SDK-pattern-only tracker record rejected: %v", errorsFound)
+	}
+
+	emptyPresent := fixtureDatabase()
+	emptyPresent.Entries[0].Indicators.Domains = []string{}
+	if errorsFound := validateFixture(emptyPresent, nil, today); len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "domains must be a non-empty array") {
+		t.Fatalf("explicitly empty domains array was not rejected: %v", errorsFound)
+	}
+
+	encoded, err := json.Marshal(domainOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTempFile(t, "domain-only.json", string(encoded))
+	decoded, err := readTrackerDatabase(path)
+	if err != nil {
+		t.Fatalf("domain-only JSON did not decode: %v", err)
+	}
+	if errorsFound := validateFixture(decoded, nil, today); len(errorsFound) != 0 {
+		t.Fatalf("domain-only JSON rejected after decode: %v", errorsFound)
+	}
+
+	encoded, err = json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyJSON := strings.Replace(string(encoded), "\"domains\":[\"metrics.example.org\"]", "\"domains\":[]", 1)
+	path = writeTempFile(t, "empty-domain-array.json", emptyJSON)
+	decoded, err = readTrackerDatabase(path)
+	if err != nil {
+		t.Fatalf("explicit empty array should remain a schema validation error, not JSON syntax failure: %v", err)
+	}
+	if errorsFound := validateFixture(decoded, nil, today); len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "domains must be a non-empty array") {
+		t.Fatalf("explicit empty domains array not rejected after decode: %v", errorsFound)
 	}
 }
 
