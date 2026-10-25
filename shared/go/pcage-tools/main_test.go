@@ -346,7 +346,7 @@ func TestBackupManifestRequiresExplicitFalse(t *testing.T) {
 		{"missing attribute", `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="PrivaCage"/></manifest>`, "explicitly declare"},
 		{"missing application", `<manifest xmlns:android="http://schemas.android.com/apk/res/android"/>`, "<application>"},
 		{"multiple applications", `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:allowBackup="false"/><application android:allowBackup="false"/></manifest>`, "exactly one"},
-		{"malformed", "<manifest><application>"},
+		{"malformed", "<manifest><application>", "XML is invalid"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
