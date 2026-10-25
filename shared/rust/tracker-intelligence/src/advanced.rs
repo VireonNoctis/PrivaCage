@@ -1016,23 +1016,6 @@ pub fn detect_regressions(old:&IntelligenceBundle,new:&IntelligenceBundle)->Valu
     json!({"schema_version":1,"regressions":regressions,"count":regressions.len()})
 }
 
-pub fn list_verified_releases(root:&Path,trusted_key:&str)->Result<Vec<Value>,IntelError>{
-    let dir=root.join("releases");
-    let entries=fs::read_dir(&dir).map_err(|e|IntelError::Io(format!("read release history {}: {e}",dir.display())))?;
-    let mut out=Vec::new();
-    for item in entries {
-        let item=item.map_err(|e|IntelError::Io(e.to_string()))?;
-        if !item.file_type().map_err(|e|IntelError::Io(e.to_string()))?.is_dir(){continue}
-        let id=item.file_name().to_string_lossy().into_owned();
-        if !safe_id(&id){return Err(invalid(format!("unsafe release directory name: {id}")))}
-        let bytes=fs::read(item.path().join("catalog.json")).map_err(|e|IntelError::Io(format!("release {id} catalog: {e}")))?;
-        let manifest:ReleaseManifest=read_json(&item.path().join("manifest.json"))?;
-        verify_release(&bytes,&manifest,trusted_key)?;
-        out.push(json!({"release_id":id,"catalog_sha256":manifest.catalog_sha256,"created_at":manifest.created_at,"verified":true}));
-    }
-    out.sort_by(|a,b|a["created_at"].as_str().cmp(&b["created_at"].as_str()).then(a["release_id"].as_str().cmp(&b["release_id"].as_str())));
-    Ok(out)
-}
 
 
 fn html_escape(value: &str) -> String {
