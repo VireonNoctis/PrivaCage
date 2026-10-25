@@ -345,7 +345,7 @@ class AppAlternativesActivity : Activity() {
         statusView.text = "Selected: " + queued +
             "  /  installed or manually completed: " + completed +
             "  /  status unknown: " + unknown +
-            "\\nReturning from a store refreshes package visibility. Unknown never means uninstalled; manual completion is a reminder only. PrivaCage does not download arbitrary APKs or bypass Android install confirmation."
+            "\nReturning from a store refreshes package visibility. Unknown never means uninstalled; manual completion is a reminder only. PrivaCage does not download arbitrary APKs or bypass Android install confirmation."
     }
 
     override fun onResume() {
