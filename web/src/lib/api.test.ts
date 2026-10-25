@@ -69,13 +69,11 @@ describe('PrivaCage API client', () => {
   it('surfaces HTTP errors instead of treating them as empty data', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({}, 503));
 
-    await expect(fetchTrackerCatalog()).rejects.toEqual(
-      expect.objectContaining<ApiError>({
-        name: 'ApiError',
-        message: 'The Rust API returned HTTP 503.',
-        status: 503
-      })
-    );
+    await expect(fetchTrackerCatalog()).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'The Rust API returned HTTP 503.',
+      status: 503
+    });
   });
 
   it('reports malformed JSON clearly', async () => {
