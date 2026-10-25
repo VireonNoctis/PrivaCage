@@ -1,0 +1,10 @@
+{
+  "format_version": 2,
+  "catalog_sha256": "2fa0fc3a87a29c0563b8fc536655bb24ee45d0ce7cd411b8c994fd61508212f5",
+  "sequence": 1,
+  "previous_manifest_sha256": null,
+  "created_at": "2026-10-25",
+  "expires_at": "2027-10-25",
+  "signer_public_key_hex": "3a0e26e496c567a4afe0526a0126184e62c6a4a93b47549d9e45a0bd454d9ee1",
+  "signature_hex": "12db84bdabd0ff945b4c7e4834d93397380dfef44a1ae8c9ce37f662a4d63291972e390f08aad1bc6d5a78795e28a041868d55ff499fe8dc67dd3b0be7d8c40d"
+}
