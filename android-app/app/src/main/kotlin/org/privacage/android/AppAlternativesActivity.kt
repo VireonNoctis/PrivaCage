@@ -43,11 +43,19 @@ class AppAlternativesActivity : Activity() {
         restoreSelectionState()
         try {
             catalog = AppAlternativeCatalog.load(this)
+            val validIds = catalog.mapTo(mutableSetOf()) { it.id }
+            selectedIds.retainAll(validIds)
+            completedIds.retainAll(validIds)
+            sourceSelections.keys.retainAll(validIds)
+            saveSelectionState()
         } catch (exception: Exception) {
             stateWarning = listOfNotNull(
                 stateWarning,
                 "Catalogue load failed: " + (exception.message ?: exception.javaClass.simpleName)
             ).joinToString("\n")
+            selectedIds.clear()
+            completedIds.clear()
+            sourceSelections.clear()
         }
 
         val root = LinearLayout(this).apply {
