@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 )
@@ -281,6 +282,13 @@ func runPowerShellScript(ctx context.Context, script string) ([]byte, error) {
 		binary.LittleEndian.PutUint16(data[index*2:], value)
 	}
 	command := exec.CommandContext(ctx, executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(data))
+	command.Env = make([]string, 0, len(os.Environ())+1)
+	for _, environment := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(environment), "PRIVACAGE_INTERACTIVE=") {
+			command.Env = append(command.Env, environment)
+		}
+	}
+	command.Env = append(command.Env, "PRIVACAGE_INTERACTIVE="+strconv.FormatBool(isInteractiveInput()))
 	output, err := command.CombinedOutput()
 	if err != nil {
 		if ctx.Err() != nil {
