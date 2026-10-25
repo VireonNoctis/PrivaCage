@@ -31,7 +31,7 @@ import java.util.Locale
 internal object PrivaCageDesign {
     private val pageBackground = Color.rgb(8, 8, 8)
     private val surfaceBackground = Color.rgb(17, 17, 17)
-    private val inputBackground = Color.rgb(13, 13, 13)
+    private val inputSurfaceColor = Color.rgb(13, 13, 13)
     private val border = Color.rgb(48, 48, 48)
     private val textPrimary = Color.rgb(246, 246, 246)
     private val textSecondary = Color.rgb(177, 177, 177)
@@ -259,7 +259,6 @@ internal object PrivaCageDesign {
                 isFocusable = true
                 contentDescription = "Jump to $label section"
                 background = rippleBackground(
-                    context,
                     roundedBackground(context, Color.rgb(21, 21, 21), border, 12),
                     Color.rgb(70, 70, 70)
                 )
@@ -360,7 +359,6 @@ internal object PrivaCageDesign {
         val fill = if (primary) Color.WHITE else Color.rgb(23, 23, 23)
         val stroke = if (primary) Color.WHITE else border
         view.background = rippleBackground(
-            context,
             roundedBackground(context, fill, stroke, 12),
             if (primary) Color.rgb(220, 220, 220) else Color.rgb(62, 62, 62)
         )
@@ -368,7 +366,7 @@ internal object PrivaCageDesign {
 
     private fun inputBackground(context: Context): StateListDrawable {
         val focused = roundedBackground(context, Color.rgb(18, 18, 18), textSecondary, 11)
-        val normal = roundedBackground(context, inputBackground, border, 11)
+        val normal = roundedBackground(context, inputSurfaceColor, border, 11)
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), focused)
             addState(intArrayOf(), normal)
@@ -387,7 +385,6 @@ internal object PrivaCageDesign {
     }
 
     private fun rippleBackground(
-        context: Context,
         content: Drawable,
         rippleColor: Int
     ): RippleDrawable = RippleDrawable(ColorStateList.valueOf(rippleColor), content, null)
