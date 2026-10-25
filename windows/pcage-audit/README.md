@@ -34,6 +34,11 @@ From this directory:
     go test ./...
     go run . audit --format text
     go run . audit --format json
+
+The read-only audit includes nine bounded checks: the Domain/Private/Public firewall profile state, the machine diagnostic-data policy, Windows App Privacy policies for location/camera/microphone, configured adapter DNS resolver addresses, and the current user's WinINET proxy flags.
+
+DNS resolver addresses are included in the local report as an inventory. That is a potentially sensitive detail about the local network, so keep exported reports private. The audit cannot determine whether a specific request used encrypted DNS, which resolver wins for a given query, whether an application bypasses system DNS, or whether a VPN/enterprise policy changes the effective path. The proxy check reports whether the current-user WinINET toggle and server/PAC settings are present, but does not print the proxy hostname or PAC URL. It does not cover WinHTTP or per-application proxy behavior.
+
     go run . plan --profile balanced
     go run . plan --profile strict
     go run . apply --profile balanced --confirm
@@ -108,7 +113,7 @@ If an apply fails, the tool attempts rollback. If rollback cannot be completed, 
 - Domain policy or MDM can later override local settings. A readback is a point-in-time check, not a complete effective-policy calculation.
 - Capability policies cover the Windows-app scope described by Microsoft and do not govern every classic desktop app, service, driver, or OS component.
 - Windows Update, Defender, SmartScreen, licensing, certificate validation, and essential security services are deliberately not disabled.
-- The tool makes no network requests and does not upload audit or hardening results. It does not install a service, driver, kernel filter, or packet capture engine.
+- The tool makes no network requests and does not upload audit or hardening results. It does not install a service, driver, kernel filter, or packet capture engine. DNS resolver addresses are written to the local report; proxy endpoint/PAC URL values are deliberately omitted.
 - No hardcoded telemetry IP blocklist or hosts-file rewrite is used. Microsoft endpoint lists evolve, can be shared with essential services, and some diagnostic transfers use TLS/certificate pinning.
 - Administrator rights do not override the kernel, firmware, OEM services, hardware management engines, external firewalls/routers, a remote MDM/domain administrator, or all network paths. PrivaCage is a privacy-hardening aid, not proof of absolute non-communication.
 
