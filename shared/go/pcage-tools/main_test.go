@@ -259,6 +259,22 @@ func TestTrackerIndicatorArraysAreOptionalButNonEmptyWhenPresent(t *testing.T) {
 	}
 }
 
+func TestValidateTrackerCLIRejectsExplicitNonpositiveAgeLimit(t *testing.T) {
+	data, err := json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTempFile(t, "tracker.json", string(data))
+	if code := runValidateTracker([]string{"--file", path}); code != 0 {
+		t.Fatalf("default CLI validation failed with code %d", code)
+	}
+	for _, value := range []string{"0", "-1"} {
+		if code := runValidateTracker([]string{"--file", path, "--max-age-days", value}); code != 2 {
+			t.Errorf("explicit max-age-days %s returned %d, want usage-error exit code 2", value, code)
+		}
+	}
+}
+
 func TestTrackerFreshnessGate(t *testing.T) {
 	today, _ := parseDate("2026-10-23", "today")
 	limit := 180
