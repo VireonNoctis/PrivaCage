@@ -162,6 +162,7 @@ func restoreWindowsHardening(ctx context.Context) ([]byte, error) {
 func hardeningPowerShellBase() []string {
 	return []string{
 		"$ErrorActionPreference = 'Stop'",
+		"$ProgressPreference = 'SilentlyContinue'",
 		"function Test-IsAdministrator { $i=[System.Security.Principal.WindowsIdentity]::GetCurrent(); $p=[System.Security.Principal.WindowsPrincipal]::new($i); return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator) }",
 		"function Test-AllowedTarget($p) {",
 		"  $allowed=@(",
