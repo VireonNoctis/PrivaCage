@@ -10,6 +10,7 @@ android {
     sourceSets {
         getByName("main") {
             assets.srcDir("../../shared/tracker-db")
+            assets.srcDir("../../shared/app-alternatives")
         }
     }
 
