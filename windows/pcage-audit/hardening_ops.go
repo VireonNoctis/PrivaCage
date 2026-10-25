@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"time"
 )
 
 func applyWindowsHardening(ctx context.Context, plan hardeningPlan) ([]byte, error) {
@@ -243,16 +241,3 @@ func activeBackupPathDisplay() string {
 	return filepath.Join(programData, "PrivaCage", "hardening-backup.json")
 }
 
-func hardeningCommandAvailable() error {
-	if runtime.GOOS != "windows" {
-		return errors.New("this operation requires Windows 10/11")
-	}
-	if _, err := exec.LookPath("powershell.exe"); err != nil {
-		return errors.New("Windows PowerShell (powershell.exe) was not found")
-	}
-	return nil
-}
-
-func withDeadline(seconds int) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
-}
