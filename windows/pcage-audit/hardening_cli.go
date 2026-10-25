@@ -87,6 +87,7 @@ func executeHardening(command string, args []string, stdout, stderr io.Writer) e
 	blockOutbound := flags.Bool("block-outbound-by-default", false, "set default outbound action to Block")
 	isolateOutbound := flags.Bool("isolate-network", false, "add an all-program outbound firewall block rule")
 	confirmNetwork := flags.Bool("confirm-network-disruption", false, "confirm that network-dependent services may stop working")
+	targetUserSID := flags.String("pcage-target-user-sid", "", "internal: preserve the initiating user's SID across UAC elevation")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -118,13 +119,31 @@ func executeHardening(command string, args []string, stdout, stderr io.Writer) e
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if command == "apply" || command == "restore" {
+	var initiatingMetadata windowsMetadata
+	if command == "apply" {
+		var metadataErr error
+		initiatingMetadata, metadataErr = collectWindowsMetadata(ctx)
+		if metadataErr != nil {
+			return metadataErr
+		}
+		if *targetUserSID != "" {
+			if !validUserSID(*targetUserSID) {
+				return errors.New("invalid initiating-user SID")
+			}
+			initiatingMetadata.InteractiveUserSID = *targetUserSID
+		}
+	}
+
+	if command == "apply" || command == "restore" || command == "verify" {
 		admin, err := isWindowsAdministrator(ctx)
 		if err != nil {
 			return err
 		}
 		if !admin {
 			childArgs := append([]string{command}, args...)
+			if command == "apply" && initiatingMetadata.InteractiveUserSID != "" {
+				childArgs = append(childArgs, "--pcage-target-user-sid", initiatingMetadata.InteractiveUserSID)
+			}
 			return relaunchElevated(ctx, childArgs)
 		}
 	}
@@ -136,6 +155,9 @@ func executeHardening(command string, args []string, stdout, stderr io.Writer) e
 		metadata, metadataErr := collectWindowsMetadata(ctx)
 		if metadataErr != nil {
 			return metadataErr
+		}
+		if initiatingMetadata.InteractiveUserSID != "" {
+			metadata.InteractiveUserSID = initiatingMetadata.InteractiveUserSID
 		}
 		plan, planErr := buildHardeningPlan(*profile, metadata, *blockOutbound, *isolateOutbound)
 		if planErr != nil {
@@ -485,6 +507,27 @@ func interactiveConfirm(reader *bufio.Reader, output io.Writer, expected string)
 		return errors.New("confirmation did not match")
 	}
 	return nil
+}
+
+func validUserSID(sid string) bool {
+	if !strings.HasPrefix(sid, "S-1-5-21-") {
+		return false
+	}
+	parts := strings.Split(sid, "-")
+	if len(parts) != 8 {
+		return false
+	}
+	for _, part := range parts[2:] {
+		if part == "" {
+			return false
+		}
+		for _, character := range part {
+			if character < '0' || character > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func quoteWindowsArgument(argument string) string {
