@@ -2,206 +2,266 @@
 
 **Understand what your device exposes. Block what you can. Know what you cannot.**
 
-PrivaCage is an open-source, local-first privacy auditing project. Android is the primary mobile implementation; the Svelte and Rust web workspace provides evidence-backed tracker intelligence but is not currently paired to a device. Windows now has a local Go auditor and reversible policy-hardening CLI with explicit UAC elevation, protected rollback state, post-change verification, and optional high-impact network isolation. A separate, pinned Win11Debloat component supplies broader user-selected app removal, Windows customization, optional-feature controls, localized GUI/CLI workflows, and its upstream restore/backup support. An iOS companion remains planned and constrained by Apple's sandbox and entitlement model.
+PrivaCage is an open-source, local-first privacy auditing project. It combines evidence-backed tracker intelligence, a bounded Android DNS filter, local APK and permission audits, encrypted configuration transfer, metadata inspection, and reversible Windows privacy-policy controls.
 
-PrivaCage is not an anonymity product. It does not claim that an ordinary app can observe or disable every operating-system, desktop-app, manufacturer, or firmware activity. Platform boundaries are part of the product, not fine print.
+PrivaCage is **not** an anonymity product or a universal monitoring agent. Ordinary apps cannot reliably inspect every other app, override all OS permissions, decrypt arbitrary application traffic, or control firmware and manufacturer services. Those boundaries are part of the design—not fine print.
+
+## Contents
+
+- [Project status](#project-status)
+- [Core capabilities](#core-capabilities)
+- [Android DNS policy and packet engine](#android-dns-policy-and-packet-engine)
+- [Tracker intelligence](#tracker-intelligence)
+- [APK and permission auditing](#apk-and-permission-auditing)
+- [Encrypted profiles and sync](#encrypted-profiles-and-sync)
+- [Privacy-focused app alternatives](#privacy-focused-app-alternatives)
+- [Windows privacy audit and hardening](#windows-privacy-audit-and-hardening)
+- [Web and iOS](#web-and-ios)
+- [Architecture and repository map](#architecture-and-repository-map)
+- [Development and validation](#development-and-validation)
+- [Security boundaries](#security-boundaries)
+- [Research and contribution](#research-and-contribution)
+- [License](#license)
 
 ## Project status
 
-The repository includes an Android DNS policy core and an early user-approved VPN adapter, evidence-backed tracker intelligence, local APK analysis and metadata scrubbing, encrypted profile export, optional local DNS-history export with signed audit checkpoints, a Rust portable checkpoint verifier, Rust sync protocol/relay components, a Svelte 5 + TypeScript web console backed by Rust/Axum, and a Windows CLI that audits selected settings and applies documented reversible privacy policies. Windows policy writes are restricted to an allowlist, require confirmation and elevation, save a SYSTEM/Administrators-only backup, verify observed values, and provide a restore path. These are distinct maturity levels: Android VPN routing and backup behavior still need representative device validation; web device pairing/event ingestion is not connected; Windows policy controls do not guarantee zero Windows traffic or cover every OS component, driver, firmware, or network route.
+Features do not all have the same maturity. A coded path is not the same as a tested device behavior.
 
-| Area | Status | Honest scope |
+| Area | Current status | What that means |
 |---|---|---|
-| Tracker intelligence format | Expanded foundation | Fifteen source-backed endpoint records across analytics, behavioral analytics, advertising, crash reporting, and mobile attribution; broad shared domains remain review-only; still small and non-comprehensive |
-| Android DNS policy core | Implemented core | Parses supported DNS queries, validates EDNS(0), returns allow/block/malformed decisions, supports offline rule previews, and records aggregate outcomes; an explicitly opt-in local event history can store hostnames with best-effort socket-owner attribution |
-| Android DNS packet engine | Implemented core | Processes supplied IPv4 UDP DNS packets, returns REFUSED for configured blocked domains, validates upstream response structure, and retries truncated upstream replies over protected TCP |
-| Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, preflight disclosure, process-aware lifecycle status, one-query protected-upstream DNS route diagnostics, Android-visible captive-portal/validation snapshots, virtual DNS endpoint, TUN loop, configured domain rules, and optional DNS-over-TLS with hostname verification and no plaintext fallback |
-| Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
-| Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust share v1/v2 schema support and decrypt a known-answer vector. No account or remote sync; DNS-over-TLS is optional |
-| E2EE sync protocol core | Rust protocol + Android client integration | Owner-signed roster snapshots publish to an authenticated relay with a bounded 128-revision history; Android pulls and verifies updates before inbox processing, records bounded local lifecycle events, stages peer-key rotation behind owner approval, and supports dual-signed owner-key transitions bound to the exact space/revision. The public handoff package is retained for re-copying and recovery/another rotation are gated until user acknowledgement. Replacement owner fingerprints still require independent confirmation; relay-admin credential provisioning remains separate. No iOS/Windows client, background push, conflict resolution, or physical-device lifecycle validation yet |
-| Opaque sync relay | Rust + SQLite loopback service | Legacy per-space capability migration plus admin-managed per-device tokens, validated public cards, signed HTTP proof-of-possession, 120-second timestamp window, durable nonce replay rejection, selective credential revocation, bounded opaque storage, 7-day retention, duplicate-ID rejection, and bounded cursor pagination. Remote use requires a TLS reverse proxy |
-| Multi-format metadata inspector | Rust core + Android JNI + selected-file UI | Local inspection and separate cleaned copies for JPEG, PNG, and WebP; bounded streaming parsers, PNG CRC checks, malformed-file rejection, output re-parse before save, no image recompression or upload. Color profiles and unknown extension chunks can retain metadata; pixel content is not anonymized |
-| APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
-| Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
-| Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
-| Windows privacy auditor and hardening CLI | Implemented slice; Windows CI validated | Reads selected state and applies a narrow allowlist with preview, protected backup, verification, and restore. Separate pinned Win11Debloat component offers broad optional customization; its actions are initiated separately by the user and are not covered by the audit CLI's rollback transaction. |
-| iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
-| Windows egress controls | Opt-in, disruptive | Optional outbound-default Block or all-program outbound block rule; these can break DNS, Windows Update, cloud apps and other networking, and do not prove that kernel/driver/firmware/out-of-band paths are silent |
-| Legal request assistant | Planned | Drafts and tracks requests; cannot verify deletion from company systems |
+| Tracker intelligence | Expanded catalogue; schema v1 | 25 source-backed indicator records with typed domain/SDK indicators, confidence, status, review date and evidence links. Useful but not comprehensive. |
+| Android DNS policy | Implemented core | Validates a restricted classic-DNS subset, normalizes host rules, and produces explicit allow/block/malformed results. |
+| Android DNS packet engine | IPv4 + constrained IPv6 UDP-DNS path | Validates packet lengths/checksums, blocks configured names, forwards allowed queries, and builds packet responses. IPv6 extension headers, fragments and jumbograms are intentionally rejected. |
+| Android VPN adapter | Early implementation; device validation pending | Routes only the configured virtual IPv4/IPv6 DNS endpoints, protects upstream sockets, supports optional DNS-over-TLS, and reports aggregate counters. It is not a general traffic VPN. |
+| In-app tracker list | Bundled catalogue and explicit import | Evidence and lifecycle status are inspectable. Only active domain indicators can be added to the rule editor; the user must save the resulting rules. |
+| APK static audit | Local static inspection | Reports package/version/target SDK, requested permissions, exported components, SHA-256, signer metadata, APK signature integrity and bounded DEX string matches. |
+| Permission audit | Launcher-visible inventory + local drift baseline | Compares dangerous-permission declarations/grant flags between complete scans. Does not claim to see every installed/system package or live permission use. |
+| Encrypted profile transfer | Android implementation + shared format | PCAGE01 passphrase-encrypted profile files use Argon2id and AES-256-GCM. This protects file contents but does not authenticate the sender. |
+| E2EE sync | Rust protocol/relay and Android integration | Uses device identity, signed trust-roster state and encrypted payloads. Physical-device lifecycle, recovery and end-to-end integration still require validation. |
+| Metadata inspection/scrubbing | Rust core + Android UI | Handles JPEG, PNG and WebP with bounded parsing and output verification; it is not a universal metadata or visual-content anonymizer. |
+| Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
+| Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |
+| Web console | Svelte 5 + TypeScript, Rust/Axum API | Displays tracker intelligence. It is not yet a live-device event ingestion dashboard. |
+| iOS | Planned / constrained | Must use public APIs and approved NetworkExtension capabilities; an ordinary iOS app cannot inspect other apps' binaries or override their permissions. |
 
-## Principles
+## Core capabilities
 
-- Local-first: core auditing should work without an account or required cloud service.
-- No product telemetry by default.
-- Evidence over fear: distinguish observed facts, static indicators, inferences, and unknowns.
-- Enforcement must be real: controls must apply an OS-level action and report its outcome.
-- Least privilege: elevated access needs a clear purpose and explicit explanation.
-- Reproducible and testable: data formats and security-sensitive rules require validation.
-- No paid placement in recommendations or tracker intelligence.
+### Local-first audits
 
-## Repository map
+- User-selected APK inspection without installing or executing the package.
+- On-device permission snapshots and comparison history.
+- A bundled, evidence-linked tracker catalogue.
+- Optional local DNS event history, disabled by default, with bounded retention controls.
+- Encrypted profile export/import through Android's document picker.
+- Local metadata inspection and separate cleaned copies for supported image formats.
+- Windows baseline reports and policy changes that can be verified and restored.
 
-- `web/` — responsive Svelte 5 + TypeScript web console built as static assets; no JavaScript backend routes.
-- `web-backend/` — Rust/Axum API for the canonical tracker catalogue, derived summary metrics, service health, and explicit capability boundaries. Binds to loopback by default.
-- `.github/workflows/web-validation.yml` — Svelte/TypeScript checks, frontend tests, production build, Rust formatting, and Rust API tests.
+### Principles
 
-- `windows/pcage-audit/` — local Windows privacy audit, reversible documented-policy controls, and explicit handoff to the pinned Win11Debloat customization toolkit.
-- `windows/Win11Debloat/` — pinned MIT-licensed upstream Win11Debloat submodule; initialize with `git submodule update --init --recursive`.
-- `docs/architecture.md` — system boundaries and data flow.
-- `docs/threat-model.md` — assets, threats, and non-goals.
-- `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
-- `docs/security-boundaries.md` — explicit implemented/not-implemented claims and required verification.
-- `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
-- `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
-- `docs/research-notes/privacy-feature-research-2026-10-23.md` — sourced privacy feature ideas, feasibility, limits, and integration points.
-- `docs/research-notes/go-tooling-and-android-backup-audit-2026-10-25.md` — Go tooling migration findings, Android backup/restore limits, and concrete remediation plans.
-- `CONTRIBUTING.md` — evidence and review requirements.
-- `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK audit, Rust-powered JPEG/PNG/WebP metadata inspection and scrubbing, and Android build workflow.
-- `shared/rust/pcage-metadata/` — platform-neutral Rust metadata inspection/scrubbing core and local CLI for JPEG, PNG, and WebP.
-- `shared/rust/pcage-metadata-jni/` — Android native bridge for the Rust metadata core. The Android flow previews recognized metadata, creates a separate copy, re-inspects it, and only then offers save.
-- `android-core/src/main/kotlin/org/privacage/metadata/JpegMetadataScrubber.kt` — legacy Kotlin JPEG-only parser retained for compatibility/tests; the current Android UI uses the Rust multi-format core.
-- `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
-- `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
-- `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
-- `docs/audit-checkpoint-format.md` — signed audit checkpoint v1 wire format, hash-chain rules, limits, and trust boundary.
-- `shared/rust/pcage-audit/` — offline Rust CLI/library to verify signed Android audit checkpoints without network access.
-- `shared/audit/test-vectors/checkpoint-v1.json` — fixed, test-only signed interoperability vector (no private key included).
-- `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
-- `shared/rust/tracker-intelligence/` — Rust tracker catalog and schema-v2 intelligence tooling; release manifests use Ed25519-signed metadata, a sequential predecessor-linked release history, expiry checks, a signed current pointer, and optional externally persisted rollback floors. This is a local release store, not a remote catalog updater or full TUF client; see its README for the key-management and rollback boundary.
-- `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, dual-signed peer/owner key rotation, and recovery bundles.
-- Android sync peer management maintains a local denylist and removes pending profiles when a trusted fingerprint is revoked. This is device-local trust revocation; shared relay capability rotation is a separate administrator action and invalidates all devices using that capability.
-- `shared/rust/pcage-sync-relay/` — SQLite-backed loopback HTTP relay that stores opaque sync packets and never decrypts them.
-- `shared/rust/pcage-sync-jni/` — native bridge used by Android to call the Rust identity, packet-sealing, packet-opening, and recovery APIs.
-- `android-app/app/src/main/kotlin/org/privacage/android/sync/` — Android Keystore-protected local sync record, native bridge facade, HTTPS relay client, and explicit-trust/send/receive orchestration.
-- `docs/e2ee-sync-protocol.md` — protocol format, trust assumptions, and implementation boundaries.
-- `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
-- `shared/tracker-db/schema.md` — tracker database contract.
-- `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
-- `shared/go/pcage-tools/` — standard-library Go CLI for tracker schema/freshness validation, tracker review reporting, Android backup declaration checks, and the Android sensitive-permission/known-telemetry dependency baseline. Its tests replace the Python regression suite; the backup check remains static and is not an OEM transfer test.
-- `windows/pcage-audit/` — Go CLI and monochrome interactive console for Windows baseline auditing, edition-aware hardening preview/apply, UAC elevation, protected rollback backup, verification, restoration, and explicit network-isolation options. Includes unit tests and Windows/Linux CI; see its README and the Windows hardening research note for limits.
+- **Evidence over fear:** distinguish direct observations, static indicators, inferences and unknowns.
+- **No product telemetry by default:** local reports are not silently uploaded.
+- **Least privilege:** elevated access is gated and explained.
+- **No ghost controls:** a UI control must invoke an actual action, or its limitation must be stated.
+- **Reversibility:** security-sensitive Windows changes save prior state and provide restore paths.
+- **No paid placement:** alternatives and tracker entries are not sponsored rankings.
+- **Accurate uncertainty:** a tracker indicator does not prove an app transmitted personal data.
 
-## Build and test
+## Android DNS policy and packet engine
 
-Requires Go 1.27 or newer for the repository privacy tools and regression tests:
+The DNS engine is in `android-core/`; the Android VPN adapter is in `android-app/`.
 
-    cd shared/go/pcage-tools
-    go test ./...
-    go run . validate-tracker --max-age-days 180
-    go run . tracker-report --format markdown
-    go run . validate-android-backup
-    go run . validate-android-privacy
+### What it does
 
-### Windows privacy audit and hardening
+1. Evaluates a restricted subset of classic DNS queries with one question and validated EDNS(0) data.
+2. Matches exact domains and label-boundary subdomains rather than arbitrary string substrings.
+3. Processes IPv4 UDP DNS and a constrained IPv6 UDP DNS format. It validates declared lengths and checksums and rejects unsupported packet shapes.
+4. Returns a DNS REFUSED reply for a blocked hostname or forwards allowed query data through a configured upstream transport.
+5. Validates upstream response structure and retries truncated upstream UDP responses over a protected TCP connection.
+6. Optionally uses DNS-over-TLS for PrivaCage's upstream resolver with certificate/hostname verification and no plaintext fallback.
+7. Keeps core counters aggregate-only; DNS query names and packet contents are not retained by the core engine.
 
-The collector and hardening operations run on Windows 10/11 with Windows PowerShell and the NetSecurity module. Unit tests and Go compilation also run on Linux, but policy mutation and the live collector are Windows-only.
+The Android service routes only its virtual DNS endpoints, not all IP traffic. Upstream sockets are protected from re-entering the VPN.
 
-From `windows/pcage-audit` on Windows:
+### Important limits
 
-    go test ./...
-    go run . audit --format text
-    go run . plan --profile balanced
-    go run . plan --profile strict
-    go run . apply --profile balanced --confirm
-    go run . verify
-    go run . restore --confirm-restore
+- The client-facing path handles UDP DNS, not DNS-over-TCP initiated by apps.
+- IPv6 extension headers, IPv6 fragments and jumbograms are rejected. Replies that exceed the configured 1,500-byte TUN MTU are dropped rather than silently truncated.
+- This is not a general packet firewall or kill switch. It does not decode DoH/DoQ, arbitrary app tunnels, direct-IP connections, or HTTPS payloads.
+- DNS-over-TLS for PrivaCage's upstream does not force unrelated apps to use that resolver.
+- The engine does not reliably attribute every DNS query to its originating app.
+- Routing, revocation, lifecycle, OEM differences and resolver behavior still require emulator and physical-device validation. Unit tests cannot establish device-level coverage.
 
-The interactive monochrome console opens with `go run .` in a terminal. Apply and restore request UAC elevation. An apply refuses to overwrite an existing backup until the previous profile is restored. The protected backup is written under `%ProgramData%\PrivaCage\hardening-backup.json`.
+Implementation notes and test commands are in [the Android core README](android-core/README.md) and [architecture guide](docs/architecture.md).
 
-**High-impact network controls are separate and opt-in.** Preview before applying:
+## Tracker intelligence
 
-    go run . plan --profile balanced --block-outbound-by-default --confirm-network-disruption
-    go run . apply --profile balanced --block-outbound-by-default --confirm --confirm-network-disruption
-    go run . plan --profile balanced --isolate-network --confirm-network-disruption
-    go run . apply --profile balanced --isolate-network --confirm --confirm-network-disruption
+The canonical catalogue is `shared/tracker-db/signatures.json`; its schema is documented in [shared/tracker-db/schema.md](shared/tracker-db/schema.md).
 
-The outbound-default mode changes all three firewall profiles' default outbound action; existing explicit allow rules may still permit some connections. Emergency isolation adds an all-program outbound block rule and may immediately break the internet, DNS, Windows Update, cloud features, downloads, and network-dependent apps. Use a local console and know how to run `restore` before enabling it.
+Each record includes:
 
-The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
+- A stable identifier, name and category.
+- Typed indicators: domain hostnames and/or SDK class patterns.
+- Confidence and lifecycle status: `active`, `review`, or `retired`.
+- A last-reviewed date and HTTPS evidence sources.
 
-    sdkmanager "ndk;27.2.12479018"
-    cargo install cargo-ndk --version 3.5.4 --locked
-    rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-    cd shared/rust/pcage-sync-jni
-    cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
-    cd ../../../android-app
-    gradle assembleDebug
-    gradle :android-core:test
-    gradle :app:testDebugUnitTest
+The catalogue contains 25 indicators across analytics, behavioral analytics, advertising, crash reporting, mobile attribution and push/engagement SDKs. It is intentionally small relative to the software ecosystem.
 
-The debug APK is generated at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
+**Interpretation rules:** domain presence identifies an endpoint, not an initiating app. SDK string presence is a static indicator, not proof of initialization or transmission. Confidence describes the indicator-to-service association, not a probability that the scanned app is malicious. The app's DNS filter cannot enforce Java/Kotlin class-name matches.
 
-The Rust encrypted-profile and metadata implementations require Rust 1.85 or newer:
+The in-app list bundles the canonical JSON. Users can inspect evidence and explicitly import active domain indicators into the DNS rule editor. Importing does not automatically save or turn them on. Review and retired entries are not bulk-imported.
 
-    cargo test --manifest-path shared/rust/pcage-crypto/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -- -D warnings
-    cargo test --manifest-path shared/rust/pcage-metadata/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
-    cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
+Validate the schema and review-freshness report with:
 
-The portable audit checkpoint verifier requires Rust 1.85 or newer. It rejects unsupported fields, oversized inputs, false redaction claims, chain mismatches, invalid P-256 signatures, and inconsistent counts; a valid signature does not establish the signer’s identity.
+```sh
+go -C shared/go/pcage-tools test ./...
+go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+go -C shared/go/pcage-tools run . tracker-report --format markdown
+```
 
-    cargo fmt --manifest-path shared/rust/pcage-audit/Cargo.toml --all -- --check
-    cargo test --manifest-path shared/rust/pcage-audit/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-audit/Cargo.toml --all-targets -- -D warnings
-    cargo run --manifest-path shared/rust/pcage-audit/Cargo.toml -- path/to/checkpoint.json
+A hosts feed or a match count is not proof of tracking behavior. Candidate feed updates should be staged, sourced, reviewed and diffed before they become active rules.
 
-The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
+## APK and permission auditing
 
-    cargo test --manifest-path shared/rust/pcage-sync/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings
-    cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-sync-jni/Cargo.toml --all-targets -- -D warnings
+### Static APK audit
 
-The tracker-intelligence release tooling uses Rust 1.85 or newer. It validates legacy catalog schema v1 and intelligence bundle schema v2, and supports locally signed release snapshots. Keep the 32-byte Ed25519 signing seed outside the repository and shell history; pin the public key out of band.
+The Android APK inspector works on a user-selected file, with a 100 MiB input limit. It reports package and version metadata, target SDK, declared permissions, exported components, SHA-256, available signer certificate fingerprints, APK signature integrity, and bounded DEX string matches against the tracker catalogue.
 
-    cargo test --manifest-path shared/rust/tracker-intelligence/Cargo.toml
-    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- publish path/to/catalog.json ./release-store release-2026-10-25 2026-10-25 "$PCAGE_ED25519_SEED_HEX"
-    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX" "$PCAGE_MINIMUM_RELEASE_SEQUENCE" "$PCAGE_MINIMUM_STATE_REVISION"
-    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
+It does not install or execute the APK, upload it, or dynamically observe its behavior. APK signature verification confirms integrity under the supported signing checks; it does **not** prove that the publisher is reputable. A matching SDK class is not evidence that events were actually sent.
 
-An intentional local rollback requires the signing seed, signs a new current pointer, and preserves the release-chain head:
+### Permission audit
 
-    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- rollback ./release-store release-2026-10-23 "$PCAGE_ED25519_SEED_HEX"
+The local audit lists dangerous permissions declared by launcher-visible apps and Android's exposed grant flags. A local baseline can compare subsequent complete scans and report newly requested permissions, newly granted permissions, revoked grants, and permissions no longer requested. Packages that disappear from the scan are reported separately; their disappearance is not misrepresented as permission revocation.
 
-The minimum sequence and pointer revision must be persisted by the caller outside the release store to detect signed pointer replay. No remote updater, release-signing-key rotation, or full TUF client is implemented.
+The audit does not use `QUERY_ALL_PACKAGES` to claim a complete device inventory. Android package visibility, work profiles, manufacturer services and privileged/headless components can limit what is visible. Permission declarations do not prove live camera, microphone or sensor use, and the grant inventory is not a network-traffic monitor.
 
-The opaque relay service requires Rust 1.85 or newer:
+The baseline is stored in app-private local preferences and can be cleared from the dashboard. PrivaCage does not silently revoke permissions belonging to other applications.
 
-    cargo test --manifest-path shared/rust/pcage-sync-relay/Cargo.toml
-    cargo clippy --manifest-path shared/rust/pcage-sync-relay/Cargo.toml --all-targets -- -D warnings
+## Encrypted profiles and sync
 
-The tracker validator checks structure and URL syntax and can enforce an evidence-review age limit (CI uses 180 days); it does not prove that evidence is true or the URL is still online. An empty database remains valid; additions require human review and explicit caveats. A matching hostname indicates a known service endpoint, not proof that an app collected personal data.
+### Portable `.pcage` profile
 
-## Platform reality
+The PCAGE01 file envelope uses a fixed Argon2id v1.3 parameter set to derive a key, then AES-256-GCM with a fresh nonce and authenticated header. Android encrypts before writing the file through the Storage Access Framework. Kotlin/JVM and Rust share a known-answer test fixture.
 
-- Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. The editor includes an offline hostname-rule preview and aggregate session counters. Optional local DNS event history is disabled by default and can retain hostnames; socket-owner lookup is best-effort and may identify Android's resolver rather than the initiating app. An explicit diagnostic sends one fixed `example.com` A query via the configured protected upstream, samples Android-visible non-VPN network validation/captive-portal state, and compares the snapshot around the test; it stores neither raw DNS packets nor query names. This does not prove every app uses the expected path, and Wi-Fi/mobile handover and captive-portal behavior still require device validation. A local device snapshot reports exposed location, Wi-Fi, Private DNS, and active-network VPN settings plus PrivaCage's own declared permissions, without reading SSIDs or uploading the snapshot. A separate permission audit checks dangerous permissions declared by launcher-visible apps and reports current grant flags locally; Android package visibility means this is not a complete inventory of system/OEM services. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
-- iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
-- Windows: the local CLI reads firewall profiles and selected policy values, then applies a restricted allowlist of supported privacy policies after explicit confirmation and UAC elevation. It records the original registry/firewall state in a protected local backup, verifies applied policy values, and provides a restore path. Its firewall isolation option is deliberately separate and disruptive. It cannot inspect every live connection or prove that all Windows components have stopped communicating.
-- Wi-Fi and connection privacy: a Wi-Fi operator can usually observe connected-device/network metadata, timing, traffic volume, and destination IPs. HTTPS protects application content in transit; encrypted DNS can hide DNS questions from the local network when correctly configured, while the resolver still sees them. A VPN hides tunneled destinations from the local Wi-Fi operator but shifts visibility and trust to the VPN provider; it does not prove every connection is tunneled.
-- Static APK manifest audit: PrivaCage can inspect a user-selected APK's declared permissions and exported components locally without installing it. A declared permission, exported component, SDK string, or domain is evidence of capability/surface, not proof of runtime behavior or data collection.
-- Legal requests: a sent request is not proof of deletion.
+The file contains settings, not a live traffic tunnel. It does not identify/authenticate the sender. The receiver needs both the file and passphrase, which should be conveyed through a separate trusted channel. Losing the passphrase means the export cannot be decrypted.
 
-## Windows privacy controls — claim boundary
+See [the byte-level format](docs/encrypted-profile-format.md).
 
-The balanced profile minimizes documented policy surfaces including optional diagnostic data, advertising ID, Activity Feed/user-activity upload, tailored experiences, online speech personalization, and supported Windows 11 diagnostic-log/dump collection limits. On mainstream Pro editions, PrivaCage selects Required diagnostic data and locks the end-user diagnostic-data selector in Settings on supported builds. The Diagnostic data off value (0) is supported only on Enterprise, Education, and Server editions; it controls Windows diagnostic data, not every system communication.
+### E2EE sync
 
-The strict profile additionally disables clipboard history, force-denies selected Windows-app capabilities, and disables Windows Error Reporting. These policies are not a universal barrier against classic desktop programs, system services, drivers, or firmware. Domain policy or MDM may override local settings. The app preserves Defender, Windows Update, SmartScreen, licensing, and certificate validation.
+The separate sync implementation uses device identity keys, signed roster state, recipient-bound encrypted profiles and an authenticated relay protocol. First trust decisions require independent fingerprint verification, and relay access metadata remains visible to the relay. A recovery bundle restores the same identity; it is not equivalent to generating a new device identity.
 
-The CLI makes no network requests itself. Registry changes are allowlisted, saved with their prior values, checked after writing, and reversible through the captured backup. The backup is restricted to SYSTEM and Administrators. Network controls require extra confirmation; an all-program outbound block is not appropriate for normal daily operation and cannot prove every out-of-band channel is silent. Read [the research note](docs/research-notes/windows-privacy-hardening-2026-10-25.md) and [the tool guide](windows/pcage-audit/README.md) before applying policies.
+Sync protocol guarantees and remaining boundaries are documented in [docs/e2ee-sync-protocol.md](docs/e2ee-sync-protocol.md). Physical-device lifecycle validation remains necessary.
+
+## Privacy-focused app alternatives
+
+The alternative catalogue is `shared/app-alternatives/catalog.json`. It currently includes 29 curated replacements for common Google-suite and adjacent services, spanning email, cloud storage, photos, maps, browsers, search, video, calendar, notes, keyboards, authenticators, contacts, app repositories, messaging, video calls, passwords, RSS, translation and documents.
+
+The Android screen lets a user filter by the Google app being replaced, select one or more alternatives, choose one of the source links for each item, and store a local sequential queue. It shows both the reason to consider an app and its trade-offs. Source destinations are validated as HTTPS URLs against an exact reviewed-host allowlist.
+
+### Why the queue does not silently sideload APKs
+
+The current catalogue contains reviewed store/project landing pages—not version-pinned APK artifacts with maintained SHA-256 and signing-certificate metadata. The app opens one selected source at a time, where the source controls downloads and Android preserves its normal install confirmation. A queue item's “completed” tick is a user reminder; PrivaCage does not pretend it can verify installation simply because an external page was opened.
+
+Automatic artifact downloading should only be added with a verifiable source index, pinned release metadata, digest and signer checks, bounded downloads, redirect policy, expiry/revocation handling, and a clear Android package-installer handoff. Do not bypass Play Protect, Android installer consent, or publisher/signature checks to make the UI appear more automated. The implementation and research trade-offs are in [the privacy-suite research note](docs/research-notes/privacy-suite-expansion-2026-10-25.md).
+
+## Windows privacy audit and hardening
+
+The Go tool under `windows/pcage-audit/` provides a read-only local audit and a reversible policy-hardening workflow. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
+
+### Profiles and policy boundaries
+
+- **Balanced** reduces selected documented Windows privacy surfaces, including optional diagnostic data where supported, advertising ID, Activity Feed/User Activity, tailored experiences and online speech personalization. On common Pro editions, Required diagnostic data remains; the selector may be locked on supported builds.
+- **Strict** includes balanced policies, disables clipboard history, applies selected Windows-app capability force-denials and disables Windows Error Reporting policy.
+- **Outbound-default block** and **emergency all-program outbound isolation** are separate, high-impact actions. They can interrupt DNS, Windows Update, cloud applications, downloads and remote administration.
+
+Microsoft documents that the “Diagnostic data off” value for the described policy is supported only on specified Enterprise, Education and Server editions; the extra diagnostic-log and dump controls apply to Windows 11 and Windows Server 2022. Local policy values can be overridden by domain policy or MDM. None of these settings guarantees zero Windows communications or controls all desktop applications, services, drivers, firmware or external network paths.
+
+Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privacy research](docs/research-notes/windows-privacy-hardening-2026-10-25.md) before applying changes. The separately pinned [Win11Debloat component](windows/Win11Debloat/) is user-selected software and is not covered by the audit CLI's rollback transaction.
+
+## Web and iOS
+
+- `web/` is a Svelte 5 + TypeScript static client.
+- `web-backend/` is a Rust/Axum API serving validated tracker catalogue data.
+- The web client does not invent device events or claim that a tracker was observed on a user's device. Live-device pairing and event ingestion are not yet connected.
+- iOS work must stay within Apple's sandbox and approved NetworkExtension entitlements. An ordinary iOS app cannot scan other apps' executable binaries or override their permissions.
+
+## Architecture and repository map
+
+```text
+.
+├── android-core/                  # Kotlin/JVM DNS policy, packet engine and audit models
+├── android-app/                   # Android UI, VPN adapter, APK/permission audit
+├── shared/
+│   ├── tracker-db/                # canonical evidence-backed tracker catalogue
+│   ├── app-alternatives/          # reviewed alternative-app catalogue
+│   ├── go/pcage-tools/            # tracker and Android privacy validation tools
+│   ├── rust/pcage-crypto/         # portable encrypted profile implementation
+│   └── rust/pcage-sync/           # sync protocol components
+├── web/                           # Svelte 5 + TypeScript frontend
+├── web-backend/                   # Rust/Axum tracker API
+├── windows/pcage-audit/           # Go auditor and reversible hardening CLI
+├── windows/Win11Debloat/          # pinned upstream optional customization tool
+├── docs/
+│   ├── architecture.md
+│   ├── security-boundaries.md
+│   ├── encrypted-profile-format.md
+│   ├── e2ee-sync-protocol.md
+│   └── research-notes/
+└── tests/                         # cross-module / workflow test material where present
+```
+
+## Development and validation
+
+Run checks from the repository root. The commands below describe the expected test gates; do not infer passing results unless the relevant command or CI job has completed.
+
+```sh
+# Tracker catalogue and shared Go tools
+go -C shared/go/pcage-tools test ./...
+go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+
+# Android policy/packet core and app tests (JDK 17 + Gradle required)
+cd android-app
+gradle :android-core:test
+gradle :app:testDebugUnitTest
+gradle assembleDebug
+
+# Windows Go CLI (run on Windows for platform-specific integration coverage)
+cd ../windows/pcage-audit
+go test ./...
+```
+
+The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
+
+Before a release, use the current [research notes](docs/research-notes/privacy-suite-expansion-2026-10-25.md) as a validation checklist. They separate platform-documented capabilities from assumptions and list the device tests still required.
+
+## Security boundaries
+
+- **OEM/system telemetry:** ordinary Android apps cannot disable privileged manufacturer, baseband, firmware or every Google Play Services behavior. A custom ROM changes the trust surface but has its own migration and compatibility costs.
+- **Encrypted DNS bypass:** a DNS-only VPN does not inspect arbitrary HTTPS, DoH or DoQ traffic and does not block direct-IP connections.
+- **Permission limits:** Android's own settings and package-visibility rules remain in force; iOS is substantially more restrictive.
+- **Static scanning:** APK manifest metadata and DEX strings describe potential capability, not proof of execution or collection.
+- **Windows policy controls:** allowed registry values and firewall settings are not a kernel filter or guarantee of zero egress. High-impact isolation can render the device temporarily unreachable.
+- **Encrypted export:** profile confidentiality is protected, but the portable file does not authenticate a sender. Passphrases should be exchanged separately.
+- **Deletion requests:** legal templates can draft and track requests but cannot force or technically verify deletion inside a company's systems.
+
+## Research and contribution
+
+Useful starting points:
+
+- [Architecture](docs/architecture.md)
+- [Security boundaries](docs/security-boundaries.md)
+- [Permission matrix](docs/permission-matrix.md)
+- [Android DNS policy core](android-core/README.md)
+- [Tracker database schema](shared/tracker-db/schema.md)
+- [Privacy-suite expansion research](docs/research-notes/privacy-suite-expansion-2026-10-25.md)
+- [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
+
+Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
 
 ## Security reporting
 
-Please do not publish details of an unpatched vulnerability involving user data or security controls. Use GitHub's private vulnerability reporting feature if it is available for this repository.
+Do not publish details of an unpatched vulnerability involving user data or security controls in a public issue. Use GitHub's private vulnerability reporting feature if it is enabled for this repository.
 
 ## License
 
-MIT. See LICENSE.
-
-
-| JPEG metadata inspection and removal | Local report before save | Reports input/output sizes and removed APP1 (EXIF/XMP), APP13 (IPTC/Photoshop), and COM counts; second-pass verification checks those classes are absent. Other APP markers are preserved, and the report does not enumerate every embedded field or guarantee complete metadata removal. |
-
-
-### Android encrypted sync scope
-
-The Android sync UI sends only the current DNS settings profile to an explicitly trusted public device card. Before trusting a peer, compare the complete SHA-256 fingerprint over a separate trusted channel; the relay itself is not a trust authority. Relay URLs must use HTTPS and redirects are rejected. Identity and relay capability are stored inside an Android Keystore-encrypted record. Recovery exports are separate passphrase-encrypted files and should be kept offline. Import restores the same cryptographic identity; it does not create a distinct device identity or revoke the original installation. Peer revocation is local to each installation, while relay capability rotation invalidates every device sharing that space token. The relay still observes metadata, and physical-device lifecycle testing remains outstanding.
+MIT. See [LICENSE](LICENSE).
