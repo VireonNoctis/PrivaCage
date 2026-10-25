@@ -305,7 +305,11 @@ async fn summary(State(state): State<ApiState>) -> Json<CatalogSummary> {
 }
 
 async fn capabilities() -> Json<WorkspaceCapabilities> {
-    Json(WorkspaceCapabilities {
+    Json(workspace_capabilities())
+}
+
+fn workspace_capabilities() -> WorkspaceCapabilities {
+    WorkspaceCapabilities {
         capabilities: vec![
             WorkspaceCapability {
                 id: "tracker-intelligence",
@@ -329,7 +333,13 @@ async fn capabilities() -> Json<WorkspaceCapabilities> {
                 id: "enforcement",
                 title: "Privacy enforcement",
                 status: "platform_local",
-                explanation: "Network rules and OS-owned controls remain in the platform adapters. The web console does not silently change device settings.",
+                explanation: "Android and Windows policy operations run locally through their platform adapters. The web console cannot trigger them, silently change device settings, or prove that Windows sends no data.",
+            },
+            WorkspaceCapability {
+                id: "windows-hardening",
+                title: "Windows local privacy hardening",
+                status: "platform_local",
+                explanation: "The Windows Go CLI can preview, apply, verify, and restore supported local privacy policies with explicit UAC elevation and a protected rollback backup. It is installed and run on the Windows PC; this website is not connected to it, and some Windows communications remain outside these controls.",
             },
             WorkspaceCapability {
                 id: "device-sync",
@@ -338,12 +348,27 @@ async fn capabilities() -> Json<WorkspaceCapabilities> {
                 explanation: "The web console is not enrolled in the Android encrypted-sync workflow or its relay.",
             },
         ],
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_hardening_is_reported_as_local_not_web_control() {
+        let capabilities = workspace_capabilities();
+        let windows = capabilities
+            .capabilities
+            .iter()
+            .find(|capability| capability.id == "windows-hardening")
+            .expect("Windows local hardening capability should be documented");
+
+        assert_eq!(windows.status, "platform_local");
+        assert!(windows.explanation.contains("run on the Windows PC"));
+        assert!(windows.explanation.contains("not connected"));
+        assert!(windows.explanation.contains("outside these controls"));
+    }
 
     #[test]
     fn embedded_catalog_loads_and_has_unique_ids() {
