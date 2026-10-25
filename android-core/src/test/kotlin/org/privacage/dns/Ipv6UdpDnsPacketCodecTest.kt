@@ -3,7 +3,7 @@ package org.privacage.dns
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import kotlin.test.Test
-import kotlin.test.assertArrayEquals
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -19,7 +19,7 @@ class Ipv6UdpDnsPacketCodecTest {
         val reply = Ipv6UdpDnsPacketCodec.buildUdpResponse(query, refused)
         assertEquals(6, (reply[0].toInt() ushr 4) and 0x0f)
         assertEquals(17, reply[6].toInt() and 0xff)
-        assertArrayEquals(query.destinationAddress, reply.copyOfRange(8, 24))
+        assertContentEquals(query.destinationAddress, reply.copyOfRange(8, 24))
         assertArrayEquals(query.sourceAddress, reply.copyOfRange(24, 40))
         assertEquals(53, u16(reply, 40))
         assertEquals(53000, u16(reply, 42))
