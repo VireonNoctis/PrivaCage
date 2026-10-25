@@ -151,7 +151,6 @@ func TestTrackerDatabaseRejectsInvalidRecords(t *testing.T) {
 }
 
 func TestTrackerDatabaseRejectsUnknownFieldsAtEveryLevel(t *testing.T) {
-	today, _ := parseDate("2026-10-23", "today")
 	data, err := json.Marshal(fixtureDatabase())
 	if err != nil {
 		t.Fatal(err)
