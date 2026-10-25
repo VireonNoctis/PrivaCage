@@ -250,10 +250,7 @@ func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
 		"$build = 0",
 		"if (-not [int]::TryParse([string]$cv.CurrentBuildNumber, [ref]$build)) { throw 'Cannot parse Windows build number.' }",
 		"$sid = ''",
-		"try {",
-		"  $computer = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop",
-		"  if ($computer.UserName) { $sid = ([System.Security.Principal.NTAccount]::new([string]$computer.UserName)).Translate([System.Security.Principal.SecurityIdentifier]).Value }",
-		"} catch { $sid = '' }",
+		"if ($env:PRIVACAGE_INTERACTIVE -eq 'true') { $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value }",
 		"[ordered]@{ edition_id = $edition; build_number = $build; interactive_user_sid = $sid } | ConvertTo-Json -Compress",
 	}, "\n")
 	output, err := runPowerShellScript(ctx, script)
