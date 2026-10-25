@@ -8,7 +8,7 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker/privacy validation commands are being migrated from Python to a standard-library Go module with regression tests. The Go migration and associated CI runs are not considered complete until the branch's checks pass. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The former Python tracker/privacy scripts and unittest modules have been replaced by a standard-library Go CLI and Go regression suite. GitHub Actions runs the Go tracker, backup-policy, and Android privacy gates alongside the Android build checks. Backup/restore behavior across OEM device-transfer paths still requires real-device validation. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
