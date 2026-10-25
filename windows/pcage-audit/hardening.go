@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -310,8 +311,11 @@ func decodeStrictJSON(data []byte, target any) error {
 		return err
 	}
 	var extra any
-	if err := decoder.Decode(&extra); err == nil {
-		return errors.New("unexpected additional JSON value")
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("unexpected additional JSON value")
+		}
+		return fmt.Errorf("invalid trailing JSON data: %w", err)
 	}
 	return nil
 }
