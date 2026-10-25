@@ -81,7 +81,7 @@ pub extern "system" fn Java_org_privacage_android_NativeTrackerReleaseVerifier_n
     mut env: JNIEnv,
     _this: JObject,
     catalog_array: JByteArray,
-    manifest_string: JString,
+    manifest_array: JByteArray,
     as_of_string: JString,
 ) -> jstring {
     let result = (|| {
@@ -92,14 +92,17 @@ pub extern "system" fn Java_org_privacage_android_NativeTrackerReleaseVerifier_n
         }
         let catalog_bytes = env.convert_byte_array(&catalog_array)
             .map_err(|_| "Could not read tracker catalog bytes".to_owned())?;
-        let manifest_text = read_string(&mut env, manifest_string)?;
-        if manifest_text.len() > MAX_MANIFEST_BYTES {
+        let manifest_length = env.get_array_length(&manifest_array)
+            .map_err(|_| "Could not inspect tracker release manifest size".to_owned())?;
+        if manifest_length <= 0 || manifest_length as usize > MAX_MANIFEST_BYTES {
             return Err("Tracker release manifest exceeds the supported size limit".into());
         }
+        let manifest_bytes = env.convert_byte_array(&manifest_array)
+            .map_err(|_| "Could not read tracker release manifest bytes".to_owned())?;
         let as_of = read_string(&mut env, as_of_string)?;
         let verified = verify_catalog_release(
             &catalog_bytes,
-            manifest_text.as_bytes(),
+            &manifest_bytes,
             &as_of,
         )?;
         Ok(json!({
