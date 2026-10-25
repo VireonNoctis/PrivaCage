@@ -8,7 +8,7 @@ use jni::{
 use pcage_tracker_intelligence::{verify_release_at_date, validate_catalog, Catalog, ReleaseManifest};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{path::Path, ptr};
+use std::ptr;
 
 /// This key authenticates the bundled catalog manifest. The corresponding private seed
 /// must never be stored in this repository or shipped in an app.
@@ -117,7 +117,7 @@ pub extern "system" fn Java_org_privacage_android_NativeTrackerReleaseVerifier_n
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use std::{fs, path::Path};
 
     fn bundled_catalog() -> Vec<u8> {
         fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tracker-db/signatures.json"))
