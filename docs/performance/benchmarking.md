@@ -1,6 +1,6 @@
 # PrivaCage performance benchmarks
 
-The benchmark suite compares the pre-optimization snapshot `7649a85dede79c0decf33426655dc246f9c18cc6` with the candidate on the same CI runner. The `Compare PrivaCage performance` workflow stores raw inputs and a Markdown/JSON comparison artifact. The workflow is a measurement tool, not a timing-based CI gate: no arbitrary hard performance thresholds are enforced.
+The `performance-comparison` job in the existing Android app/DNS validation workflow compares the pre-optimization snapshot `7649a85dede79c0decf33426655dc246f9c18cc6` with the PR head on the same CI runner. It uploads raw inputs and a Markdown/JSON comparison artifact. The job is a measurement tool, not a timing-based CI gate: no arbitrary hard performance thresholds are enforced.
 
 ## Workloads
 
@@ -30,7 +30,7 @@ For startup timing, connect a physical Android device (API 28 or newer), keep th
 gradle --no-daemon --project-dir android-app :performance-macrobenchmark:connectedBenchmarkAndroidTest
 ```
 
-The macrobenchmark `benchmark` build variant is non-debuggable and built from the app's release build type. Startup benchmarking requires a profileable APK. The app manifest declares `<profileable android:shell="true" />` for this measurement; this does not enable debugging.
+The target app's `benchmark` build variant is non-debuggable and built from the app's release build type. The separate Macrobenchmark test runner is debuggable, which is normal for test instrumentation. Startup benchmarking requires a profileable APK and ProfileInstaller; the app manifest declares `<profileable android:shell="true" />` for this measurement. Profileable does not enable app debugging.
 
 ## Reading results correctly
 
@@ -42,4 +42,4 @@ The DNS and Rust runs are likewise relative measurements for the CI runner. Comp
 
 - DNS performance tests are tagged `performance`, run through `:android-core:performanceTest`, and excluded from the regular `:android-core:test` task to avoid making normal unit tests slower.
 - The baseline worktree receives only the benchmark harness/build configuration. The source code under test remains pinned to the baseline commit.
-- Raw JSON and logs are uploaded as the `privacage-performance-comparison` artifact for 30 days. The Markdown summary contains the baseline and candidate commit IDs, measured values, and caveats.
+- Raw JSON and logs are uploaded as the `privacage-performance-comparison` artifact for 30 days. The Markdown summary contains the baseline and candidate commit IDs, measured values, and caveats. The benchmark job runs as part of the existing Android validation workflow for PRs and pushes that touch Android/DNS or benchmark files.
