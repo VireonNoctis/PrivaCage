@@ -3,7 +3,7 @@ use std::error::Error;
 use privacage_web_api::{build_app, load_embedded_catalog};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let address =
         std::env::var("PRIVACAGE_WEB_BIND").unwrap_or_else(|_| "127.0.0.1:8787".to_owned());
 
