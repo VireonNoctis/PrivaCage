@@ -15,6 +15,10 @@ on:
       - "shared/go/pcage-tools/**"
       - "tests/**"
       - ".github/workflows/validate-android-app.yml"
+      - ".github/scripts/prepare-performance-baseline.sh"
+      - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/compare-performance.py"
+      - "docs/performance/**"
   pull_request:
     paths:
       - "android-app/**"
@@ -29,6 +33,10 @@ on:
       - "shared/go/pcage-tools/**"
       - "tests/**"
       - ".github/workflows/validate-android-app.yml"
+      - ".github/scripts/prepare-performance-baseline.sh"
+      - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/compare-performance.py"
+      - "docs/performance/**"
   workflow_dispatch:
 
 permissions:
