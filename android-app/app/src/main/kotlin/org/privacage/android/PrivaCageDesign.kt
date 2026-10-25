@@ -129,9 +129,14 @@ internal object PrivaCageDesign {
 
         val sections = mutableListOf<SectionCard>()
         var currentCard: LinearLayout? = null
+        var globalStatus: TextView? = null
         var sectionNumber = 0
 
         for (view in originalViews.drop(2)) {
+            if (view is TextView && view.text?.toString() == "Local actions and service messages appear here.") {
+                globalStatus = view
+                continue
+            }
             val heading = (view as? TextView)?.text?.toString()
                 ?.trim()
                 ?.uppercase(Locale.ROOT)
@@ -230,6 +235,33 @@ internal object PrivaCageDesign {
                     .setDuration(180L)
                     .start()
             }
+        }
+
+        globalStatus?.let { status ->
+            val statusCard = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                background = roundedBackground(activity, surfaceBackground, border, 16)
+                setPadding(dp(activity, 15), dp(activity, 13), dp(activity, 15), dp(activity, 13))
+            }
+            val statusHeading = TextView(activity).apply {
+                text = "ACTION STATUS"
+                textSize = 10f
+                letterSpacing = 0.08f
+                setTextColor(textMuted)
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            }
+            statusCard.addView(statusHeading, wrapContent())
+            status.setTextColor(textSecondary)
+            status.textSize = 13f
+            status.setLineSpacing(dp(activity, 2).toFloat(), 1f)
+            statusCard.addView(status, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(activity, 6) })
+            root.addView(statusCard, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(activity, 12) })
         }
     }
 
