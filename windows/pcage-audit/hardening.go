@@ -277,8 +277,9 @@ func supportsMachinePolicy(edition string) bool {
 }
 
 func supportsClientPrivacyPolicies(edition string) bool {
-	edition = strings.ToLower(edition)
-	return supportsMachinePolicy(edition) && !strings.Contains(edition, "server")
+	// Home/Core is still a Windows client edition; this helper scopes client-only
+	// controls. Machine Group Policy support is checked separately.
+	return !strings.Contains(strings.ToLower(edition), "server")
 }
 
 func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
