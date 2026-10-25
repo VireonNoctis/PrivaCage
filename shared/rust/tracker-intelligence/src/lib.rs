@@ -159,7 +159,7 @@ pub fn discover_candidates(c:&Catalog,observations:&[Observation])->Vec<Candidat
             IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().any(|v|sdk_pattern_matches(&value,v)),
             IndicatorKind::PackageId=>e.indicators.package_ids.iter().any(|v|value.eq_ignore_ascii_case(v)),
             IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().any(|v|value.eq_ignore_ascii_case(v)),
-            IndicatorKind::DexString=>e.indicators.dex_strings.iter().any(|v|value.contains(v)),
+            IndicatorKind::DexString=>e.indicators.dex_strings.iter().any(|v|value==v.to_ascii_lowercase()),
             IndicatorKind::FileHashSha256=>e.indicators.file_hashes_sha256.iter().any(|v|value.eq_ignore_ascii_case(v)),
         });
         if !known{out.push(Candidate{value:o.value.clone(),kind:o.kind.clone(),first_seen_context:o.context.clone(),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()})}
