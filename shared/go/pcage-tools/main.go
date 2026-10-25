@@ -20,7 +20,6 @@ import (
 
 const (
 	dateLayout = "2006-01-02"
-	androidNamespace = "http://schemas.android.com/apk/res/android"
 )
 
 var (
