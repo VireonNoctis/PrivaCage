@@ -26,6 +26,7 @@ android {
             initWith(getByName("release"))
             isDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
     }
 
