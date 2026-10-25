@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/binary"
@@ -289,12 +290,14 @@ func runPowerShellScript(ctx context.Context, script string) ([]byte, error) {
 		}
 	}
 	command.Env = append(command.Env, "PRIVACAGE_INTERACTIVE="+strconv.FormatBool(isInteractiveInput()))
-	output, err := command.CombinedOutput()
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("Windows PowerShell operation exceeded its deadline: %w", ctx.Err())
 		}
-		detail := strings.TrimSpace(string(output))
+		detail := strings.TrimSpace(stderr.String())
 		if len(detail) > 1800 {
 			detail = detail[len(detail)-1800:]
 		}
@@ -302,6 +305,13 @@ func runPowerShellScript(ctx context.Context, script string) ([]byte, error) {
 			detail = err.Error()
 		}
 		return nil, fmt.Errorf("Windows PowerShell operation failed: %s", detail)
+	}
+	if stderr.Len() != 0 {
+		detail := strings.TrimSpace(stderr.String())
+		if len(detail) > 1800 {
+			detail = detail[len(detail)-1800:]
+		}
+		return nil, fmt.Errorf("Windows PowerShell emitted an error stream despite exit code 0: %s", detail)
 	}
 	if len(output) == 0 {
 		return nil, errors.New("Windows PowerShell returned no data")
