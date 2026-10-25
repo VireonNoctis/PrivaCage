@@ -28,7 +28,7 @@ func execute(args []string, stdout, stderr io.Writer, goos string) error {
 		return runWindowsCommand(args, stdout, stderr)
 	}
 	if goos != "windows" {
-		return errors.New("PrivaCage Windows privacy controls require Windows 10/11 and Windows PowerShell; no system changes were made")
+		return errors.New("this read-only audit requires Windows 10/11 and Windows PowerShell; no system changes were made")
 	}
 	return runWindowsCommand(args, stdout, stderr)
 }
