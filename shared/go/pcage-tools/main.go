@@ -76,8 +76,35 @@ type trackerEntry struct {
 }
 
 type trackerIndicators struct {
-	Domains     []string `json:"domains,omitempty"`
-	SDKPatterns []string `json:"sdk_patterns,omitempty"`
+	Domains         []string `json:"domains,omitempty"`
+	SDKPatterns     []string `json:"sdk_patterns,omitempty"`
+	domainsPresent  bool
+	sdkPatternsPresent bool
+}
+
+func (indicators *trackerIndicators) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for name := range fields {
+		if name != "domains" && name != "sdk_patterns" {
+			return fmt.Errorf("unsupported indicators field %q", name)
+		}
+	}
+	if value, exists := fields["domains"]; exists {
+		indicators.domainsPresent = true
+		if err := json.Unmarshal(value, &indicators.Domains); err != nil {
+			return fmt.Errorf("indicators.domains must be an array of strings: %w", err)
+		}
+	}
+	if value, exists := fields["sdk_patterns"]; exists {
+		indicators.sdkPatternsPresent = true
+		if err := json.Unmarshal(value, &indicators.SDKPatterns); err != nil {
+			return fmt.Errorf("indicators.sdk_patterns must be an array of strings: %w", err)
+		}
+	}
+	return nil
 }
 
 type trackerEvidence struct {
@@ -395,23 +422,29 @@ func validateTrackerDatabase(document trackerDatabase, maxAgeDays *int, today ti
 				return fail(fmt.Sprintf("%s.last_verified is %d days old; evidence review is required after %d days", context, ageDays, *maxAgeDays))
 			}
 		}
-		if len(entry.Indicators.Domains) == 0 && len(entry.Indicators.SDKPatterns) == 0 {
+		domainsPresent := entry.Indicators.domainsPresent || entry.Indicators.Domains != nil
+		patternsPresent := entry.Indicators.sdkPatternsPresent || entry.Indicators.SDKPatterns != nil
+		if !domainsPresent && !patternsPresent {
 			return fail(context + ".indicators must not be empty and must contain a non-empty domains or sdk_patterns array")
 		}
-		if err := validateStringArray(entry.Indicators.Domains, context+".indicators.domains"); err != nil {
-			return fail(err.Error())
-		}
-		for domainIndex, domain := range entry.Indicators.Domains {
-			if err := validateDomain(domain, fmt.Sprintf("%s.indicators.domains[%d]", context, domainIndex)); err != nil {
+		if domainsPresent {
+			if err := validateStringArray(entry.Indicators.Domains, context+".indicators.domains"); err != nil {
 				return fail(err.Error())
 			}
+			for domainIndex, domain := range entry.Indicators.Domains {
+				if err := validateDomain(domain, fmt.Sprintf("%s.indicators.domains[%d]", context, domainIndex)); err != nil {
+					return fail(err.Error())
+				}
+			}
 		}
-		if err := validateStringArray(entry.Indicators.SDKPatterns, context+".indicators.sdk_patterns"); err != nil {
-			return fail(err.Error())
-		}
-		for patternIndex, pattern := range entry.Indicators.SDKPatterns {
-			if !sdkPattern.MatchString(pattern) {
-				return fail(fmt.Sprintf("%s.indicators.sdk_patterns[%d] must be a dotted package/class pattern with an optional terminal .* or .** wildcard", context, patternIndex))
+		if patternsPresent {
+			if err := validateStringArray(entry.Indicators.SDKPatterns, context+".indicators.sdk_patterns"); err != nil {
+				return fail(err.Error())
+			}
+			for patternIndex, pattern := range entry.Indicators.SDKPatterns {
+				if !sdkPattern.MatchString(pattern) {
+					return fail(fmt.Sprintf("%s.indicators.sdk_patterns[%d] must be a dotted package/class pattern with an optional terminal .* or .** wildcard", context, patternIndex))
+				}
 			}
 		}
 		if len(entry.Evidence) == 0 {
