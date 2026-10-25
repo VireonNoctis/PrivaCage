@@ -49,6 +49,7 @@
   let statusFilter = $state('all');
   let activeEntryId = $state<string | null>(null);
   let reducedMotion = $state(false);
+  let firstLoad = true;
   let requestController: AbortController | null = null;
 
   let currentViewName = $derived(viewNames[activeView]);
@@ -109,7 +110,7 @@
       summary = summaryResult;
       catalog = catalogResult;
       capabilities = capabilitiesResult.capabilities;
-      notice = 'Workspace refreshed from the Rust API.';
+      notice = firstLoad ? '' : 'Workspace refreshed from the Rust API.';
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return;
       apiError =
@@ -118,7 +119,10 @@
           : 'The Rust API could not be reached. No replacement data was generated.';
       notice = '';
     } finally {
-      if (requestController === controller) loading = false;
+      if (requestController === controller) {
+        loading = false;
+        firstLoad = false;
+      }
     }
   }
 
