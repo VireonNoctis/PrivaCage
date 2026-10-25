@@ -166,7 +166,7 @@ Automatic artifact downloading should only be added with a verifiable source ind
 
 ## Windows privacy audit and hardening
 
-The Go tool under `windows/pcage-audit/` provides a read-only local audit and a reversible policy-hardening workflow. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
+The Go tool under `windows/pcage-audit/` provides a read-only local audit and a reversible policy-hardening workflow. The read-only report covers the three firewall profiles, selected diagnostic-data and Windows App Privacy policies, adapter DNS resolver addresses, and current-user WinINET proxy-state flags. It does not print proxy hostnames/PAC URLs or claim that resolver transport is encrypted. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
 
 ### Profiles and policy boundaries
 
