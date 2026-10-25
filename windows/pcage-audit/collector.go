@@ -42,6 +42,7 @@ type powershellSnapshot struct {
 
 var powershellAuditScript = strings.Join([]string{
 	"$ErrorActionPreference = 'Stop'",
+	"$ProgressPreference = 'SilentlyContinue'",
 	"function Read-DwordPolicy([string]$Path, [string]$Name) {",
 	"  try {",
 	"    if (-not (Test-Path -LiteralPath $Path -ErrorAction Stop)) { return [ordered]@{ configured = $false; value = $null; invalid_type = $false; read_error = $false } }",
