@@ -1187,14 +1187,151 @@ mod advanced_tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    #[test] fn release_store_publishes_verifies_and_lists(){
-        let dir=std::env::temp_dir().join(format!("pcage-release-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));fs::create_dir_all(&dir).unwrap();
-        let catalog=dir.join("catalog.json");fs::write(&catalog,serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
-        let root=dir.join("store");let seed="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-        let manifest=publish_release(&catalog,&root,"release-1","2026-10-23",seed).unwrap();
-        verify_current_release(&root,&manifest.signer_public_key_hex).unwrap();
-        assert_eq!(list_verified_releases(&root,&manifest.signer_public_key_hex).unwrap().len(),1);
-        rollback_release(&root,"release-1",&manifest.signer_public_key_hex).unwrap();
+    #[test]
+    fn release_store_chains_releases_and_requires_external_rollback_floors() {
+        let dir = std::env::temp_dir().join(format!(
+            "pcage-release-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let catalog = dir.join("catalog.json");
+        fs::write(&catalog, serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
+        let root = dir.join("store");
+        let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+        let first = publish_release(&catalog, &root, "release-1", "2026-10-23", seed).unwrap();
+        assert_eq!(first.sequence, 1);
+        verify_current_release(&root, &first.signer_public_key_hex).unwrap();
+        let first_manifest_bytes = fs::read(root.join("releases/release-1/manifest.json")).unwrap();
+
+        let second = publish_release(&catalog, &root, "release-2", "2026-10-24", seed).unwrap();
+        assert_eq!(second.sequence, 2);
+        assert_eq!(
+            second.previous_manifest_sha256.as_deref(),
+            Some(sha256_hex(&first_manifest_bytes).as_str())
+        );
+        verify_current_release(&root, &second.signer_public_key_hex).unwrap();
+        let history = list_verified_releases(&root, &second.signer_public_key_hex).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0]["sequence"].as_u64(), Some(1));
+        assert_eq!(history[1]["sequence"].as_u64(), Some(2));
+
+        let signed_state_before_rollback = fs::read(root.join("current.json")).unwrap();
+        rollback_release(&root, "release-1", seed).unwrap();
+        verify_current_release(&root, &second.signer_public_key_hex).unwrap();
+        assert!(verify_current_release_with_floors(&root, &second.signer_public_key_hex, Some(2), None).is_err());
+        assert!(verify_current_release_with_floors(&root, &second.signer_public_key_hex, None, Some(4)).is_err());
+        verify_current_release_with_floors(&root, &second.signer_public_key_hex, Some(1), Some(3)).unwrap();
+
+        // A replayed pointer from before the explicit rollback is validly signed and
+        // still references the current chain head, so a caller-retained revision floor
+        // is what detects that state replay.
+        fs::write(root.join("current.json"), signed_state_before_rollback).unwrap();
+        verify_current_release(&root, &second.signer_public_key_hex).unwrap();
+        assert!(verify_current_release_with_floors(&root, &second.signer_public_key_hex, None, Some(3)).is_err());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn release_store_rejects_tampered_manifest_and_pointer() {
+        let dir = std::env::temp_dir().join(format!(
+            "pcage-release-tamper-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let catalog = dir.join("catalog.json");
+        fs::write(&catalog, serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
+        let root = dir.join("store");
+        let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let manifest = publish_release(&catalog, &root, "release-1", "2026-10-23", seed).unwrap();
+
+        let manifest_path = root.join("releases/release-1/manifest.json");
+        let mut changed_manifest: ReleaseManifest = read_json(&manifest_path).unwrap();
+        changed_manifest.expires_at = "2028-10-23".into();
+        write_atomic(&manifest_path, &serde_json::to_vec_pretty(&changed_manifest).unwrap()).unwrap();
+        assert!(verify_current_release(&root, &manifest.signer_public_key_hex).is_err());
+
+        // Restore the immutable release correctly, then mutate just the current pointer.
+        write_atomic(
+            &manifest_path,
+            &serde_json::to_vec_pretty(&manifest).unwrap()
+        ).unwrap();
+        let mut pointer: CurrentRelease = read_json(&root.join("current.json")).unwrap();
+        pointer.statement.release_id = "release-forged".into();
+        write_atomic(&root.join("current.json"), &serde_json::to_vec_pretty(&pointer).unwrap()).unwrap();
+        assert!(verify_current_release(&root, &manifest.signer_public_key_hex).is_err());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn release_store_rejects_missing_history_and_expired_publication() {
+        let dir = std::env::temp_dir().join(format!(
+            "pcage-release-gap-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let catalog = dir.join("catalog.json");
+        fs::write(&catalog, serde_json::to_vec(&sample_catalog()).unwrap()).unwrap();
+        let root = dir.join("store");
+        let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let first = publish_release(&catalog, &root, "release-1", "2026-10-23", seed).unwrap();
+        publish_release(&catalog, &root, "release-2", "2026-10-24", seed).unwrap();
+        fs::remove_dir_all(root.join("releases/release-1")).unwrap();
+        assert!(verify_current_release(&root, &first.signer_public_key_hex).is_err());
+        assert!(list_verified_releases(&root, &first.signer_public_key_hex).is_err());
+
+        let expired_root = dir.join("expired-store");
+        assert!(publish_release(&catalog, &expired_root, "expired", "2020-01-01", seed).is_err());
+        assert!(!expired_root.join("current.json").exists());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn current_verification_rejects_a_signed_but_expired_release() {
+        let dir = std::env::temp_dir().join(format!(
+            "pcage-release-expired-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let root = dir.join("store");
+        let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let key = signing_key_from_seed(seed).unwrap();
+        let public_key = hex::encode(key.verifying_key().as_bytes());
+        let catalog_bytes = serde_json::to_vec(&sample_catalog()).unwrap();
+        let manifest = build_release_with_metadata(
+            &catalog_bytes,
+            1,
+            None,
+            "2020-01-01",
+            "2021-01-01",
+            seed,
+        ).unwrap();
+        let release_dir = root.join("releases/expired");
+        fs::create_dir_all(&release_dir).unwrap();
+        fs::write(release_dir.join("catalog.json"), &catalog_bytes).unwrap();
+        let manifest_bytes = serde_json::to_vec_pretty(&manifest).unwrap();
+        fs::write(release_dir.join("manifest.json"), &manifest_bytes).unwrap();
+        let pointer = create_current_pointer(
+            "expired",
+            &manifest.catalog_sha256,
+            manifest.sequence,
+            manifest.sequence,
+            &sha256_hex(&manifest_bytes),
+            1,
+            "publish",
+            &current_utc_date().unwrap(),
+            &public_key,
+            seed,
+        ).unwrap();
+        fs::write(root.join("current.json"), serde_json::to_vec_pretty(&pointer).unwrap()).unwrap();
+        assert!(verify_current_release(&root, &public_key).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
 
