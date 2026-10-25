@@ -16,6 +16,21 @@ mkdir -p "$RESULTS/baseline" "$RESULTS/head"
 # workloads remain sequential to avoid CPU contention between samples.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$RUNNER_TEMP/privacage-cargo-target}"
 
+build_native_benchmark_libraries() {
+    local workspace="$1"
+
+    # The UI touches protected local sync storage during startup. Build the same
+    # JNI dependencies that the normal Android validation workflow packages.
+    (
+        cd "$workspace/shared/rust/pcage-sync-jni"
+        cargo ndk -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+    )
+    (
+        cd "$workspace/shared/rust/pcage-metadata-jni"
+        cargo ndk -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+    )
+}
+
 run_rust_benchmark() {
     local label="$1"
     local workspace="$2"
@@ -78,6 +93,9 @@ run_startup_benchmark() {
     echo "Saved startup measurements to $output"
     echo "::endgroup::"
 }
+
+build_native_benchmark_libraries "$BASELINE"
+build_native_benchmark_libraries "$ROOT"
 
 run_rust_benchmark baseline "$BASELINE"
 run_rust_benchmark head "$ROOT"
