@@ -112,6 +112,62 @@ type trackerEvidence struct {
 	Description string `json:"description"`
 }
 
+func rejectUnknownJSONFields(data []byte, allowed []string, context string) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	allowedFields := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		allowedFields[name] = struct{}{}
+	}
+	for name := range fields {
+		if _, ok := allowedFields[name]; !ok {
+			return fmt.Errorf("unknown field %q in %s", name, context)
+		}
+	}
+	return nil
+}
+
+func (database *trackerDatabase) UnmarshalJSON(data []byte) error {
+	if err := rejectUnknownJSONFields(data, []string{"schema_version", "updated_at", "entries"}, "tracker database"); err != nil {
+		return err
+	}
+	type wire trackerDatabase
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*database = trackerDatabase(decoded)
+	return nil
+}
+
+func (entry *trackerEntry) UnmarshalJSON(data []byte) error {
+	if err := rejectUnknownJSONFields(data, []string{"id", "name", "category", "indicators", "confidence", "status", "last_verified", "evidence"}, "tracker entry"); err != nil {
+		return err
+	}
+	type wire trackerEntry
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*entry = trackerEntry(decoded)
+	return nil
+}
+
+func (evidence *trackerEvidence) UnmarshalJSON(data []byte) error {
+	if err := rejectUnknownJSONFields(data, []string{"url", "description"}, "tracker evidence"); err != nil {
+		return err
+	}
+	type wire trackerEvidence
+	var decoded wire
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*evidence = trackerEvidence(decoded)
+	return nil
+}
+
 type reviewEntry struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
