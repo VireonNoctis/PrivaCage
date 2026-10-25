@@ -102,20 +102,29 @@ pub fn normalize_domain(s:&str)->Option<String>{
 /// Exact or DNS-label-boundary suffix match; never a substring match.
 pub fn domain_matches(observed:&str,indicator:&str)->bool{
     let (Some(o),Some(i))=(normalize_domain(observed),normalize_domain(indicator))else{return false};
-    o==i||o.strip_suffix(&format!(".{i}")).is_some()
+    o==i||(o.len()>i.len()&&o.ends_with(&i)&&o.as_bytes()[o.len()-i.len()-1]==b'.')
 }
-fn indicator_values<'a>(e:&'a Entry,k:&IndicatorKind)->Vec<&'a str>{match k{
-    IndicatorKind::Domain=>e.indicators.domains.iter().map(String::as_str).collect(),
-    IndicatorKind::IpAddress=>e.indicators.ip_addresses.iter().map(String::as_str).collect(),
-    IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().map(String::as_str).collect(),
-    IndicatorKind::PackageId=>e.indicators.package_ids.iter().map(String::as_str).collect(),
-    IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().map(String::as_str).collect(),
-    IndicatorKind::DexString=>e.indicators.dex_strings.iter().map(String::as_str).collect(),
-    IndicatorKind::FileHashSha256=>e.indicators.file_hashes_sha256.iter().map(String::as_str).collect(),
+fn entry_has_indicator_match(e:&Entry,o:&Observation)->bool{match o.kind{
+    IndicatorKind::Domain=>e.indicators.domains.iter().any(|v|matched(o,v)),
+    IndicatorKind::IpAddress=>e.indicators.ip_addresses.iter().any(|v|matched(o,v)),
+    IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().any(|v|matched(o,v)),
+    IndicatorKind::PackageId=>e.indicators.package_ids.iter().any(|v|matched(o,v)),
+    IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().any(|v|matched(o,v)),
+    IndicatorKind::DexString=>e.indicators.dex_strings.iter().any(|v|matched(o,v)),
+    IndicatorKind::FileHashSha256=>e.indicators.file_hashes_sha256.iter().any(|v|matched(o,v)),
+}}
+fn has_indicators(e:&Entry,k:&IndicatorKind)->bool{match k{
+    IndicatorKind::Domain=>!e.indicators.domains.is_empty(),
+    IndicatorKind::IpAddress=>!e.indicators.ip_addresses.is_empty(),
+    IndicatorKind::SdkPattern=>!e.indicators.sdk_patterns.is_empty(),
+    IndicatorKind::PackageId=>!e.indicators.package_ids.is_empty(),
+    IndicatorKind::CertificateSha256=>!e.indicators.certificate_sha256.is_empty(),
+    IndicatorKind::DexString=>!e.indicators.dex_strings.is_empty(),
+    IndicatorKind::FileHashSha256=>!e.indicators.file_hashes_sha256.is_empty(),
 }}
 fn matched(o:&Observation,v:&str)->bool{match o.kind{
     IndicatorKind::Domain=>domain_matches(&o.value,v),
-    IndicatorKind::IpAddress=>normalize_ip(&o.value).is_some()&&normalize_ip(&o.value)==normalize_ip(v),
+    IndicatorKind::IpAddress=>match (normalize_ip(&o.value),normalize_ip(v)){(Some(left),Some(right))=>left==right,_=>false},
     IndicatorKind::SdkPattern=>sdk_pattern_matches(&o.value,v),
     IndicatorKind::DexString=>o.value.contains(v),
     _=>o.value.eq_ignore_ascii_case(v),
@@ -125,12 +134,12 @@ pub fn match_observations(c:&Catalog,observations:&[Observation])->Vec<MatchResu
     for e in &c.entries{
         if e.status!="active"&&e.status!="review"{continue}
         let mut hits=BTreeSet::new();let mut types=BTreeSet::new();
-        for o in observations {if indicator_values(e,&o.kind).iter().any(|v|matched(o,v)){
+        for o in observations {if entry_has_indicator_match(e,o){
             hits.insert(format!("{:?}:{}",o.kind,o.value));types.insert(o.kind.clone());
         }}
         if hits.is_empty(){continue}
         let expected=[IndicatorKind::Domain,IndicatorKind::IpAddress,IndicatorKind::SdkPattern,IndicatorKind::PackageId,IndicatorKind::CertificateSha256,IndicatorKind::DexString,IndicatorKind::FileHashSha256]
-            .iter().filter(|k|!indicator_values(e,k).is_empty()).count();
+            .iter().filter(|k|has_indicators(e,k)).count();
         let coverage=if expected==0{0}else{((types.len()*100)/expected).min(100) as u8};
         out.push(MatchResult{entry_id:e.id.clone(),name:e.name.clone(),localized_names:e.localized_names.clone(),category:e.category.clone(),status:e.status.clone(),matched_indicators:hits.into_iter().collect(),
             confidence:ConfidenceAssessment{identity:if e.status=="review"{55}else if e.confidence=="high"{85}else{70},
@@ -144,7 +153,15 @@ pub fn discover_candidates(c:&Catalog,observations:&[Observation])->Vec<Candidat
     for o in observations{
         let value=if o.kind==IndicatorKind::Domain{normalize_domain(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&o.value).unwrap_or_else(||o.value.trim().to_ascii_lowercase())}else{o.value.trim().to_ascii_lowercase()};
         if value.is_empty()||!seen.insert((o.kind.clone(),value.clone())){continue}
-        let known=c.entries.iter().any(|e|indicator_values(e,&o.kind).iter().any(|v|if o.kind==IndicatorKind::Domain{domain_matches(&value,v)}else if o.kind==IndicatorKind::IpAddress{normalize_ip(&value).is_some()&&normalize_ip(&value)==normalize_ip(v)}else if o.kind==IndicatorKind::SdkPattern{sdk_pattern_matches(&value,v)}else{value==v.to_ascii_lowercase()}));
+        let known=c.entries.iter().any(|e|match o.kind{
+            IndicatorKind::Domain=>e.indicators.domains.iter().any(|v|domain_matches(&value,v)),
+            IndicatorKind::IpAddress=>match normalize_ip(&value){Some(ref normalized)=>e.indicators.ip_addresses.iter().any(|v|normalize_ip(v).as_ref()==Some(normalized)),None=>false},
+            IndicatorKind::SdkPattern=>e.indicators.sdk_patterns.iter().any(|v|sdk_pattern_matches(&value,v)),
+            IndicatorKind::PackageId=>e.indicators.package_ids.iter().any(|v|value.eq_ignore_ascii_case(v)),
+            IndicatorKind::CertificateSha256=>e.indicators.certificate_sha256.iter().any(|v|value.eq_ignore_ascii_case(v)),
+            IndicatorKind::DexString=>e.indicators.dex_strings.iter().any(|v|value.contains(v)),
+            IndicatorKind::FileHashSha256=>e.indicators.file_hashes_sha256.iter().any(|v|value.eq_ignore_ascii_case(v)),
+        });
         if !known{out.push(Candidate{value:o.value.clone(),kind:o.kind.clone(),first_seen_context:o.context.clone(),disposition:"unreviewed_candidate_not_a_maliciousness_finding".into()})}
     }out
 }
