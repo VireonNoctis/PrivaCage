@@ -1,0 +1,79 @@
+name: Validate Android privacy suite
+
+on:
+  push:
+    paths:
+      - "android-app/**"
+      - "android-core/**"
+      - "shared/app-alternatives/**"
+      - "shared/tracker-db/**"
+      - "shared/go/pcage-tools/**"
+      - ".github/workflows/validate-android-privacy-suite.yml"
+  pull_request:
+    paths:
+      - "android-app/**"
+      - "android-core/**"
+      - "shared/app-alternatives/**"
+      - "shared/tracker-db/**"
+      - "shared/go/pcage-tools/**"
+      - ".github/workflows/validate-android-privacy-suite.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-privacy-suite-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  android-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install compile SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
+      - name: Run Android DNS and privacy-model tests
+        working-directory: android-app
+        run: gradle --no-daemon :android-core:test :app:testDebugUnitTest
+
+  shared-data-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: shared/go/pcage-tools/go.mod
+
+      - name: Run shared privacy-tool regression tests
+        run: go -C shared/go/pcage-tools test ./...
+
+      - name: Validate tracker schema and evidence freshness
+        run: go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+
+      - name: Validate curated app-alternative sources
+        run: go -C shared/go/pcage-tools run . validate-app-alternatives
