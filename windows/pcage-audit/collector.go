@@ -14,30 +14,30 @@ import (
 const maximumSnapshotBytes = 64 * 1024
 
 type firewallProfile struct {
-	Name                string `json:"name"`"
-	Enabled             *bool  `json:"enabled"`"
-	DefaultInboundAction string `json:"default_inbound_action"`"
-	DefaultOutboundAction string `json:"default_outbound_action"`"
+	Name                 string "json:\"name\""
+	Enabled              *bool  "json:\"enabled\""
+	DefaultInboundAction string "json:\"default_inbound_action\""
+	DefaultOutboundAction string "json:\"default_outbound_action\""
 }
 
 type registryPolicy struct {
-	Configured bool `json:"configured"`"
-	Value      *int `json:"value"`"
-	InvalidType bool `json:"invalid_type"`"
-	ReadError  bool `json:"read_error"`"
+	Configured bool "json:\"configured\""
+	Value      *int "json:\"value\""
+	InvalidType bool "json:\"invalid_type\""
+	ReadError  bool "json:\"read_error\""
 }
 
 type appPrivacyPolicies struct {
-	Location  registryPolicy `json:"location"`"
-	Camera    registryPolicy `json:"camera"`"
-	Microphone registryPolicy `json:"microphone"`"
+	Location   registryPolicy "json:\"location\""
+	Camera     registryPolicy "json:\"camera\""
+	Microphone registryPolicy "json:\"microphone\""
 }
 
 type powershellSnapshot struct {
-	FirewallProfiles  []firewallProfile `json:"firewall_profiles"`"
-	FirewallReadError bool              `json:"firewall_read_error"`"
-	DiagnosticData    registryPolicy    `json:"diagnostic_data"`"
-	AppPrivacy        appPrivacyPolicies `json:"app_privacy"`"
+	FirewallProfiles  []firewallProfile "json:\"firewall_profiles\""
+	FirewallReadError bool              "json:\"firewall_read_error\""
+	DiagnosticData    registryPolicy    "json:\"diagnostic_data\""
+	AppPrivacy        appPrivacyPolicies "json:\"app_privacy\""
 }
 
 var powershellAuditScript = strings.Join([]string{
@@ -60,11 +60,11 @@ var powershellAuditScript = strings.Join([]string{
 	"$result = [ordered]@{",
 	"  firewall_profiles = $firewallProfiles",
 	"  firewall_read_error = $firewallReadError",
-	"  diagnostic_data = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection' 'AllowTelemetry')",
+	"  diagnostic_data = (Read-DwordPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' 'AllowTelemetry')",
 	"  app_privacy = [ordered]@{",
-	"    location = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy' 'LetAppsAccessLocation')",
-	"    camera = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy' 'LetAppsAccessCamera')",
-	"    microphone = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy' 'LetAppsAccessMicrophone')",
+	"    location = (Read-DwordPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' 'LetAppsAccessLocation')",
+	"    camera = (Read-DwordPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' 'LetAppsAccessCamera')",
+	"    microphone = (Read-DwordPolicy 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy' 'LetAppsAccessMicrophone')",
 	"  }",
 	"}",
 	"$result | ConvertTo-Json -Depth 8 -Compress",
