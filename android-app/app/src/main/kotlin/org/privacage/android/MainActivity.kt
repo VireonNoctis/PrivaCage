@@ -192,6 +192,12 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(Button(this).apply {
+            text = "Explore privacy-focused app alternatives"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, AppAlternativesActivity::class.java))
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
             text = "Open Android VPN settings (advanced)"
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
