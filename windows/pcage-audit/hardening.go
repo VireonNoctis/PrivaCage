@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"time"
 	"unicode/utf16"
 )
 
