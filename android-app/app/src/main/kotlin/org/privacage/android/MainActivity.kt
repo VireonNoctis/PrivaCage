@@ -98,13 +98,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
-        try {
-            trackerCatalog = TrackerSignatureCatalog.load(this)
-        } catch (exception: Exception) {
-            // Surface the failure to the user while preserving manual-rule functionality.
-            trackerCatalogError = exception.message ?: exception.javaClass.simpleName
-        }
-        apkTrackerCatalog = trackerCatalog.orEmpty()
+        var trackerCatalogLoading = true
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(24))
@@ -260,47 +254,12 @@ class MainActivity : Activity() {
             text = "Bundled tracker intelligence (optional)"
             setPadding(0, dp(18), 0, dp(4))
         })
-        val activeTrackerCount = trackerCatalog.orEmpty().count { it.status == "active" }
-        val reviewTrackerCount = trackerCatalog.orEmpty().count { it.status == "review" }
-        val retiredTrackerCount = trackerCatalog.orEmpty().count { it.status == "retired" }
-        root.addView(TextView(this).apply {
-            text = if (trackerCatalog == null) {
-                "Catalog unavailable: $trackerCatalogError. Manual domain rules still work."
-            } else {
-                "Bundled records: ${trackerCatalog!!.size}; active: $activeTrackerCount; review: $reviewTrackerCount; retired: $retiredTrackerCount. Nothing is blocked until you import domains and save."
-            }
+        val trackerCatalogStatus = TextView(this).apply {
+            text = "Loading bundled tracker intelligence in the background…"
             textSize = 13f
-        })
+        }
+        root.addView(trackerCatalogStatus)
         val trackerDetails = TextView(this).apply {
-            text = buildString {
-                val records = trackerCatalog.orEmpty()
-                append("CATALOG SUMMARY\n")
-                append("Records: ").append(records.size)
-                append(" | Active: ").append(records.count { it.status == "active" })
-                append(" | Review-only: ").append(records.count { it.status == "review" })
-                append(" | Retired: ").append(records.count { it.status == "retired" })
-                append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
-                append(records.joinToString("\n\n") { record ->
-                    buildString {
-                    append(record.name)
-                    append(" [")
-                    append(record.status.uppercase())
-                    append(", ")
-                    append(record.confidence)
-                    append(" confidence]\n")
-                    append("Category: ")
-                    append(record.category)
-                    append("\nDomains: ")
-                    append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
-                    append("\nSDK patterns: ")
-                    append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
-                    append("\nLast verified: ")
-                    append(record.lastVerified)
-                    append("\nEvidence:\n")
-                    append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
-                    }
-                })
-            }
             textSize = 12f
             visibility = android.view.View.GONE
             setPadding(0, dp(8), 0, dp(8))
@@ -308,9 +267,14 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Show tracker records and evidence"
             setOnClickListener {
-                if (trackerCatalog == null) {
-                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Rebuild with a valid bundled signatures.json."
+                if (trackerCatalogLoading) {
+                    statusText.text = "Tracker catalog is still loading in the background. Manual DNS rules remain available."
+                } else if (trackerCatalog == null) {
+                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Manual domain rules still work."
                 } else {
+                    if (trackerDetails.text.isNullOrBlank()) {
+                        trackerDetails.text = formatTrackerCatalogDetails(trackerCatalog.orEmpty())
+                    }
                     val expanded = trackerDetails.visibility != android.view.View.VISIBLE
                     trackerDetails.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.GONE
                     text = if (expanded) "Hide tracker records and evidence" else "Show tracker records and evidence"
@@ -322,7 +286,9 @@ class MainActivity : Activity() {
             text = "Review and import active tracker domains"
             setOnClickListener {
                 val catalog = trackerCatalog
-                if (catalog == null) {
+                if (trackerCatalogLoading) {
+                    statusText.text = "Tracker catalog is still loading. No domains were imported."
+                } else if (catalog == null) {
                     statusText.text = "Tracker catalog unavailable: $trackerCatalogError. No domains were imported."
                 } else {
                     val activeDomains = catalog.filter { it.status == "active" }.flatMap { it.domains }.toSet()
@@ -811,6 +777,33 @@ class MainActivity : Activity() {
         root.addView(statusText, matchWidth())
         refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+        Thread({
+            val loadedCatalog: List<TrackerSignature>?
+            val loadError: String?
+            try {
+                loadedCatalog = TrackerSignatureCatalog.load(this@MainActivity)
+                loadError = null
+            } catch (exception: Exception) {
+                loadedCatalog = null
+                loadError = exception.message ?: exception.javaClass.simpleName
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                trackerCatalogLoading = false
+                trackerCatalog = loadedCatalog
+                trackerCatalogError = loadError
+                apkTrackerCatalog = loadedCatalog.orEmpty()
+                if (loadedCatalog == null) {
+                    trackerCatalogStatus.text = "Catalog unavailable: $loadError. Manual domain rules still work."
+                } else {
+                    val active = loadedCatalog.count { it.status == "active" }
+                    val review = loadedCatalog.count { it.status == "review" }
+                    val retired = loadedCatalog.count { it.status == "retired" }
+                    trackerCatalogStatus.text =
+                        "Bundled records: ${loadedCatalog.size}; active: $active; review: $review; retired: $retired. Nothing is blocked until you import domains and save."
+                }
+            }
+        }, "PrivaCage-tracker-catalog").start()
         try {
             val savedSyncConfig = encryptedSyncManager.storedConfigurationForUi()
             if (savedSyncConfig == null) {
@@ -828,6 +821,31 @@ class MainActivity : Activity() {
                 (exception.message ?: "storage error") + " No stored sync record was overwritten."
         }
         refreshDevicePrivacySnapshot()
+    }
+
+    private fun formatTrackerCatalogDetails(records: List<TrackerSignature>): String = buildString {
+        append("CATALOG SUMMARY\n")
+        append("Records: ").append(records.size)
+        append(" | Active: ").append(records.count { it.status == "active" })
+        append(" | Review-only: ").append(records.count { it.status == "review" })
+        append(" | Retired: ").append(records.count { it.status == "retired" })
+        append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
+        append(records.joinToString("\n\n") { record ->
+            buildString {
+                append(record.name)
+                append(" [")
+                append(record.status.uppercase())
+                append(", ")
+                append(record.confidence)
+                append(" confidence]\n")
+                append("Category: ").append(record.category)
+                append("\nDomains: ").append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
+                append("\nSDK patterns: ").append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
+                append("\nLast verified: ").append(record.lastVerified)
+                append("\nEvidence:\n")
+                append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
+            }
+        })
     }
 
     override fun onStart() {
