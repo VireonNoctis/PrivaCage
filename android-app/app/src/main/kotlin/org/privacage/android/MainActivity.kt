@@ -64,6 +64,8 @@ class MainActivity : Activity() {
     private lateinit var devicePrivacyText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
+    @Volatile private var trackerCatalogLoadComplete = false
+    @Volatile private var trackerCatalogLoadFailure: String? = null
     private var lastImportedTrackerDomains: Set<String> = emptySet()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -792,6 +794,8 @@ class MainActivity : Activity() {
                 trackerCatalogLoading = false
                 trackerCatalog = loadedCatalog
                 trackerCatalogError = loadError
+                trackerCatalogLoadFailure = loadError
+                trackerCatalogLoadComplete = true
                 apkTrackerCatalog = loadedCatalog.orEmpty()
                 if (loadedCatalog == null) {
                     trackerCatalogStatus.text = "Catalog unavailable: $loadError. Manual domain rules still work."
@@ -821,6 +825,18 @@ class MainActivity : Activity() {
                 (exception.message ?: "storage error") + " No stored sync record was overwritten."
         }
         refreshDevicePrivacySnapshot()
+    }
+
+    private fun requireTrackerCatalogForApkAudit(): Boolean {
+        if (!trackerCatalogLoadComplete) {
+            statusText.text = "Tracker intelligence is still loading. Retry this APK audit in a moment so matching is not silently skipped."
+            return false
+        }
+        trackerCatalogLoadFailure?.let { error ->
+            statusText.text = "Tracker intelligence is unavailable: $error. APK tracker matching cannot be performed."
+            return false
+        }
+        return true
     }
 
     private fun formatTrackerCatalogDetails(records: List<TrackerSignature>): String = buildString {
@@ -1878,6 +1894,8 @@ class MainActivity : Activity() {
             return
         }
 
+        if (!requireTrackerCatalogForApkAudit()) return
+
         pendingApkDiffBaseline = null
         statusText.text = "Scanning the baseline APK locally. It will not be installed or uploaded."
         Thread({
@@ -1934,6 +1952,10 @@ class MainActivity : Activity() {
         }
         if (baseline == null) {
             statusText.text = "The baseline report is no longer available. Start the comparison again."
+            return
+        }
+        if (!requireTrackerCatalogForApkAudit()) {
+            pendingApkDiffBaseline = null
             return
         }
 
@@ -1997,6 +2019,8 @@ class MainActivity : Activity() {
             statusText.text = "APK inspection cancelled; no file was installed or uploaded."
             return
         }
+
+        if (!requireTrackerCatalogForApkAudit()) return
 
         statusText.text = "Inspecting the selected APK locally. It will not be installed or executed."
         Thread({
