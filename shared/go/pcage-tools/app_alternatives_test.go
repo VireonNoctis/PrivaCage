@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -145,5 +144,4 @@ func TestRunValidateAppAlternativesCommandAcceptsExplicitFile(t *testing.T) {
 	if code := runValidateAppAlternatives([]string{"unexpected"}); code != 2 {
 		t.Fatalf("unexpected positional argument exited with %d", code)
 	}
-	_ = os.ErrNotExist
 }
