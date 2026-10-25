@@ -17,33 +17,33 @@ const (
 )
 
 type auditCheck struct {
-	ID             string `"id"`
-	Title          string `"title"`
-	Category       string `"category"`
-	Status         string `"status"`
-	Severity       string `"severity"`
-	Observed       string `"observed"`
-	Meaning        string `"meaning"`
-	Recommendation string `"recommendation,omitempty"`
-	SourceURL      string `"source_url"`
+	ID             string "json:\"id\""
+	Title          string "json:\"title\""
+	Category       string "json:\"category\""
+	Status         string "json:\"status\""
+	Severity       string "json:\"severity\""
+	Observed       string "json:\"observed\""
+	Meaning        string "json:\"meaning\""
+	Recommendation string "json:\"recommendation,omitempty\""
+	SourceURL      string "json:\"source_url\""
 }
 
 type auditSummary struct {
-	Total         int `"total"`
-	OK            int `"ok"`
-	Review        int `"review"`
-	NotConfigured int `"not_configured"`
-	Unknown       int `"unknown"`
+	Total         int "json:\"total\""
+	OK            int "json:\"ok\""
+	Review        int "json:\"review\""
+	NotConfigured int "json:\"not_configured\""
+	Unknown       int "json:\"unknown\""
 }
 
 type auditReport struct {
-	SchemaVersion int          `"schema_version"`
-	GeneratedAt   time.Time    `"generated_at"`
-	Platform      string       `"platform"`
-	ReadOnly      bool         `"read_only"`
-	Summary       auditSummary `"summary"`
-	Checks        []auditCheck `"checks"`
-	Limitations   []string     `"limitations"`
+	SchemaVersion int          "json:\"schema_version\""
+	GeneratedAt   time.Time    "json:\"generated_at\""
+	Platform      string       "json:\"platform\""
+	ReadOnly      bool         "json:\"read_only\""
+	Summary       auditSummary "json:\"summary\""
+	Checks        []auditCheck "json:\"checks\""
+	Limitations   []string     "json:\"limitations\""
 }
 
 func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport {
