@@ -26,6 +26,17 @@ class AppAlternativeCatalogTest {
     }
 
     @Test
+    fun rejectsDecimalOrStringSchemaVersions() {
+        assertFails(document().replace("\"schema_version\": 1", "\"schema_version\": 1.0"), "exact integer")
+        assertFails(document().replace("\"schema_version\": 1", "\"schema_version\": \"1\""), "exact integer")
+    }
+
+    @Test
+    fun rejectsNonCanonicalCalendarDates() {
+        assertFails(document().replace("2026-10-25", "2026-1-25"), "canonical YYYY-MM-DD")
+    }
+
+    @Test
     fun rejectsInsecureHttpUrls() {
         assertFails(document().replace("https://play.google.com", "http://play.google.com"), "HTTPS")
     }
