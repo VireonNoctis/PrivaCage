@@ -258,6 +258,10 @@ Useful starting points:
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
 
+### Research library (25 October 2026)
+
+The expanded research library documents privacy threats, evidence-backed platform boundaries, network observability, APK analysis, data-broker workflows, data minimization, safety considerations, and acceptance tests. Start with [`docs/research/README.md`](docs/research/README.md). The notes distinguish observed signals, static indicators, inference, and unavailable capabilities; they do not imply that planned features are already implemented.
+
 ## Security reporting
 
 Do not publish details of an unpatched vulnerability involving user data or security controls in a public issue. Use GitHub's private vulnerability reporting feature if it is enabled for this repository.
