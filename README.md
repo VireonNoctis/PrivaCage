@@ -40,6 +40,10 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 
 ## Repository map
 
+- `web/` — responsive Svelte 5 + TypeScript web console built as static assets; no JavaScript backend routes.
+- `web-backend/` — Rust/Axum API for the canonical tracker catalogue, derived summary metrics, service health, and explicit capability boundaries. Binds to loopback by default.
+- `.github/workflows/web-validation.yml` — Svelte/TypeScript checks, frontend tests, production build, Rust formatting, and Rust API tests.
+
 - `docs/architecture.md` — system boundaries and data flow.
 - `docs/threat-model.md` — assets, threats, and non-goals.
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
