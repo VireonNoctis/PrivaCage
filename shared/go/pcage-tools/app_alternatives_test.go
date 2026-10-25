@@ -13,6 +13,7 @@ func appAlternativeFixture() appAlternativeCatalog {
 		UpdatedAt: "2026-01-01",
 		Alternatives: []appAlternativeRecord{{
 			ID: "gmail-proton-mail",
+			PackageName: "ch.protonmail.android",
 			Replaces: "Gmail",
 			Category: "Email",
 			Name: "Proton Mail",
@@ -50,6 +51,11 @@ func TestAppAlternativeCatalogRejectsInvalidRecords(t *testing.T) {
 		mutate func(*appAlternativeCatalog)
 		want string
 	}{
+		{
+			name: "invalid Android package name",
+			mutate: func(c *appAlternativeCatalog) { c.Alternatives[0].PackageName = "com/example/app" },
+			want: "valid dotted Android package name",
+		},
 		{
 			name: "duplicate record ID",
 			mutate: func(c *appAlternativeCatalog) { c.Alternatives = append(c.Alternatives, c.Alternatives[0]) },
