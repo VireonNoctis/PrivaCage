@@ -1,0 +1,630 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-25",
+  "alternatives": [
+    {
+      "id": "gmail-proton-mail",
+      "replaces": "Gmail",
+      "category": "Email",
+      "name": "Proton Mail",
+      "summary": "Privacy-oriented email with encrypted-message features and open-source clients.",
+      "tradeoffs": "Encryption depends on recipient and message path; account, delivery, and some routing metadata still exist. Some features are paid.",
+      "evidence_url": "https://proton.me/mail/security",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=ch.protonmail.android"
+        },
+        {
+          "id": "official",
+          "label": "Proton download page",
+          "url": "https://proton.me/mail/download"
+        }
+      ]
+    },
+    {
+      "id": "gmail-thunderbird",
+      "replaces": "Gmail",
+      "category": "Email",
+      "name": "Thunderbird for Android",
+      "summary": "Open-source email client that can connect to mail providers you choose.",
+      "tradeoffs": "A client does not make the mailbox provider private or add end-to-end encryption to ordinary email by itself.",
+      "evidence_url": "https://www.thunderbird.net/en-US/mobile/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=net.thunderbird.android"
+        },
+        {
+          "id": "official",
+          "label": "Thunderbird website",
+          "url": "https://www.thunderbird.net/en-US/mobile/"
+        }
+      ]
+    },
+    {
+      "id": "drive-proton-drive",
+      "replaces": "Google Drive",
+      "category": "Cloud storage",
+      "name": "Proton Drive",
+      "summary": "Encrypted cloud storage with a first-party Android app.",
+      "tradeoffs": "Still depends on a cloud account and provider availability; sharing links and account recovery need careful handling.",
+      "evidence_url": "https://proton.me/drive",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=me.proton.android.drive"
+        },
+        {
+          "id": "official",
+          "label": "Proton Drive download",
+          "url": "https://proton.me/drive/download"
+        }
+      ]
+    },
+    {
+      "id": "drive-nextcloud",
+      "replaces": "Google Drive",
+      "category": "Cloud storage",
+      "name": "Nextcloud Files",
+      "summary": "Open-source client for a Nextcloud server that you or an organization choose.",
+      "tradeoffs": "Privacy depends on the server operator, server configuration, and transport; a self-hosted server requires maintenance and backups.",
+      "evidence_url": "https://nextcloud.com/security/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.nextcloud.client"
+        },
+        {
+          "id": "official",
+          "label": "Nextcloud clients",
+          "url": "https://nextcloud.com/install/#install-clients"
+        }
+      ]
+    },
+    {
+      "id": "photos-ente",
+      "replaces": "Google Photos",
+      "category": "Photos",
+      "name": "Ente Photos",
+      "summary": "Photo backup built around end-to-end encryption, with mobile and desktop clients.",
+      "tradeoffs": "Cloud backup still relies on an account and available storage; encryption does not remove visible image content or guarantee every metadata field is scrubbed.",
+      "evidence_url": "https://ente.io/whitepaper",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=io.ente.photos"
+        },
+        {
+          "id": "official",
+          "label": "Ente downloads",
+          "url": "https://ente.io/download/"
+        }
+      ]
+    },
+    {
+      "id": "maps-organic",
+      "replaces": "Google Maps",
+      "category": "Maps",
+      "name": "Organic Maps",
+      "summary": "Offline-first maps and navigation with open map data.",
+      "tradeoffs": "Offline maps are not a full replacement for live traffic, business updates, transit coverage, or every location search. Download map regions in advance.",
+      "evidence_url": "https://organicmaps.app/faq/privacy/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=app.organicmaps"
+        },
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/app.organicmaps/"
+        },
+        {
+          "id": "official",
+          "label": "Organic Maps website",
+          "url": "https://organicmaps.app/"
+        }
+      ]
+    },
+    {
+      "id": "maps-osmand",
+      "replaces": "Google Maps",
+      "category": "Maps",
+      "name": "OsmAnd",
+      "summary": "Offline-capable maps and navigation with downloadable map data and detailed route options.",
+      "tradeoffs": "Some features and map downloads may be limited by the edition; online search and online services have different privacy properties from offline navigation.",
+      "evidence_url": "https://osmand.net/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=net.osmand"
+        },
+        {
+          "id": "official",
+          "label": "OsmAnd website",
+          "url": "https://osmand.net/"
+        }
+      ]
+    },
+    {
+      "id": "chrome-firefox",
+      "replaces": "Google Chrome",
+      "category": "Browser",
+      "name": "Firefox for Android",
+      "summary": "Open-source browser with tracking protection controls and add-on support.",
+      "tradeoffs": "Browser privacy depends on settings, extensions, sync choices, and websites visited; it is not anonymous by default.",
+      "evidence_url": "https://www.mozilla.org/en-US/privacy/firefox/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=org.mozilla.firefox"
+        },
+        {
+          "id": "official",
+          "label": "Mozilla mobile browser",
+          "url": "https://www.mozilla.org/firefox/browsers/mobile/android/"
+        }
+      ]
+    },
+    {
+      "id": "chrome-brave",
+      "replaces": "Google Chrome",
+      "category": "Browser",
+      "name": "Brave Browser",
+      "summary": "Browser with built-in tracker and ad blocking controls.",
+      "tradeoffs": "Optional features and sync choices change behavior; built-in blocking is not a guarantee that all tracking or fingerprinting is prevented.",
+      "evidence_url": "https://brave.com/privacy/browser/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.brave.browser"
+        },
+        {
+          "id": "official",
+          "label": "Brave download",
+          "url": "https://brave.com/download/"
+        }
+      ]
+    },
+    {
+      "id": "search-duckduckgo",
+      "replaces": "Google Search",
+      "category": "Search",
+      "name": "DuckDuckGo Privacy Browser",
+      "summary": "Mobile browser centered on DuckDuckGo search and privacy protections.",
+      "tradeoffs": "Search results and browser features differ from Google; using a privacy-oriented browser does not make every visited website private.",
+      "evidence_url": "https://duckduckgo.com/privacy",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.duckduckgo.mobile.android"
+        },
+        {
+          "id": "official",
+          "label": "DuckDuckGo app",
+          "url": "https://duckduckgo.com/app"
+        }
+      ]
+    },
+    {
+      "id": "youtube-newpipe",
+      "replaces": "YouTube",
+      "category": "Video",
+      "name": "NewPipe",
+      "summary": "Open-source video client that can browse supported services without the official YouTube app.",
+      "tradeoffs": "It is not an official YouTube client; service changes can temporarily break it, and account-based features or DRM content may be unavailable.",
+      "evidence_url": "https://newpipe.net/faq/",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/org.schabi.newpipe/"
+        },
+        {
+          "id": "official",
+          "label": "NewPipe website",
+          "url": "https://newpipe.net/"
+        }
+      ]
+    },
+    {
+      "id": "youtube-libretube",
+      "replaces": "YouTube",
+      "category": "Video",
+      "name": "LibreTube",
+      "summary": "Open-source alternative client for browsing YouTube content through configurable Piped instances.",
+      "tradeoffs": "Instance availability, latency, and operator trust vary; the instance may see request metadata. It is not an official YouTube client.",
+      "evidence_url": "https://github.com/libre-tube/LibreTube",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/com.github.libretube/"
+        },
+        {
+          "id": "github",
+          "label": "Project releases",
+          "url": "https://github.com/libre-tube/LibreTube/releases"
+        }
+      ]
+    },
+    {
+      "id": "calendar-etar",
+      "replaces": "Google Calendar",
+      "category": "Calendar",
+      "name": "Etar Calendar",
+      "summary": "Open-source calendar app for local calendars and supported Android calendar providers.",
+      "tradeoffs": "Sync depends on the account/provider configured on Android; replacing the UI alone does not stop a Google account from syncing calendar data.",
+      "evidence_url": "https://github.com/Etar-Group/Etar-Calendar",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/ws.xsoh.etar/"
+        },
+        {
+          "id": "github",
+          "label": "Source repository",
+          "url": "https://github.com/Etar-Group/Etar-Calendar"
+        }
+      ]
+    },
+    {
+      "id": "calendar-proton",
+      "replaces": "Google Calendar",
+      "category": "Calendar",
+      "name": "Proton Calendar",
+      "summary": "Calendar service with a privacy-focused account model and encrypted data handling.",
+      "tradeoffs": "Requires a Proton account; interoperability, shared calendars, invitations, and features can differ from Google Calendar.",
+      "evidence_url": "https://proton.me/calendar",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=me.proton.android.calendar"
+        },
+        {
+          "id": "official",
+          "label": "Proton Calendar",
+          "url": "https://proton.me/calendar"
+        }
+      ]
+    },
+    {
+      "id": "keep-joplin",
+      "replaces": "Google Keep",
+      "category": "Notes",
+      "name": "Joplin",
+      "summary": "Open-source notes and to-do app with local storage and optional sync choices.",
+      "tradeoffs": "Sync encryption and privacy depend on configuration and chosen sync target; verify settings before storing sensitive notes.",
+      "evidence_url": "https://joplinapp.org/help/apps/sync/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=net.cozic.joplin"
+        },
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/net.cozic.joplin/"
+        },
+        {
+          "id": "official",
+          "label": "Joplin Android install",
+          "url": "https://joplinapp.org/help/install/android/"
+        }
+      ]
+    },
+    {
+      "id": "keyboard-anysoft",
+      "replaces": "Gboard",
+      "category": "Keyboard",
+      "name": "AnySoftKeyboard",
+      "summary": "Open-source Android keyboard with configurable layouts and dictionaries.",
+      "tradeoffs": "Any keyboard can see text typed into fields it serves; avoid optional network/dictionary features unless you understand their data flow.",
+      "evidence_url": "https://anysoftkeyboard.github.io/",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/com.menny.android.anysoftkeyboard/"
+        },
+        {
+          "id": "official",
+          "label": "Project website",
+          "url": "https://anysoftkeyboard.github.io/"
+        }
+      ]
+    },
+    {
+      "id": "auth-aegis",
+      "replaces": "Google Authenticator",
+      "category": "Authenticator",
+      "name": "Aegis Authenticator",
+      "summary": "Open-source authenticator with an encrypted local vault and export/backup options.",
+      "tradeoffs": "Plan and test an encrypted backup before changing phones; losing the vault and recovery material can lock you out of accounts.",
+      "evidence_url": "https://github.com/beemdevelopment/Aegis",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.beemdevelopment.aegis"
+        },
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/com.beemdevelopment.aegis/"
+        },
+        {
+          "id": "official",
+          "label": "Aegis website",
+          "url": "https://getaegis.app/"
+        }
+      ]
+    },
+    {
+      "id": "contacts-fossify",
+      "replaces": "Google Contacts",
+      "category": "Contacts",
+      "name": "Fossify Contacts",
+      "summary": "Local-first contacts app from the Fossify open-source app suite.",
+      "tradeoffs": "Contacts sync is separate from the local contacts UI; choose a sync provider consciously and export a backup before migrating.",
+      "evidence_url": "https://www.fossify.org/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=org.fossify.contacts"
+        },
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/org.fossify.contacts/"
+        },
+        {
+          "id": "official",
+          "label": "Fossify website",
+          "url": "https://www.fossify.org/"
+        }
+      ]
+    },
+    {
+      "id": "store-fdroid",
+      "replaces": "Google Play Store",
+      "category": "App repository",
+      "name": "F-Droid",
+      "summary": "Repository client focused on free and open-source Android apps, with source/build metadata.",
+      "tradeoffs": "Its catalogue is narrower than Google Play; installing APKs from individual websites without the client can reduce update and signature-change warnings.",
+      "evidence_url": "https://f-droid.org/en/packages/org.fdroid.fdroid/",
+      "sources": [
+        {
+          "id": "official",
+          "label": "F-Droid client page",
+          "url": "https://f-droid.org/en/packages/org.fdroid.fdroid/"
+        },
+        {
+          "id": "fdroid",
+          "label": "F-Droid website",
+          "url": "https://f-droid.org/"
+        }
+      ]
+    },
+    {
+      "id": "store-aurora",
+      "replaces": "Google Play Store",
+      "category": "App repository",
+      "name": "Aurora Store",
+      "summary": "Alternative open-source client for accessing Google Play catalogue listings.",
+      "tradeoffs": "It still accesses the Google Play ecosystem and is not an audit of each app. Account mode, network metadata, and distribution source affect the privacy tradeoff.",
+      "evidence_url": "https://gitlab.com/AuroraOSS/AuroraStore",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/com.aurora.store/"
+        },
+        {
+          "id": "gitlab",
+          "label": "Project repository",
+          "url": "https://gitlab.com/AuroraOSS/AuroraStore"
+        }
+      ]
+    },
+    {
+      "id": "messages-signal",
+      "replaces": "Google Messages",
+      "category": "Messaging",
+      "name": "Signal",
+      "summary": "Private messaging with end-to-end encryption for Signal conversations by default.",
+      "tradeoffs": "Both parties need Signal for Signal's encrypted messaging; SMS and other communication paths are not magically converted into Signal E2EE.",
+      "evidence_url": "https://signal.org/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=org.thoughtcrime.securesms"
+        },
+        {
+          "id": "official",
+          "label": "Signal Android",
+          "url": "https://signal.org/android/"
+        }
+      ]
+    },
+    {
+      "id": "messages-simplex",
+      "replaces": "Google Messages",
+      "category": "Messaging",
+      "name": "SimpleX Chat",
+      "summary": "Messaging app designed to work without requiring a phone number as a user identifier.",
+      "tradeoffs": "Contacts must also use the service; private routing does not make every device, backup, notification, or recipient endpoint risk disappear.",
+      "evidence_url": "https://simplex.chat/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=chat.simplex.app"
+        },
+        {
+          "id": "official",
+          "label": "SimpleX downloads",
+          "url": "https://simplex.chat/downloads/"
+        }
+      ]
+    },
+    {
+      "id": "meet-jitsi",
+      "replaces": "Google Meet",
+      "category": "Video calls",
+      "name": "Jitsi Meet",
+      "summary": "Video meeting client for Jitsi-compatible meeting services, including self-hosted deployments.",
+      "tradeoffs": "Privacy depends on the chosen server, room configuration, and whether end-to-end encryption is supported and enabled for the participants.",
+      "evidence_url": "https://jitsi.org/security/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=org.jitsi.meet"
+        },
+        {
+          "id": "official",
+          "label": "Jitsi downloads",
+          "url": "https://jitsi.org/downloads/"
+        }
+      ]
+    },
+    {
+      "id": "password-bitwarden",
+      "replaces": "Google Password Manager",
+      "category": "Password manager",
+      "name": "Bitwarden",
+      "summary": "Password manager with audited security documentation and encrypted vault sync.",
+      "tradeoffs": "Account access and recovery are still critical; use a unique master password and retain recovery/export material securely.",
+      "evidence_url": "https://bitwarden.com/help/what-encryption-is-used/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.x8bit.bitwarden"
+        },
+        {
+          "id": "official",
+          "label": "Bitwarden download",
+          "url": "https://bitwarden.com/download/"
+        }
+      ]
+    },
+    {
+      "id": "password-keepassdx",
+      "replaces": "Google Password Manager",
+      "category": "Password manager",
+      "name": "KeePassDX",
+      "summary": "Open-source password manager for locally stored KeePass-compatible vault files.",
+      "tradeoffs": "You must manage secure vault storage, backup, and synchronization; a lost or corrupted vault can be unrecoverable.",
+      "evidence_url": "https://www.keepassdx.com/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.kunzisoft.keepass.free"
+        },
+        {
+          "id": "official",
+          "label": "KeePassDX website",
+          "url": "https://www.keepassdx.com/"
+        }
+      ]
+    },
+    {
+      "id": "news-feeder",
+      "replaces": "Google News",
+      "category": "News and RSS",
+      "name": "Feeder",
+      "summary": "Open-source RSS reader for following publications directly instead of a personalized news feed.",
+      "tradeoffs": "You choose the feeds and may miss algorithmically recommended stories; feeds can expose request metadata to the publisher or feed host.",
+      "evidence_url": "https://github.com/spacecowboy/Feeder",
+      "sources": [
+        {
+          "id": "fdroid",
+          "label": "F-Droid",
+          "url": "https://f-droid.org/packages/com.nononsenseapps.feeder/"
+        },
+        {
+          "id": "github",
+          "label": "Source repository",
+          "url": "https://github.com/spacecowboy/Feeder"
+        }
+      ]
+    },
+    {
+      "id": "translate-translateyou",
+      "replaces": "Google Translate",
+      "category": "Translation",
+      "name": "Translate You",
+      "summary": "Open-source translation client that can connect to supported translation services.",
+      "tradeoffs": "Translation text is sent to whichever provider is configured; the client itself does not make third-party translation services private.",
+      "evidence_url": "https://github.com/Bnyro/TranslateYou",
+      "sources": [
+        {
+          "id": "github",
+          "label": "Source repository",
+          "url": "https://github.com/Bnyro/TranslateYou"
+        }
+      ]
+    },
+    {
+      "id": "docs-collabora",
+      "replaces": "Google Docs",
+      "category": "Documents",
+      "name": "Collabora Office",
+      "summary": "Office document editor based on LibreOffice technology for working with compatible documents on Android.",
+      "tradeoffs": "The editing app does not automatically provide shared real-time collaboration or a private cloud; storage, sharing, and sync choices are separate.",
+      "evidence_url": "https://www.collaboraoffice.com/collabora-office-android/",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=com.collabora.libreoffice"
+        },
+        {
+          "id": "official",
+          "label": "Collabora Office",
+          "url": "https://www.collaboraoffice.com/collabora-office-android/"
+        }
+      ]
+    },
+    {
+      "id": "browser-firefox-search",
+      "replaces": "Google Search app",
+      "category": "Search",
+      "name": "Firefox with a user-chosen search engine",
+      "summary": "Use Firefox and select a search provider rather than keeping the Google Search app as the primary search surface.",
+      "tradeoffs": "The selected search provider still receives queries; privacy depends on the provider and your account/sign-in settings.",
+      "evidence_url": "https://support.mozilla.org/en-US/kb/change-your-default-search-settings-firefox-android",
+      "sources": [
+        {
+          "id": "play",
+          "label": "Google Play",
+          "url": "https://play.google.com/store/apps/details?id=org.mozilla.firefox"
+        },
+        {
+          "id": "official",
+          "label": "Mozilla mobile browser",
+          "url": "https://www.mozilla.org/firefox/browsers/mobile/android/"
+        }
+      ]
+    }
+  ]
+}
