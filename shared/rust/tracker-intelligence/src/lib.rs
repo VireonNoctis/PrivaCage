@@ -43,7 +43,17 @@ pub struct MatchResult { pub entry_id: String, pub name: String, #[serde(default
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Candidate { pub value: String, pub kind: IndicatorKind, pub first_seen_context: Option<String>, pub disposition: String }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReleaseManifest { pub format_version: u32, pub catalog_sha256: String, pub created_at: String, pub signer_public_key_hex: String, pub signature_hex: String }
+pub struct ReleaseManifest {
+    pub format_version: u32,
+    pub catalog_sha256: String,
+    pub sequence: u64,
+    #[serde(default)]
+    pub previous_manifest_sha256: Option<String>,
+    pub created_at: String,
+    pub expires_at: String,
+    pub signer_public_key_hex: String,
+    pub signature_hex: String,
+}
 #[derive(Debug)]
 pub enum IntelError { Io(String), Json(String), Invalid(String), Signature(String) }
 impl std::fmt::Display for IntelError { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { match self { Self::Io(s)|Self::Json(s)|Self::Invalid(s)|Self::Signature(s)=>f.write_str(s) } } }
@@ -149,22 +159,183 @@ pub fn correlate_entries(entries:&[Entry])->BTreeMap<String,Vec<String>>{
     graph.into_iter().map(|(k,v)|(k,v.into_iter().collect())).collect()
 }
 pub fn sha256_hex(b:&[u8])->String{hex::encode(Sha256::digest(b))}
-pub fn build_release(bytes:&[u8],created_at:&str,seed_hex:&str)->Result<ReleaseManifest,IntelError>{
-    let seed=hex::decode(seed_hex).map_err(|e|IntelError::Invalid(format!("seed must be hex: {e}")))?;
-    let seed:[u8;32]=seed.try_into().map_err(|_|IntelError::Invalid("Ed25519 seed must be 32 bytes".into()))?;
-    let key=SigningKey::from_bytes(&seed);let digest=Sha256::digest(bytes);let sig=key.sign(&digest);
-    Ok(ReleaseManifest{format_version:1,catalog_sha256:hex::encode(digest),created_at:created_at.into(),signer_public_key_hex:hex::encode(key.verifying_key().as_bytes()),signature_hex:hex::encode(sig.to_bytes())})
+#[derive(Serialize)]
+struct ReleaseSigningStatement<'a> {
+    format_version: u32,
+    catalog_sha256: &'a str,
+    sequence: u64,
+    previous_manifest_sha256: &'a Option<String>,
+    created_at: &'a str,
+    expires_at: &'a str,
+    signer_public_key_hex: &'a str,
 }
-pub fn verify_release(bytes:&[u8],m:&ReleaseManifest,trusted_key:&str)->Result<(),IntelError>{
-    if m.format_version!=1{return Err(IntelError::Signature("unsupported manifest version".into()))}
-    let digest=Sha256::digest(bytes);if hex::encode(digest)!=m.catalog_sha256{return Err(IntelError::Signature("catalog digest mismatch".into()))}
-    if m.signer_public_key_hex!=trusted_key{return Err(IntelError::Signature("untrusted signer key".into()))}
-    let pb=hex::decode(trusted_key).map_err(|e|IntelError::Signature(e.to_string()))?;
-    let pb:[u8;32]=pb.try_into().map_err(|_|IntelError::Signature("public key must be 32 bytes".into()))?;
-    let key=VerifyingKey::from_bytes(&pb).map_err(|e|IntelError::Signature(e.to_string()))?;
-    let sb=hex::decode(&m.signature_hex).map_err(|e|IntelError::Signature(e.to_string()))?;
-    let sig=Signature::from_slice(&sb).map_err(|e|IntelError::Signature(e.to_string()))?;
-    key.verify(&digest,&sig).map_err(|_|IntelError::Signature("signature verification failed".into()))
+
+fn release_date_ordinal(value: &str) -> Option<i64> {
+    let mut parts = value.split('-');
+    let year = parts.next()?.parse::<i64>().ok()?;
+    let month = parts.next()?.parse::<usize>().ok()?;
+    let day = parts.next()?.parse::<usize>().ok()?;
+    if parts.next().is_some() || year < 1 || year > 9999 || month < 1 || month > 12 {
+        return None;
+    }
+    if format!("{year:04}-{month:02}-{day:02}") != value {
+        return None;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if day == 0 || day > month_days[month - 1] {
+        return None;
+    }
+    let previous_year = year - 1;
+    let mut ordinal = 365 * previous_year + previous_year / 4 - previous_year / 100 + previous_year / 400;
+    for days in month_days.iter().take(month - 1) {
+        ordinal += *days as i64;
+    }
+    Some(ordinal + day as i64 - 1)
+}
+
+fn release_date_plus_days(value: &str, days: usize) -> Result<String, IntelError> {
+    if release_date_ordinal(value).is_none() {
+        return Err(IntelError::Invalid(format!("invalid release date {value}; expected canonical YYYY-MM-DD")));
+    }
+    let mut parts = value.split('-');
+    let mut year = parts.next().ok_or_else(|| IntelError::Invalid("invalid release date".into()))?
+        .parse::<i32>().map_err(|e| IntelError::Invalid(e.to_string()))?;
+    let mut month = parts.next().ok_or_else(|| IntelError::Invalid("invalid release date".into()))?
+        .parse::<usize>().map_err(|e| IntelError::Invalid(e.to_string()))?;
+    let mut day = parts.next().ok_or_else(|| IntelError::Invalid("invalid release date".into()))?
+        .parse::<usize>().map_err(|e| IntelError::Invalid(e.to_string()))?;
+    for _ in 0..days {
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        day += 1;
+        if day > month_days[month - 1] {
+            day = 1;
+            month += 1;
+            if month > 12 {
+                month = 1;
+                year += 1;
+                if year > 9999 {
+                    return Err(IntelError::Invalid("release expiry exceeds supported calendar range".into()));
+                }
+            }
+        }
+    }
+    Ok(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+fn release_statement_bytes(manifest: &ReleaseManifest) -> Result<Vec<u8>, IntelError> {
+    let statement = ReleaseSigningStatement {
+        format_version: manifest.format_version,
+        catalog_sha256: &manifest.catalog_sha256,
+        sequence: manifest.sequence,
+        previous_manifest_sha256: &manifest.previous_manifest_sha256,
+        created_at: &manifest.created_at,
+        expires_at: &manifest.expires_at,
+        signer_public_key_hex: &manifest.signer_public_key_hex,
+    };
+    let mut payload = b"PrivaCage tracker release manifest v2\\0".to_vec();
+    payload.extend(serde_json::to_vec(&statement).map_err(|e| IntelError::Json(e.to_string()))?);
+    Ok(payload)
+}
+
+fn valid_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+pub fn build_release(bytes: &[u8], created_at: &str, seed_hex: &str) -> Result<ReleaseManifest, IntelError> {
+    let expires_at = release_date_plus_days(created_at, 365)?;
+    build_release_with_metadata(bytes, 1, None, created_at, &expires_at, seed_hex)
+}
+
+pub fn build_release_with_metadata(
+    bytes: &[u8],
+    sequence: u64,
+    previous_manifest_sha256: Option<String>,
+    created_at: &str,
+    expires_at: &str,
+    seed_hex: &str,
+) -> Result<ReleaseManifest, IntelError> {
+    if sequence == 0 {
+        return Err(IntelError::Invalid("release sequence must be at least 1".into()));
+    }
+    if (sequence == 1 && previous_manifest_sha256.is_some()) ||
+       (sequence > 1 && previous_manifest_sha256.is_none()) {
+        return Err(IntelError::Invalid("release sequence and predecessor manifest digest are inconsistent".into()));
+    }
+    if let Some(previous) = previous_manifest_sha256.as_deref() {
+        if !valid_sha256_hex(previous) {
+            return Err(IntelError::Invalid("previous manifest digest must be 64 lowercase hexadecimal characters".into()));
+        }
+    }
+    let created_ordinal = release_date_ordinal(created_at)
+        .ok_or_else(|| IntelError::Invalid(format!("invalid created_at date {created_at}; expected canonical YYYY-MM-DD")))?;
+    let expires_ordinal = release_date_ordinal(expires_at)
+        .ok_or_else(|| IntelError::Invalid(format!("invalid expires_at date {expires_at}; expected canonical YYYY-MM-DD")))?;
+    if expires_ordinal <= created_ordinal {
+        return Err(IntelError::Invalid("release expiry must be after its creation date".into()));
+    }
+    let seed_bytes = hex::decode(seed_hex)
+        .map_err(|e| IntelError::Invalid(format!("seed must be hex: {e}")))?;
+    let seed: [u8; 32] = seed_bytes.try_into()
+        .map_err(|_| IntelError::Invalid("Ed25519 seed must be 32 bytes".into()))?;
+    let key = SigningKey::from_bytes(&seed);
+    let mut manifest = ReleaseManifest {
+        format_version: 2,
+        catalog_sha256: sha256_hex(bytes),
+        sequence,
+        previous_manifest_sha256,
+        created_at: created_at.into(),
+        expires_at: expires_at.into(),
+        signer_public_key_hex: hex::encode(key.verifying_key().as_bytes()),
+        signature_hex: String::new(),
+    };
+    let payload = release_statement_bytes(&manifest)?;
+    manifest.signature_hex = hex::encode(key.sign(&payload).to_bytes());
+    Ok(manifest)
+}
+
+pub fn verify_release(bytes: &[u8], manifest: &ReleaseManifest, trusted_key: &str) -> Result<(), IntelError> {
+    if manifest.format_version != 2 {
+        return Err(IntelError::Signature("unsupported release manifest version; expected v2".into()));
+    }
+    if sha256_hex(bytes) != manifest.catalog_sha256 {
+        return Err(IntelError::Signature("catalog digest mismatch".into()));
+    }
+    if !valid_sha256_hex(&manifest.catalog_sha256) {
+        return Err(IntelError::Signature("catalog digest must be 64 lowercase hexadecimal characters".into()));
+    }
+    if manifest.signer_public_key_hex != trusted_key {
+        return Err(IntelError::Signature("untrusted signer key".into()));
+    }
+    if manifest.sequence == 0 {
+        return Err(IntelError::Signature("release sequence must be at least 1".into()));
+    }
+    if (manifest.sequence == 1 && manifest.previous_manifest_sha256.is_some()) ||
+       (manifest.sequence > 1 && manifest.previous_manifest_sha256.is_none()) {
+        return Err(IntelError::Signature("release sequence and predecessor manifest digest are inconsistent".into()));
+    }
+    if let Some(previous) = manifest.previous_manifest_sha256.as_deref() {
+        if !valid_sha256_hex(previous) {
+            return Err(IntelError::Signature("previous manifest digest is malformed".into()));
+        }
+    }
+    let created_ordinal = release_date_ordinal(&manifest.created_at)
+        .ok_or_else(|| IntelError::Signature("created_at must be a canonical YYYY-MM-DD date".into()))?;
+    let expires_ordinal = release_date_ordinal(&manifest.expires_at)
+        .ok_or_else(|| IntelError::Signature("expires_at must be a canonical YYYY-MM-DD date".into()))?;
+    if expires_ordinal <= created_ordinal {
+        return Err(IntelError::Signature("release expiry must be after its creation date".into()));
+    }
+    let public_key_bytes = hex::decode(trusted_key).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let public_key: [u8; 32] = public_key_bytes.try_into()
+        .map_err(|_| IntelError::Signature("public key must be 32 bytes".into()))?;
+    let key = VerifyingKey::from_bytes(&public_key).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let signature_bytes = hex::decode(&manifest.signature_hex).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let signature = Signature::from_slice(&signature_bytes).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let payload = release_statement_bytes(manifest)?;
+    key.verify(&payload, &signature)
+        .map_err(|_| IntelError::Signature("release manifest signature verification failed".into()))
 }
 
 #[cfg(test)] mod tests{
