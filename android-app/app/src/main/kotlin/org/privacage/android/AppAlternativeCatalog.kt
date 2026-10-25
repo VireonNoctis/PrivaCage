@@ -100,15 +100,18 @@ internal object AppAlternativeCatalog {
             throw IOException("Alternative catalogue is not valid JSON", exception)
         }
         requireExactKeys(root, topLevelKeys, "catalogue")
-        val schemaVersion = root.opt("schema_version") as? Number
-            ?: throw IOException("catalogue.schema_version must be an integer")
-        if (schemaVersion.toDouble() != schemaVersion.toInt().toDouble() ||
-            schemaVersion.toInt() != SUPPORTED_SCHEMA_VERSION) {
-            throw IOException("Unsupported alternative catalogue schema version")
+        val schemaVersion = root.opt("schema_version")
+        if (schemaVersion !is Int || schemaVersion != SUPPORTED_SCHEMA_VERSION) {
+            throw IOException("catalogue.schema_version must be the exact integer value " + SUPPORTED_SCHEMA_VERSION)
         }
         val updatedAt = requiredString(root, "updated_at", "catalogue")
         try {
-            LocalDate.parse(updatedAt)
+            val parsedDate = LocalDate.parse(updatedAt)
+            if (parsedDate.toString() != updatedAt) {
+                throw IOException("catalogue.updated_at must use canonical YYYY-MM-DD format")
+            }
+        } catch (exception: IOException) {
+            throw exception
         } catch (exception: Exception) {
             throw IOException("catalogue.updated_at must be an ISO date (YYYY-MM-DD)", exception)
         }
