@@ -10,7 +10,6 @@ on:
       - "shared/rust/pcage-crypto/**"
       - "shared/rust/pcage-metadata/**"
       - "shared/rust/pcage-metadata-jni/**"
-      - "shared/rust/pcage-tracker-release-jni/**"
       - "shared/rust/tracker-intelligence/**"
       - "shared/tracker-db/**"
       - "shared/go/pcage-tools/**"
@@ -20,6 +19,7 @@ on:
     paths:
       - "android-app/**"
       - "android-core/**"
+      - "shared/rust/tracker-intelligence/**"
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
       - "shared/rust/pcage-crypto/**"
@@ -73,21 +73,12 @@ jobs:
           cargo clippy --manifest-path shared/rust/pcage-metadata/Cargo.toml --all-targets -- -D warnings
           cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
           cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
-          cargo test --manifest-path shared/rust/pcage-tracker-release-jni/Cargo.toml
-          cargo clippy --manifest-path shared/rust/pcage-tracker-release-jni/Cargo.toml --all-targets -- -D warnings
       - name: Build Rust sync JNI libraries
         working-directory: shared/rust/pcage-sync-jni
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
       - name: Build Rust metadata JNI library
         working-directory: shared/rust/pcage-metadata-jni
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
-      - name: Build Rust tracker release JNI library
-        working-directory: shared/rust/pcage-tracker-release-jni
-        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
-      - name: Stage signed tracker manifest asset
-        run: |
-          mkdir -p android-app/app/src/main/assets
-          cp shared/tracker-db/signatures.manifest.json android-app/app/src/main/assets/signatures.manifest.json
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.14"
@@ -111,8 +102,3 @@ jobs:
           unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
           unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/signatures.json > "$RUNNER_TEMP/bundled-signatures.json"
           go -C shared/go/pcage-tools run . validate-tracker --file "$RUNNER_TEMP/bundled-signatures.json"
-          unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/signatures.manifest.json > "$RUNNER_TEMP/bundled-signatures.manifest.json"
-          cmp shared/tracker-db/signatures.manifest.json "$RUNNER_TEMP/bundled-signatures.manifest.json"
-          unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/arm64-v8a/libpcage_tracker_release_jni.so'
-          unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/armeabi-v7a/libpcage_tracker_release_jni.so'
-          unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'lib/x86_64/libpcage_tracker_release_jni.so'
