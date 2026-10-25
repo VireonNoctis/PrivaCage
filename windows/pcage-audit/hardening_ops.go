@@ -227,7 +227,7 @@ func hardeningPowerShellBase() []string {
 		"      if (-not (Test-AllowedTarget $e)) { throw ('Unsupported target '+$e.name) }",
 		"      $c=Get-RegistryContext $e $true",
 		"      try {",
-		"        if ([string]$e.hive -eq 'Users' -and $null -eq $c.Key -and @($c.Base.GetSubKeyNames()) -notcontains ([string]$e.sub_key).Split('\\')[0]) { throw 'The original user hive is not loaded. Sign in to that user before restoring.' }",
+		"        if ([string]$e.hive -eq 'Users' -and $null -eq $c.Key -and @($c.Base.GetSubKeyNames()) -notcontains ([string]$e.sub_key).Split([char]92)[0]) { throw 'The original user hive is not loaded. Sign in to that user before restoring.' }",
 		"        $k=$c.Key; $created=$false; if ($null -eq $k) { $k=$c.Base.CreateSubKey([string]$e.sub_key); $created=$true }",
 		"        if ($null -eq $k) { throw ('Cannot restore '+$e.name) }",
 		"        if ([bool]$e.value_existed) { $k.SetValue([string]$e.name,[int]$e.old_value,[Microsoft.Win32.RegistryValueKind]::DWord) } else {",
