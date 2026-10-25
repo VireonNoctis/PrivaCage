@@ -33,11 +33,28 @@ type appPrivacyPolicies struct {
 	Microphone registryPolicy "json:\"microphone\""
 }
 
+type dnsServerConfig struct {
+	InterfaceAlias  string   `json:"interface_alias"`
+	AddressFamily   string   `json:"address_family"`
+	ServerAddresses []string `json:"server_addresses"`
+}
+
+type userProxySnapshot struct {
+	ReadError               bool  `json:"read_error"`
+	ProxyEnableConfigured   bool  `json:"proxy_enable_configured"`
+	ProxyEnabled            *bool `json:"proxy_enabled"`
+	ProxyServerConfigured   bool  `json:"proxy_server_configured"`
+	AutoConfigURLConfigured bool  `json:"auto_config_url_configured"`
+}
+
 type powershellSnapshot struct {
-	FirewallProfiles  []firewallProfile "json:\"firewall_profiles\""
-	FirewallReadError bool              "json:\"firewall_read_error\""
-	DiagnosticData    registryPolicy    "json:\"diagnostic_data\""
-	AppPrivacy        appPrivacyPolicies "json:\"app_privacy\""
+	FirewallProfiles  []firewallProfile  `json:"firewall_profiles"`
+	FirewallReadError bool               `json:"firewall_read_error"`
+	DiagnosticData    registryPolicy     `json:"diagnostic_data"`
+	AppPrivacy        appPrivacyPolicies `json:"app_privacy"`
+	DNSServers        []dnsServerConfig  `json:"dns_servers"`
+	DNSReadError      bool               `json:"dns_read_error"`
+	UserProxy         userProxySnapshot  `json:"user_proxy"`
 }
 
 var powershellAuditScript = strings.Join([]string{
@@ -58,6 +75,30 @@ var powershellAuditScript = strings.Join([]string{
 	"try {",
 	"  $firewallProfiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore | ForEach-Object { [ordered]@{ name = [string]$_.Name; enabled = [bool]$_.Enabled; default_inbound_action = [string]$_.DefaultInboundAction; default_outbound_action = [string]$_.DefaultOutboundAction } })",
 	"} catch { $firewallReadError = $true; $firewallProfiles = @() }",
+	"$dnsServers = @()",
+	"$dnsReadError = $false",
+	"try {",
+	"  $dnsServers = @(Get-DnsClientServerAddress -ErrorAction Stop | ForEach-Object {",
+	"    $addresses = @($_.ServerAddresses | Where-Object { $_ -and $_.Trim() -ne '' })",
+	"    if ($addresses.Count -gt 0) { [ordered]@{ interface_alias = [string]$_.InterfaceAlias; address_family = [string]$_.AddressFamily; server_addresses = $addresses } }",
+	"  })",
+	"} catch { $dnsReadError = $true; $dnsServers = @() }",
+	"$proxy = [ordered]@{ read_error = $false; proxy_enable_configured = $false; proxy_enabled = $null; proxy_server_configured = $false; auto_config_url_configured = $false }",
+	"try {",
+	"  $proxyPath = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'",
+	"  if (Test-Path -LiteralPath $proxyPath -ErrorAction Stop) {",
+	"    $proxyItem = Get-ItemProperty -LiteralPath $proxyPath -ErrorAction Stop",
+	"    $proxyEnable = $proxyItem.PSObject.Properties['ProxyEnable']",
+	"    if ($null -ne $proxyEnable) {",
+	"      $proxy.proxy_enable_configured = $true",
+	"      if ($proxyEnable.Value -is [System.Int32]) { $proxy.proxy_enabled = ([int]$proxyEnable.Value -ne 0) }",
+	"    }",
+	"    $proxyServer = $proxyItem.PSObject.Properties['ProxyServer']",
+	"    $proxy.proxy_server_configured = ($null -ne $proxyServer -and -not [string]::IsNullOrWhiteSpace([string]$proxyServer.Value))",
+	"    $pac = $proxyItem.PSObject.Properties['AutoConfigURL']",
+	"    $proxy.auto_config_url_configured = ($null -ne $pac -and -not [string]::IsNullOrWhiteSpace([string]$pac.Value))",
+	"  }",
+	"} catch { $proxy.read_error = $true }",
 	"$result = [ordered]@{",
 	"  firewall_profiles = $firewallProfiles",
 	"  firewall_read_error = $firewallReadError",
@@ -67,6 +108,9 @@ var powershellAuditScript = strings.Join([]string{
 	"    camera = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy' 'LetAppsAccessCamera')",
 	"    microphone = (Read-DwordPolicy 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy' 'LetAppsAccessMicrophone')",
 	"  }",
+	"  dns_servers = $dnsServers",
+	"  dns_read_error = $dnsReadError",
+	"  user_proxy = $proxy",
 	"}",
 	"$result | ConvertTo-Json -Depth 8 -Compress",
 }, "\n")
