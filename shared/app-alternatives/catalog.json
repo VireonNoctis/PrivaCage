@@ -82,7 +82,7 @@
         {
           "id": "official",
           "label": "Nextcloud clients",
-          "url": "https://nextcloud.com/install/#install-clients"
+          "url": "https://nextcloud.com/install/"
         }
       ]
     },
