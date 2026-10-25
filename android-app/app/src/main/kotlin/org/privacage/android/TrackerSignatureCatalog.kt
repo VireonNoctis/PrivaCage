@@ -12,6 +12,7 @@ import java.time.format.DateTimeParseException
 /** Reads the bundled tracker database; importing a domain is always an explicit user action. */
 internal object TrackerSignatureCatalog {
     private const val ASSET_NAME = "signatures.json"
+    private const val SUPPORTED_SCHEMA_VERSION = 1
     private val topLevelKeys = setOf("schema_version", "updated_at", "entries")
     private val entryKeys = setOf("id", "name", "category", "indicators", "confidence", "status", "last_verified", "evidence")
     private val evidenceKeys = setOf("url", "description")
@@ -28,7 +29,7 @@ internal object TrackerSignatureCatalog {
             throw IOException("Tracker catalog is not valid JSON", exception)
         }
         requireExactKeys(root, topLevelKeys, "tracker catalog")
-        if (root.optInt("schema_version", -1) != 1) throw IOException("Unsupported tracker catalog schema version")
+        if (!isSupportedSchemaVersion(root.opt("schema_version"))) throw IOException("Unsupported tracker catalog schema version")
         requireDate(root.opt("updated_at"), "updated_at")
         val entries = root.opt("entries") as? JSONArray
             ?: throw IOException("Tracker catalog entries must be an array")
@@ -97,6 +98,9 @@ internal object TrackerSignatureCatalog {
         }
         return parsedEntries
     }
+
+    internal fun isSupportedSchemaVersion(value: Any?): Boolean =
+        value is Int && value == SUPPORTED_SCHEMA_VERSION
 
     private fun requireExactKeys(value: JSONObject, expected: Set<String>, context: String) {
         if (keys(value) != expected) throw IOException("$context fields do not match the supported schema")
