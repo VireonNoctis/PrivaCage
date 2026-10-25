@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"unicode/utf16"
 )
@@ -111,6 +110,9 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 	}
 	if metadata.EditionID == "" || metadata.BuildNumber < 10240 {
 		return hardeningPlan{}, errors.New("unsupported or missing Windows edition/build metadata")
+	}
+	if metadata.InteractiveUserSID != "" && !validUserSID(metadata.InteractiveUserSID) {
+		return hardeningPlan{}, errors.New("Windows returned an invalid interactive user SID; refusing to plan user-scoped registry changes")
 	}
 
 	plan := hardeningPlan{
@@ -299,7 +301,10 @@ func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
 		"$build = 0",
 		"if (-not [int]::TryParse([string]$cv.CurrentBuildNumber, [ref]$build)) { throw 'Cannot parse Windows build number.' }",
 		"$sid = ''",
-		"if ($env:PRIVACAGE_INTERACTIVE -eq 'true') { $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value }",
+		"try {",
+		"  $computer = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop",
+		"  if ($computer.UserName) { $sid = ([System.Security.Principal.NTAccount]::new([string]$computer.UserName)).Translate([System.Security.Principal.SecurityIdentifier]).Value }",
+		"} catch { $sid = '' }",
 		"[ordered]@{ edition_id = $edition; build_number = $build; interactive_user_sid = $sid } | ConvertTo-Json -Compress",
 	}, "\n")
 	output, err := runPowerShellScript(ctx, script)
@@ -349,13 +354,6 @@ func runPowerShellScript(ctx context.Context, script string) ([]byte, error) {
 		binary.LittleEndian.PutUint16(data[index*2:], value)
 	}
 	command := exec.CommandContext(ctx, executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(data))
-	command.Env = make([]string, 0, len(os.Environ())+1)
-	for _, environment := range os.Environ() {
-		if !strings.HasPrefix(strings.ToUpper(environment), "PRIVACAGE_INTERACTIVE=") {
-			command.Env = append(command.Env, environment)
-		}
-	}
-	command.Env = append(command.Env, "PRIVACAGE_INTERACTIVE="+strconv.FormatBool(isInteractiveInput()))
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	output, err := command.Output()
