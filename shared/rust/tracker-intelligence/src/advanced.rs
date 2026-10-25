@@ -1,5 +1,5 @@
 use crate::{
-    build_release_with_metadata, normalize_domain, normalize_ip, sdk_pattern_matches, valid_sdk_pattern, sha256_hex,
+    build_release_with_metadata, normalize_domain, normalize_ip, valid_sdk_pattern, sha256_hex,
     verify_release, Candidate, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, IntelError,
 };
@@ -345,11 +345,19 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
         if !name.ends_with(".dex"){continue}
         if entry.size()>128*1024*1024{return Err(invalid(format!("{name} exceeds the 128 MiB DEX scan limit")))}
         let mut bytes=Vec::new();entry.read_to_end(&mut bytes).map_err(|e|IntelError::Io(format!("read {name}: {e}")))?;
-        let strings=extract_ascii_strings(&bytes);
+        let mut strings=extract_ascii_strings(&bytes);
+        // Extracted values are printable ASCII; normalize them once instead of allocating
+        // lowercase copies again for every catalog indicator.
+        for value in &mut strings {
+            value.make_ascii_lowercase();
+        }
         let mut hits=Vec::new();
         for sdk in &catalog.entries {
             for (indicator_kind,indicator) in sdk.indicators.dex_strings.iter().map(|v|(IndicatorKind::DexString,v)).chain(sdk.indicators.sdk_patterns.iter().map(|v|(IndicatorKind::SdkPattern,v))) {
-                if strings.iter().any(|s|s.contains(indicator)||sdk_pattern_matches(s,indicator)) {
+                let pattern=indicator.trim().to_ascii_lowercase();
+                let needle=if pattern.ends_with(".**")||pattern.ends_with(".*"){pattern.trim_end_matches('*').to_owned()}else{pattern};
+                let slash_needle=needle.replace('.','/');
+                if strings.iter().any(|value|value.contains(&needle)||value.contains(&slash_needle)) {
                     let kind_label=if indicator_kind==IndicatorKind::SdkPattern{"sdk_pattern"}else{"dex_string"};
                     hits.push(json!({"entry_id":sdk.id,"name":sdk.name,"indicator_type":kind_label,"matched_string":indicator,"evidence":sdk.evidence}));
                     observations.push(Observation{value:indicator.clone(),kind:indicator_kind.clone(),context:Some(format!("{name} string match"))});
