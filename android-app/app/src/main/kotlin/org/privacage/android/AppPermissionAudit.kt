@@ -205,7 +205,12 @@ internal object AppPermissionAudit {
             }
 
             try {
-                preferences.edit().putString(KEY_BASELINE, encodeBaseline(currentSnapshot)).commit()
+                val saved = preferences.edit()
+                    .putString(KEY_BASELINE, encodeBaseline(currentSnapshot))
+                    .commit()
+                if (!saved) {
+                    output.append("\nBaseline write failed: Android did not confirm the local preference write.")
+                }
             } catch (exception: RuntimeException) {
                 output.append("\nBaseline write failed: ")
                     .append(exception.message ?: exception.javaClass.simpleName)
