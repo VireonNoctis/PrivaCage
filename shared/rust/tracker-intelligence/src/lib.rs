@@ -339,6 +339,30 @@ pub fn verify_release(bytes: &[u8], manifest: &ReleaseManifest, trusted_key: &st
         .map_err(|_| IntelError::Signature("release manifest signature verification failed".into()))
 }
 
+/// Verifies a signed release and checks its date window against a caller-supplied canonical UTC date.
+/// The caller must obtain and interpret `as_of` explicitly; this function does not establish trusted time.
+pub fn verify_release_at_date(
+    bytes: &[u8],
+    manifest: &ReleaseManifest,
+    trusted_key: &str,
+    as_of: &str,
+) -> Result<(), IntelError> {
+    verify_release(bytes, manifest, trusted_key)?;
+    let now = release_date_ordinal(as_of)
+        .ok_or_else(|| IntelError::Invalid("verification date must be a canonical YYYY-MM-DD date".into()))?;
+    let created = release_date_ordinal(&manifest.created_at)
+        .ok_or_else(|| IntelError::Signature("created_at must be a canonical YYYY-MM-DD date".into()))?;
+    let expires = release_date_ordinal(&manifest.expires_at)
+        .ok_or_else(|| IntelError::Signature("expires_at must be a canonical YYYY-MM-DD date".into()))?;
+    if now < created {
+        return Err(IntelError::Signature("release creation date is in the future".into()));
+    }
+    if now > expires {
+        return Err(IntelError::Signature("release has expired".into()));
+    }
+    Ok(())
+}
+
 #[cfg(test)] mod tests{
 use super::*;
 fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),entries:vec![Entry{id:"sample".into(),name:"Sample".into(),category:"analytics".into(),indicators:Indicators{domains:vec!["collector.example.com".into()],..Default::default()},confidence:"high".into(),status:"active".into(),last_verified:None,evidence:vec![Evidence{id:None,url:"https://example.com/docs".into(),description:"documented".into(),retrieved_at:None,source_type:None}],entity_ids:vec![],sdk_ids:vec![],localized_names:BTreeMap::new()}]}}
@@ -384,4 +408,20 @@ fn sample()->Catalog{Catalog{schema_version:1,updated_at:"2026-10-23".into(),ent
      assert!(build_release_with_metadata(bytes, 1, None, "2026-02-30", "2027-10-23", seed).is_err());
      assert!(build_release_with_metadata(bytes, 1, None, "2026-10-23", "2026-10-23", seed).is_err());
  }
+}
+
+#[cfg(test)]
+mod release_date_tests {
+    use super::*;
+
+    #[test]
+    fn signed_release_date_window_is_enforced() {
+        let bytes = br#"{"schema_version":1,"entries":[]}"#;
+        let seed = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let manifest = build_release(bytes, "2026-10-25", seed).unwrap();
+        assert!(verify_release_at_date(bytes, &manifest, &manifest.signer_public_key_hex, "2026-10-24").is_err());
+        assert!(verify_release_at_date(bytes, &manifest, &manifest.signer_public_key_hex, "2026-10-25").is_ok());
+        assert!(verify_release_at_date(bytes, &manifest, &manifest.signer_public_key_hex, &manifest.expires_at).is_ok());
+        assert!(verify_release_at_date(bytes, &manifest, &manifest.signer_public_key_hex, "2027-10-26").is_err());
+    }
 }
