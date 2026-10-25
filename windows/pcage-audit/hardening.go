@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -265,6 +266,7 @@ func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
 func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
 	script := strings.Join([]string{
 		"$ErrorActionPreference = 'Stop'",
+		"$ProgressPreference = 'SilentlyContinue'",
 		"$cv = Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' -ErrorAction Stop",
 		"$edition = [string]$cv.EditionID",
 		"$build = 0",
@@ -291,9 +293,28 @@ func runPowerShellScript(ctx context.Context, script string) ([]byte, error) {
 	if runtime.GOOS != "windows" {
 		return nil, errors.New("Windows PowerShell commands can only run on Windows")
 	}
-	executable, err := exec.LookPath("powershell.exe")
-	if err != nil {
-		return nil, errors.New("Windows PowerShell (powershell.exe) was not found")
+	systemRoot := os.Getenv("SystemRoot")
+	if systemRoot == "" {
+		return nil, errors.New("SystemRoot is not set; refusing to resolve an elevated PowerShell executable through PATH")
+	}
+	candidates := []string{
+		filepath.Join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+	}
+	if runtime.GOARCH == "386" {
+		candidates = append([]string{
+			filepath.Join(systemRoot, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe"),
+		}, candidates...)
+	}
+	executable := ""
+	for _, candidate := range candidates {
+		info, statErr := os.Stat(candidate)
+		if statErr == nil && !info.IsDir() {
+			executable = candidate
+			break
+		}
+	}
+	if executable == "" {
+		return nil, errors.New("the in-box Windows PowerShell executable was not found at its SystemRoot path")
 	}
 	encoded := utf16.Encode([]rune(script))
 	data := make([]byte, len(encoded)*2)
