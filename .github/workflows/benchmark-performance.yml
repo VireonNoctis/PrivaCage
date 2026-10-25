@@ -37,9 +37,10 @@ jobs:
       PERFORMANCE_RESULTS_DIR: ${{ runner.temp }}/privacage-performance-results
       CARGO_TARGET_DIR: ${{ runner.temp }}/privacage-cargo-target
     steps:
-      - name: Check out candidate with full history
+      - name: Check out candidate head with full history
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Java
