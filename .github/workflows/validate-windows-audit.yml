@@ -57,6 +57,7 @@ jobs:
   windows-smoke:
     name: Run Windows privacy checks and validate Win11Debloat source
     runs-on: windows-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: windows/pcage-audit
@@ -88,6 +89,16 @@ jobs:
             }
           }
           Write-Host "Parsed $($scripts.Count) Win11Debloat PowerShell files without syntax errors."
+      - name: Run Win11Debloat upstream Pester suite
+        shell: powershell
+        run: ..\Win11Debloat\Scripts\Run-Tests.ps1 -Bootstrap
+      - name: Run Win11Debloat PSScriptAnalyzer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -Confirm:$false
+          Import-Module PSScriptAnalyzer
+          Invoke-ScriptAnalyzer -Path ..\Win11Debloat -Recurse -Severity Error -EnableExit
       - uses: actions/setup-go@v7
         with:
           go-version-file: windows/pcage-audit/go.mod
