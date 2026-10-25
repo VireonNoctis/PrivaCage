@@ -112,16 +112,17 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 	if metadata.EditionID == "" || metadata.BuildNumber < 10240 {
 		return hardeningPlan{}, errors.New("unsupported or missing Windows edition/build metadata")
 	}
+
 	plan := hardeningPlan{
-		SchemaVersion: 1,
-		Profile: profile,
-		EditionID: metadata.EditionID,
-		BuildNumber: metadata.BuildNumber,
-		Changes: make([]policyChange, 0, 24),
-		Skipped: make([]string, 0, 4),
-		Warnings: make([]string, 0, 6),
+		SchemaVersion:          1,
+		Profile:                profile,
+		EditionID:              metadata.EditionID,
+		BuildNumber:            metadata.BuildNumber,
+		Changes:                make([]policyChange, 0, 32),
+		Skipped:                make([]string, 0, 8),
+		Warnings:               make([]string, 0, 8),
 		BlockOutboundByDefault: blockOutboundByDefault,
-		IsolateOutbound: isolateOutbound,
+		IsolateOutbound:        isolateOutbound,
 	}
 	add := func(hive, subKey, name string, value int, description, source string) {
 		plan.Changes = append(plan.Changes, policyChange{
@@ -130,98 +131,111 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		})
 	}
 
-	// A user-hive preference scopes to the currently logged-in user's SID.
-	if metadata.InteractiveUserSID != "" {
-		add("Users", metadata.InteractiveUserSID+"\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "Enabled", 0,
-			"Disable the advertising identifier preference for the active user. This does not erase previously collected profiles.",
+	isClient := supportsClientPrivacyPolicies(metadata.EditionID)
+	sid := metadata.InteractiveUserSID
+	if sid != "" && isClient {
+		add("Users", sid+"\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "Enabled", 0,
+			"Disable the advertising-ID preference for the initiating interactive user. This does not erase previously collected profiles.",
 			"https://learn.microsoft.com/en-us/windows/privacy/windows-privacy-compliance-guide")
+	} else if sid == "" && isClient {
+		plan.Skipped = append(plan.Skipped, "The current user's advertising-ID and tailored-experience policies were skipped because the interactive user SID was not available. Machine policies remain device-scoped.")
 	}
+
 	if !supportsMachinePolicy(metadata.EditionID) {
 		plan.Skipped = append(plan.Skipped,
-			"Machine Group Policy controls are not documented for this Windows Home edition. The user-level advertising-ID preference may still be applied; unsupported registry policies are not represented as effective.")
+			"Documented machine policy controls are not supported for this Windows Home/Core edition; no machine registry policy is written.")
 	} else {
 		telemetryLevel := 1
-		telemetryDescription := "Use Required diagnostic data, the lowest documented level on mainstream Pro editions. Required diagnostic data is not zero diagnostic traffic."
+		telemetryDescription := "Use Required diagnostic data, the lowest documented diagnostic-data level for mainstream Pro editions. Required diagnostic data is not zero Windows traffic."
 		if supportsSecurityOnlyTelemetry(metadata.EditionID, metadata.BuildNumber) {
 			telemetryLevel = 0
-			telemetryDescription = "Use the Security diagnostic-data level on an edition where Microsoft documents support for it. This does not promise zero Windows communications."
+			telemetryDescription = "Select the documented Diagnostic data off policy on an edition supporting value 0. This controls Windows diagnostic data only and does not guarantee zero system communications."
 		}
 		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", telemetryLevel, telemetryDescription, securityPolicyCSP)
-		if supportsClientPrivacyPolicies(metadata.EditionID) {
+
+		if isClient {
+			if metadata.BuildNumber >= 17134 {
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "ConfigureTelemetryOptInSettingsUx", 1,
+					"Prevent users from changing the diagnostic-data level in the Settings UI; this does not prevent administrators or higher-priority management policy from changing policy.",
+					securityPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "ConfigureTelemetryOptInSettingsUx requires Windows build 17134 or newer.")
+			}
 			if metadata.BuildNumber >= 14393 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "DisabledByGroupPolicy", 1,
-					"Disable the Windows advertising identifier through the documented machine policy.", privacyPolicyCSP)
+					"Turn off the advertising identifier through the documented machine policy.", privacyPolicyCSP)
 			} else {
 				plan.Skipped = append(plan.Skipped, "The Windows advertising-identifier machine policy requires build 14393 or newer.")
 			}
 			if metadata.BuildNumber >= 16299 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "EnableActivityFeed", 0,
-					"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
+					"Disable Activity Feed publishing and cloud roaming.", privacyPolicyCSP)
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "PublishUserActivities", 0,
 					"Prevent Windows apps and the OS from publishing User Activities.", privacyPolicyCSP)
 			} else {
-				plan.Skipped = append(plan.Skipped, "Activity Feed and PublishUserActivities require Windows build 16299 or newer.")
+				plan.Skipped = append(plan.Skipped, "Activity Feed and PublishUserActivities controls require Windows build 16299 or newer.")
+			}
+			if metadata.BuildNumber >= 17134 {
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "UploadUserActivities", 0,
+					"Prevent User Activities from being uploaded to Microsoft cloud services.", privacyPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "UploadUserActivities requires Windows build 17134 or newer.")
 			}
 			if metadata.BuildNumber >= 17763 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowCrossDeviceClipboard", 0,
 					"Prevent clipboard contents from syncing to other devices logged in to the same account.", privacyPolicyCSP)
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowDeviceNameInDiagnosticData", 0,
-					"Disallow inclusion of the Windows device name in diagnostic data.", securityPolicyCSP)
+					"Disallow inclusion of the device name in Windows diagnostic data.", securityPolicyCSP)
 			} else {
 				plan.Skipped = append(plan.Skipped, "Cross-device clipboard and diagnostic device-name policies require Windows build 17763 or newer.")
 			}
-			if metadata.BuildNumber >= 17134 {
-				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "UploadUserActivities", 0,
-					"Prevent published User Activities from being uploaded to Microsoft cloud services.", privacyPolicyCSP)
-			} else {
-				plan.Skipped = append(plan.Skipped, "UploadUserActivities requires Windows build 17134 or newer.")
-			}
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\InputPersonalization", "AllowInputPersonalization", 0,
-				"Disable the documented online speech-recognition/personalization policy.", privacyPolicyCSP)
-			if metadata.InteractiveUserSID != "" && metadata.BuildNumber >= 15063 {
-				add("Users", metadata.InteractiveUserSID+"\\Software\\Policies\\Microsoft\\Windows\\CloudContent", "DisableTailoredExperiencesWithDiagnosticData", 1,
-					"Stop diagnostic data being used for tailored lock-screen, tips, and consumer-feature experiences for the active user.", experiencePolicyCSP)
-			} else if metadata.InteractiveUserSID == "" {
-				plan.Skipped = append(plan.Skipped, "The tailored-experiences policy was skipped because Windows did not identify an active interactive user hive.")
+				"Disable online speech-recognition services through the documented policy.", privacyPolicyCSP)
+			if sid != "" && metadata.BuildNumber >= 15063 {
+				add("Users", sid+"\\Software\\Policies\\Microsoft\\Windows\\CloudContent", "DisableTailoredExperiencesWithDiagnosticData", 1,
+					"Prevent diagnostic data being used for tailored experiences for the initiating user.", experiencePolicyCSP)
+			} else if sid == "" {
+				plan.Skipped = append(plan.Skipped, "DisableTailoredExperiencesWithDiagnosticData was skipped because no initiating user SID was available.")
 			} else {
-				plan.Skipped = append(plan.Skipped, "The tailored-experiences policy requires Windows build 15063 or newer.")
+				plan.Skipped = append(plan.Skipped, "DisableTailoredExperiencesWithDiagnosticData requires Windows build 15063 or newer.")
 			}
 		} else {
-			plan.Skipped = append(plan.Skipped, "Advertising ID, Activity Feed, clipboard-sync, tailored-experience and online speech controls are client policy surfaces and are not applied to Windows Server editions.")
-		}
-		if metadata.BuildNumber >= 22000 || (strings.Contains(strings.ToLower(metadata.EditionID), "server") && metadata.BuildNumber >= 20348) {
-			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1,
-				"Limit additional diagnostic-log collection on supported Windows 11 builds.", securityPolicyCSP)
-			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDumpCollection", 1,
-				"Limit dump collection to the documented mini/triage scope on supported Windows 11 builds.", securityPolicyCSP)
-		} else {
-			plan.Skipped = append(plan.Skipped, "LimitDiagnosticLogCollection and LimitDumpCollection are documented for Windows 11 builds 22000 and later.")
+			plan.Skipped = append(plan.Skipped, "Client-only advertising ID, Activity Feed, clipboard-sync, online speech, and tailored-experience policies are not applied to Windows Server.")
 		}
 
-		if profile == "strict" && supportsClientPrivacyPolicies(metadata.EditionID) {
+		if metadata.BuildNumber >= 22000 || (strings.Contains(strings.ToLower(metadata.EditionID), "server") && metadata.BuildNumber >= 20348) {
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1,
+				"Limit Windows diagnostic-log collection on supported Windows 11 and Windows Server 2022 builds.", securityPolicyCSP)
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDumpCollection", 1,
+				"Limit Windows Error Reporting dumps to the documented mini/triage scope on supported builds.", securityPolicyCSP)
+		} else {
+			plan.Skipped = append(plan.Skipped, "LimitDiagnosticLogCollection and LimitDumpCollection require Windows 11 build 22000 or Windows Server 2022 build 20348 or newer.")
+		}
+
+		if profile == "strict" && isClient {
 			if metadata.BuildNumber >= 17763 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowClipboardHistory", 0,
-					"Disable Windows clipboard history so copied content is not retained in the Win+V history.", "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience")
+					"Disallow storing Windows clipboard history in memory.", "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience")
 			} else {
 				plan.Skipped = append(plan.Skipped, "AllowClipboardHistory requires Windows build 17763 or newer.")
 			}
 			if metadata.BuildNumber >= 14393 {
 				appPrivacy := "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy"
 				for _, item := range []struct {
-				name string
-				description string
-			}{
-				{"LetAppsAccessLocation", "Force-deny Windows-app location access; classic desktop apps and system components may be outside this policy scope."},
-				{"LetAppsAccessCamera", "Force-deny camera access in the Windows-app permission scope."},
-				{"LetAppsAccessMicrophone", "Force-deny microphone access in the Windows-app permission scope."},
-				{"LetAppsAccessContacts", "Force-deny Windows-app contacts access."},
-				{"LetAppsAccessCalendar", "Force-deny Windows-app calendar access."},
-				{"LetAppsAccessEmail", "Force-deny Windows-app email access."},
-				{"LetAppsAccessMessaging", "Force-deny Windows-app messaging access."},
-				{"LetAppsAccessCallHistory", "Force-deny Windows-app call-history access."},
-				{"LetAppsAccessTasks", "Force-deny Windows-app tasks access."},
-				{"LetAppsAccessNotifications", "Force-deny Windows-app notification access."},
-				{"LetAppsGetDiagnosticInfo", "Force-deny Windows apps from reading diagnostic information about other apps."},
+					name        string
+					description string
+				}{
+					{"LetAppsAccessLocation", "Force-deny location access for Windows apps; traditional desktop programs and OS components may fall outside this policy scope."},
+					{"LetAppsAccessCamera", "Force-deny camera access in the Windows-app permission scope."},
+					{"LetAppsAccessMicrophone", "Force-deny microphone access in the Windows-app permission scope."},
+					{"LetAppsAccessContacts", "Force-deny Windows-app contacts access."},
+					{"LetAppsAccessCalendar", "Force-deny Windows-app calendar access."},
+					{"LetAppsAccessEmail", "Force-deny Windows-app email access."},
+					{"LetAppsAccessMessaging", "Force-deny Windows-app messaging access."},
+					{"LetAppsAccessCallHistory", "Force-deny Windows-app call-history access."},
+					{"LetAppsAccessTasks", "Force-deny Windows-app tasks access."},
+					{"LetAppsAccessNotifications", "Force-deny Windows-app notification access."},
+					{"LetAppsGetDiagnosticInfo", "Force-deny Windows apps from reading diagnostic information about other apps."},
 				} {
 					add("LocalMachine", appPrivacy, item.name, 2, item.description, privacyPolicyCSP)
 				}
@@ -229,23 +243,23 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 				plan.Skipped = append(plan.Skipped, "Windows App Privacy force-deny policies require Windows build 14393 or newer.")
 			}
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting", "Disabled", 1,
-				"Disable Windows Error Reporting submission policy. This removes a troubleshooting path and does not stop every diagnostic channel.", errorReportingPolicyCSP)
-		}
-		if profile == "strict" && !supportsClientPrivacyPolicies(metadata.EditionID) {
-			plan.Skipped = append(plan.Skipped, "The strict Windows-app privacy and Windows Error Reporting controls are not applied to Windows Server editions.")
+				"Disable Windows Error Reporting policy. This removes a troubleshooting path and does not disable every diagnostic channel.", errorReportingPolicyCSP)
+		} else if profile == "strict" && !isClient {
+			plan.Skipped = append(plan.Skipped, "The strict Windows-app capability restrictions, clipboard-history control, and Windows Error Reporting policy are not applied to Windows Server.")
 		}
 	}
+
 	if blockOutboundByDefault {
 		plan.Warnings = append(plan.Warnings,
 			"Outbound defaults will be Block for all three firewall profiles. Explicit allow rules may still permit connections; apps, downloads, cloud functions, and updates can stop working.")
 	}
 	if isolateOutbound {
 		plan.Warnings = append(plan.Warnings,
-			"Emergency network isolation adds an outbound block rule for all programs and enables Windows Firewall profiles. Expect internet, DNS, downloads, cloud features, and Windows Update to stop until restored. This cannot guarantee firmware, hypervisors, separate devices, or out-of-band routes are isolated.")
+			"Emergency isolation adds an outbound block rule for all programs and enables Windows Firewall profiles. Expect internet, DNS, downloads, cloud features, and Windows Update to stop until restored. This cannot guarantee firmware, hypervisors, separate devices, or out-of-band routes are isolated.")
 	}
 	plan.Warnings = append(plan.Warnings,
-		"Domain policy or MDM can later replace local values. Verification confirms values read back now; it does not prove the complete effective policy or guarantee that no data leaves Windows.",
-		"Required diagnostic data may still be sent on common client editions. Security-only diagnostics is available only on editions Microsoft documents as supporting it.",
+		"Domain policy or MDM can later replace local values. Verification confirms current readback; it does not prove the complete effective policy or guarantee that no data leaves Windows.",
+		"Required diagnostic data remains on mainstream client editions. Diagnostic data off is documented only for Enterprise, Education, and Server editions; this does not disable all system communications.",
 		"Windows Update, Defender, SmartScreen, certificate revocation, licensing, and essential security services remain enabled. PrivaCage does not hardcode Microsoft IPs or mutate hosts files.")
 	return plan, nil
 }
@@ -267,15 +281,13 @@ func supportsClientPrivacyPolicies(edition string) bool {
 
 func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
 	edition = strings.ToLower(edition)
-	if strings.Contains(edition, "iot") {
+	if strings.Contains(edition, "iotenterprise") {
 		return false
 	}
-	if strings.Contains(edition, "enterprise") || strings.Contains(edition, "education") {
+	if strings.Contains(edition, "enterprise") || strings.Contains(edition, "education") || strings.Contains(edition, "server") {
 		return true
 	}
-	// Microsoft documents AllowTelemetry value 0 for Server 2016; subsequent
-	// Server releases remain at Required unless Microsoft documents support.
-	return strings.Contains(edition, "server") && buildNumber == 14393
+	return false
 }
 
 func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
