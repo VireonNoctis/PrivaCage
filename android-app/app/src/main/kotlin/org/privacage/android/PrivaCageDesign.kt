@@ -29,14 +29,14 @@ import java.util.Locale
  * listeners, state, and privacy operations remain connected to their real services.
  */
 internal object PrivaCageDesign {
-    private val pageBackground = Color.rgb(8, 8, 8)
-    private val surfaceBackground = Color.rgb(17, 17, 17)
-    private val inputSurfaceColor = Color.rgb(13, 13, 13)
-    private val border = Color.rgb(48, 48, 48)
-    private val textPrimary = Color.rgb(246, 246, 246)
-    private val textSecondary = Color.rgb(177, 177, 177)
-    private val textMuted = Color.rgb(124, 124, 124)
-    private val ink = Color.rgb(8, 8, 8)
+    private val pageBackground = 0xFF080808.toInt()
+    private val surfaceBackground = 0xFF111111.toInt()
+    private val inputSurfaceColor = 0xFF0D0D0D.toInt()
+    private val border = 0xFF303030.toInt()
+    private val textPrimary = 0xFFF6F6F6.toInt()
+    private val textSecondary = 0xFFB1B1B1.toInt()
+    private val textMuted = 0xFF7C7C7C.toInt()
+    private val ink = 0xFF080808.toInt()
 
     private val sectionHeadings = setOf(
         "ANDROID PRIVACY CONTROLS",
@@ -53,7 +53,12 @@ internal object PrivaCageDesign {
         val view: LinearLayout
     )
 
-    fun apply(activity: Activity, root: LinearLayout, scrollView: ScrollView) {
+    fun apply(
+        activity: Activity,
+        root: LinearLayout,
+        scrollView: ScrollView,
+        statusView: TextView
+    ) {
         val originalViews = (0 until root.childCount).map(root::getChildAt)
         root.removeAllViews()
         root.orientation = LinearLayout.VERTICAL
@@ -129,19 +134,14 @@ internal object PrivaCageDesign {
 
         val sections = mutableListOf<SectionCard>()
         var currentCard: LinearLayout? = null
-        var globalStatus: TextView? = null
+        val globalStatus: TextView = statusView
         var sectionNumber = 0
 
         for (view in originalViews.drop(2)) {
-            if (view is TextView && view.text?.toString() == "Local actions and service messages appear here.") {
-                globalStatus = view
-                continue
-            }
-            val heading = (view as? TextView)?.text?.toString()
-                ?.trim()
-                ?.uppercase(Locale.ROOT)
+            if (view === statusView) continue
+            val heading = sectionHeading(view as? TextView)
 
-            if (heading != null && heading in sectionHeadings) {
+            if (heading != null) {
                 sectionNumber += 1
                 val card = LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
@@ -237,7 +237,7 @@ internal object PrivaCageDesign {
             }
         }
 
-        globalStatus?.let { status ->
+        globalStatus.let { status ->
             val statusCard = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 background = roundedBackground(activity, surfaceBackground, border, 16)
@@ -315,7 +315,10 @@ internal object PrivaCageDesign {
         return scroller
     }
 
-    private fun navigationLabel(heading: String): String = when (heading) {
+    internal fun sectionHeading(view: TextView?): String? =
+        view?.text?.toString()?.trim()?.uppercase(Locale.ROOT)?.takeIf { it in sectionHeadings }
+
+    internal fun navigationLabel(heading: String): String = when (heading) {
         "ANDROID PRIVACY CONTROLS" -> "DEVICE"
         "DEVICE PRIVACY SNAPSHOT (LOCAL ONLY)" -> "SNAPSHOT"
         "PRIVACY HARDENING" -> "HARDENING"
@@ -377,9 +380,14 @@ internal object PrivaCageDesign {
         view.setLinkTextColor(textPrimary)
     }
 
+    internal fun isPrimaryAction(label: CharSequence?): Boolean =
+        label?.toString()?.trim()?.lowercase(Locale.ROOT) in setOf(
+            "save configuration",
+            "enable dns filtering"
+        )
+
     private fun styleButton(context: Context, view: Button) {
-        val label = view.text?.toString().orEmpty().lowercase(Locale.ROOT)
-        val primary = label == "save configuration" || label == "enable dns filtering"
+        val primary = isPrimaryAction(view.text)
         view.isAllCaps = false
         view.textSize = 13f
         view.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
