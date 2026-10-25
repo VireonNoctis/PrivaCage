@@ -114,7 +114,7 @@ describe('PrivaCage web workspace', () => {
 
     expect(await screen.findByRole('heading', { name: /Privacy, made visible/i })).toBeInTheDocument();
     expect(screen.getByText('DEVICE NOT LINKED')).toBeInTheDocument();
-    expect(screen.getByText('Google Analytics collection endpoint')).toBeInTheDocument();
+    expect(await screen.findByText('Google Analytics collection endpoint')).toBeInTheDocument();
     expect(screen.getByText('NO PRODUCT TELEMETRY')).toBeInTheDocument();
   });
 
