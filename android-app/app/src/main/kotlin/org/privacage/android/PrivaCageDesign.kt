@@ -291,6 +291,7 @@ internal object PrivaCageDesign {
                 gravity = Gravity.CENTER
                 setPadding(dp(context, 12), dp(context, 10), dp(context, 12), dp(context, 10))
                 isFocusable = true
+                minimumHeight = dp(context, 48)
                 contentDescription = "Jump to $label section"
                 background = rippleBackground(
                     roundedBackground(context, Color.rgb(21, 21, 21), border, 12),
@@ -345,7 +346,7 @@ internal object PrivaCageDesign {
                     dp(context, 12)
                 )
                 view.background = inputBackground(context)
-                view.minHeight = dp(context, 46)
+                view.minHeight = dp(context, 48)
             }
             is CheckBox -> {
                 view.setTextColor(textSecondary)
@@ -358,7 +359,7 @@ internal object PrivaCageDesign {
                     ),
                     intArrayOf(textPrimary, textMuted)
                 )
-                view.minimumHeight = dp(context, 42)
+                view.minimumHeight = dp(context, 48)
                 view.setPadding(dp(context, 2), dp(context, 3), dp(context, 2), dp(context, 3))
             }
             is Button -> styleButton(context, view)
@@ -393,7 +394,7 @@ internal object PrivaCageDesign {
         view.setTextColor(if (primary) ink else textPrimary)
         view.gravity = Gravity.CENTER
         view.setPadding(dp(context, 14), dp(context, 11), dp(context, 14), dp(context, 11))
-        view.minimumHeight = dp(context, 46)
+        view.minimumHeight = dp(context, 48)
         view.elevation = 0f
         val fill = if (primary) Color.WHITE else Color.rgb(23, 23, 23)
         val stroke = if (primary) Color.WHITE else border
