@@ -10,12 +10,13 @@ The implementation therefore follows a limited claim: **apply documented local p
 
 ### 1. Windows diagnostic data
 
-Microsoft's System Policy CSP documents AllowTelemetry with value 1 for Required diagnostic data and 3 for Optional diagnostic data. Value 0 ("Security") is supported only on specific Enterprise, Education, IoT, and Server editions; on other editions, Microsoft documents that value 0 behaves like value 1. Required diagnostics still include data used to keep Windows secure, up to date, and operating as expected.
+Microsoft's System Policy CSP documents AllowTelemetry with value 1 for Required diagnostic data and 3 for Optional diagnostic data. Value 0 ("Diagnostic data off") is supported only on Enterprise, Education, and Server editions under Microsoft's current policy table; IoT Enterprise is not in that supported set. On common Pro editions, PrivaCage therefore uses value 1 (Required). Required diagnostics still include data used to keep Windows secure, up to date, and operating as expected.
 
 **PrivaCage behavior**
 - On commonly used Professional editions, balanced and strict profiles set AllowTelemetry=1, the lowest documented level for the supported policy.
-- On editions Microsoft documents as supporting Security-only diagnostics, the profiles use value 0.
+- On Enterprise, Education, and Server editions, the profiles use value 0 (Diagnostic data off).
 - On Windows Home/Core, the machine-policy controls are skipped rather than being presented as enforced.
+- On supported client builds, ConfigureTelemetryOptInSettingsUx=1 disables the end-user diagnostic-data selector in Settings; this does not block administrators or higher-priority management policy.
 - On supported Windows 11 builds, the plan also applies LimitDiagnosticLogCollection=1 and LimitDumpCollection=1 to constrain additional diagnostic logs/dumps.
 
 **Limit:** this does not establish zero traffic. Optional diagnostic data can include diagnostic logs and crash dumps; required diagnostic data remains a separate minimum. Policy meaning varies by Windows edition and build.
