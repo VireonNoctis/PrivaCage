@@ -86,6 +86,11 @@ class PrivacyDnsVpnService : VpnService() {
                 .addAddress(VPN_INTERFACE_ADDRESS, 32)
                 .addDnsServer(VIRTUAL_DNS_ADDRESS)
                 .addRoute(VIRTUAL_DNS_ADDRESS, 32)
+                // IPv6 clients receive a separate virtual DNS target. The route remains /128;
+                // general IPv6 traffic is not pulled into this DNS-only VPN.
+                .addAddress(VPN_IPV6_INTERFACE_ADDRESS, 128)
+                .addDnsServer(VIRTUAL_IPV6_DNS_ADDRESS)
+                .addRoute(VIRTUAL_IPV6_DNS_ADDRESS, 128)
                 .setBlocking(true)
                 .establish() ?: throw IOException("Android refused to establish the VPN interface")
 
@@ -148,7 +153,7 @@ class PrivacyDnsVpnService : VpnService() {
 
                 val packet = buffer.copyOf(count)
                 val result = try {
-                    engine.processIpv4Packet(packet)
+                    engine.processIpPacket(packet)
                 } catch (exception: IOException) {
                     if (running) {
                         // An upstream timeout should drop one DNS request, not tear down the VPN.
@@ -451,5 +456,7 @@ class PrivacyDnsVpnService : VpnService() {
         private const val STATS_FLUSH_PACKET_INTERVAL = 16
         private const val VPN_INTERFACE_ADDRESS = "10.111.0.1"
         private const val VIRTUAL_DNS_ADDRESS = "10.111.0.2"
+        private const val VPN_IPV6_INTERFACE_ADDRESS = "fd42:1111:2222::1"
+        private const val VIRTUAL_IPV6_DNS_ADDRESS = "fd42:1111:2222::2"
     }
 }
