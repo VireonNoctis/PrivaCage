@@ -39,6 +39,8 @@ func runWindowsCommand(args []string, stdout, stderr io.Writer) error {
 		return executeHardening(command, commandArgs, stdout, stderr)
 	case "ui":
 		return runInteractiveConsole(os.Stdin, stdout, stderr)
+	case "debloat":
+		return launchWin11Debloat(commandArgs, stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q; run pcage-audit help", command)
 	}
@@ -373,6 +375,7 @@ func printWindowsUsage(w io.Writer) {
 	fmt.Fprintln(w, "  pcage-audit apply --profile balanced --confirm")
 	fmt.Fprintln(w, "  pcage-audit verify           Verify the active PrivaCage profile")
 	fmt.Fprintln(w, "  pcage-audit restore --confirm-restore")
+	fmt.Fprintln(w, "  pcage-audit debloat [Win11Debloat parameters]  Open the Windows customization GUI")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Optional high-impact network controls; preview first and confirm explicitly:")
 	fmt.Fprintln(w, "  pcage-audit plan --profile balanced --block-outbound-by-default --confirm-network-disruption")
@@ -380,7 +383,8 @@ func printWindowsUsage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Balanced minimizes documented diagnostics and Activity Feed sharing.")
 	fmt.Fprintln(w, "Strict additionally denies selected Windows-app capabilities and disables Windows Error Reporting.")
-	fmt.Fprintln(w, "Mutating actions request UAC elevation and save a protected local rollback file.")
+	fmt.Fprintln(w, "Mutating audit-profile actions request UAC elevation and save a protected local rollback file.")
+	fmt.Fprintln(w, "The debloat command launches the separately pinned Win11Debloat tool; review its selections before applying changes.")
 	fmt.Fprintln(w, "This cannot guarantee zero Windows traffic or control firmware and out-of-band channels.")
 }
 
@@ -412,6 +416,7 @@ func runInteractiveConsole(input io.Reader, output, stderr io.Writer) error {
 		fmt.Fprintln(output, "  7  Restore captured settings")
 		fmt.Fprintln(output, "  8  Preview emergency network isolation")
 		fmt.Fprintln(output, "  9  Apply emergency network isolation")
+		fmt.Fprintln(output, " 10  Open Win11Debloat customization GUI")
 		fmt.Fprintln(output, "  0  Exit")
 		fmt.Fprint(output, "\nSelect: ")
 		line, err := reader.ReadString('\n')
@@ -468,6 +473,10 @@ func runInteractiveConsole(input io.Reader, output, stderr io.Writer) error {
 				if err := executeHardening("apply", args, output, stderr); err != nil {
 					fmt.Fprintf(stderr, "ERROR: %v\n", err)
 				}
+			}
+		case "10":
+			if err := launchWin11Debloat(nil, output, stderr); err != nil {
+				fmt.Fprintf(stderr, "ERROR: %v\n", err)
 			}
 		default:
 			fmt.Fprintln(output, "Choose one of the displayed numbers.")

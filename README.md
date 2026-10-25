@@ -2,7 +2,7 @@
 
 **Understand what your device exposes. Block what you can. Know what you cannot.**
 
-PrivaCage is an open-source, local-first privacy auditing project. Android is the primary mobile implementation; the Svelte and Rust web workspace provides evidence-backed tracker intelligence but is not currently paired to a device. Windows now has a local Go auditor and a reversible policy-hardening CLI with explicit UAC elevation, protected rollback state, post-change verification, and optional high-impact network isolation. An iOS companion remains planned and constrained by Apple's sandbox and entitlement model.
+PrivaCage is an open-source, local-first privacy auditing project. Android is the primary mobile implementation; the Svelte and Rust web workspace provides evidence-backed tracker intelligence but is not currently paired to a device. Windows now has a local Go auditor and reversible policy-hardening CLI with explicit UAC elevation, protected rollback state, post-change verification, and optional high-impact network isolation. A separate, pinned Win11Debloat component supplies broader user-selected app removal, Windows customization, optional-feature controls, localized GUI/CLI workflows, and its upstream restore/backup support. An iOS companion remains planned and constrained by Apple's sandbox and entitlement model.
 
 PrivaCage is not an anonymity product. It does not claim that an ordinary app can observe or disable every operating-system, desktop-app, manufacturer, or firmware activity. Platform boundaries are part of the product, not fine print.
 
@@ -24,7 +24,7 @@ The repository includes an Android DNS policy core and an early user-approved VP
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
-| Windows privacy auditor and hardening CLI | Initial implementation; Windows CI validated | Reads firewall and policy state, previews edition-aware balanced/strict profiles, applies a narrow allowlist of Microsoft-documented policy values, verifies changes, and restores captured state. Home editions and older builds skip unsupported policies rather than claiming they are applied. The strict profile denies selected Windows-app capabilities and disables Windows Error Reporting. |
+| Windows privacy auditor and hardening CLI | Implemented slice; Windows CI validated | Reads selected state and applies a narrow allowlist with preview, protected backup, verification, and restore. Separate pinned Win11Debloat component offers broad optional customization; its actions are initiated separately by the user and are not covered by the audit CLI's rollback transaction. |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
 | Windows egress controls | Opt-in, disruptive | Optional outbound-default Block or all-program outbound block rule; these can break DNS, Windows Update, cloud apps and other networking, and do not prove that kernel/driver/firmware/out-of-band paths are silent |
 | Legal request assistant | Planned | Drafts and tracks requests; cannot verify deletion from company systems |
@@ -45,6 +45,8 @@ The repository includes an Android DNS policy core and an early user-approved VP
 - `web-backend/` — Rust/Axum API for the canonical tracker catalogue, derived summary metrics, service health, and explicit capability boundaries. Binds to loopback by default.
 - `.github/workflows/web-validation.yml` — Svelte/TypeScript checks, frontend tests, production build, Rust formatting, and Rust API tests.
 
+- `windows/pcage-audit/` — local Windows privacy audit, reversible documented-policy controls, and explicit handoff to the pinned Win11Debloat customization toolkit.
+- `windows/Win11Debloat/` — pinned MIT-licensed upstream Win11Debloat submodule; initialize with `git submodule update --init --recursive`.
 - `docs/architecture.md` — system boundaries and data flow.
 - `docs/threat-model.md` — assets, threats, and non-goals.
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.

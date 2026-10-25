@@ -111,3 +111,13 @@ The service refuses to bind to a non-loopback address. Remote deployment require
 The Android file-picker flow stages only the user-selected image in the app cache and calls `shared/rust/pcage-metadata` through `shared/rust/pcage-metadata-jni`. It supports JPEG, PNG, and WebP with a 100 MiB input cap. Inspection does not modify the selected file. Scrubbing writes a separate temporary copy, validates the output with a second parser pass, and offers it to the user only when no metadata recognized by the parser remains. The input file is never overwritten and no image bytes are uploaded.
 
 The core preserves JPEG APP markers other than APP1, APP13, and COM; preserves unknown PNG/WebP extension chunks and ICC color profiles to avoid destroying potentially important rendering information; and reports those limitations explicitly. PNG chunk CRCs, WebP RIFF/chunk lengths and padding, JPEG marker boundaries, truncation, and trailing data are checked. The core does not decode pixels, prove every image decoder will render the result, or remove identifying information embedded in the visible image content. This is a format-bounded metadata scrubber, not a universal anonymizer.
+
+
+## Windows customization handoff
+
+The Windows workspace exposes two intentionally separate control surfaces:
+
+- `windows/pcage-audit/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
+- `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
+
+The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.

@@ -64,3 +64,12 @@ A green static check is evidence only for the invariant it tests. It does not re
 
 
 | Multi-format metadata inspector | The Rust core and Android adapter locally inspect JPEG, PNG, and WebP and offer a separate cleaned copy only after reinspection. | Unknown extension metadata and preserved color profiles can remain; the feature does not mask identifying content in pixels and is not a universal anonymizer. |
+
+
+## Win11Debloat integration boundary
+
+PrivaCage pins the MIT-licensed [Raphire/Win11Debloat](https://github.com/Raphire/Win11Debloat) repository as a Git submodule at `windows/Win11Debloat/`. The `pcage-audit debloat` command launches its entry script; it does not silently execute a preset or convert upstream operations into PrivaCage-managed policy state.
+
+The upstream tool covers app removal, registry and shell/UI tweaks, telemetry/suggestion controls, Windows AI-feature controls, optional Windows features, browser-specific preferences, import/export, localization, and its own registry backup/restore workflow. Its changes are not all covered by PrivaCage's `hardening-backup.json`; do not use `pcage-audit restore` as a rollback for Win11Debloat actions. Some choices can remove software, change update/BitLocker/standby behavior, or affect core functionality. Read the upstream documentation, inspect the selected changes, and choose restore-point/backup options where appropriate.
+
+The submodule is pinned to a specific upstream commit for reproducibility. Updating that pin requires reviewing the upstream diff and running both PrivaCage Windows checks and the upstream Pester tests on a disposable Windows environment. A successful PowerShell parse check does not prove behavior, safety, reversibility, or compatibility across all Windows editions/builds.

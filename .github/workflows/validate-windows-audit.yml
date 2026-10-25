@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - "windows/pcage-audit/**"
+      - "windows/Win11Debloat"
+      - ".gitmodules"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
       - "docs/architecture.md"
@@ -12,6 +14,8 @@ on:
   pull_request:
     paths:
       - "windows/pcage-audit/**"
+      - "windows/Win11Debloat"
+      - ".gitmodules"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
       - "docs/architecture.md"
@@ -39,6 +43,8 @@ jobs:
         working-directory: windows/pcage-audit
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-go@v7
         with:
           go-version-file: windows/pcage-audit/go.mod
@@ -49,7 +55,7 @@ jobs:
         run: go build ./...
 
   windows-smoke:
-    name: Run read-only collector on Windows
+    name: Run Windows privacy checks and validate Win11Debloat source
     runs-on: windows-latest
     defaults:
       run:
@@ -57,6 +63,31 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Validate pinned Win11Debloat PowerShell source
+        run: |
+          $debloatRoot = (Resolve-Path ..\Win11Debloat).Path
+          $entryPoint = Join-Path $debloatRoot 'Win11Debloat.ps1'
+          $licensePath = Join-Path $debloatRoot 'LICENSE'
+          if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+            throw "The pinned Win11Debloat entry point is missing."
+          }
+          if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) {
+            throw "The upstream Win11Debloat MIT license is missing."
+          }
+          $scripts = @(Get-ChildItem -LiteralPath $debloatRoot -Recurse -File -Filter '*.ps1')
+          if ($scripts.Count -eq 0) { throw "No PowerShell source files were found." }
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $details = $parseErrors | ForEach-Object { "$($script.FullName):$($_.Extent.StartLineNumber): $($_.Message)" }
+              throw ("PowerShell parse errors:" + [Environment]::NewLine + ($details -join [Environment]::NewLine))
+            }
+          }
+          Write-Host "Parsed $($scripts.Count) Win11Debloat PowerShell files without syntax errors."
       - uses: actions/setup-go@v7
         with:
           go-version-file: windows/pcage-audit/go.mod

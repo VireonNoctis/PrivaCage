@@ -44,6 +44,28 @@ Run go run . in an interactive terminal to open the monochrome console.
 
 Apply and restore request UAC elevation when the current process is not an administrator. Applying requires --confirm. A second profile cannot overwrite a pending backup; restore the active profile first.
 
+## Full Windows customization toolkit
+
+The broader Windows customization workflow is provided by the pinned, MIT-licensed [Win11Debloat](`https://github.com/Raphire/Win11Debloat`) component at `windows/Win11Debloat/`. It is deliberately kept separate from PrivaCage's narrower policy allowlist: Win11Debloat includes app removal, registry and UI changes, optional Windows feature controls, CLI presets, import/export, localization, and its own restore/backup workflow.
+
+Initialize the submodule after a regular clone:
+
+```powershell
+git submodule update --init --recursive
+```
+
+Launch its GUI from this module directory:
+
+```powershell
+go run . debloat
+```
+
+The PrivaCage interactive console also offers **10 — Open Win11Debloat customization GUI**. Optional upstream command-line parameters can be forwarded, for example `go run . debloat -CLI`; consult the upstream README/wiki for the full parameter list.
+
+This launch command does not select a preset or modify settings on its own. Win11Debloat's features can remove apps and change Windows settings, services, registry values, shell behavior, and optional features. Review the selected changes before applying them, use its restore-point/backup options where appropriate, and do not assume every tweak is reversible on every Windows build. The separate PrivaCage `apply/verify/restore` transaction remains limited to the policies documented above; it does not wrap or automatically roll back every Win11Debloat operation.
+
+Win11Debloat retains its own upstream interface and license. Its current source is pinned by the Git submodule commit so builds do not silently drift to an unreviewed upstream change.
+
 ## High-impact network options
 
 Network changes are separate from the balanced/strict privacy profiles and require additional acknowledgement.
