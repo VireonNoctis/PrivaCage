@@ -293,7 +293,6 @@ func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
 func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
 	script := strings.Join([]string{
 		"$ErrorActionPreference = 'Stop'",
-		"$ProgressPreference = 'SilentlyContinue',
 		"$ProgressPreference = 'SilentlyContinue'",
 		"$cv = Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' -ErrorAction Stop",
 		"$edition = [string]$cv.EditionID",
