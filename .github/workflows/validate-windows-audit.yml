@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-audit-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: windows-audit-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
