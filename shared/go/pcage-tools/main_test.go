@@ -168,6 +168,23 @@ func TestTrackerDatabaseRejectsUnknownFieldsAtEveryLevel(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unsupported indicators field") {
 		t.Fatalf("unknown indicator field was not rejected: %v", err)
 	}
+
+	for _, test := range []struct {
+		name string
+		input string
+	}{
+		{"wrong-case top-level key", strings.Replace(string(data), "\"schema_version\":1", "\"SCHEMA_VERSION\":1", 1)},
+		{"wrong-case entry key", strings.Replace(string(data), "\"name\":\"Example Analytics SDK\"", "\"Name\":\"Example Analytics SDK\"", 1)},
+		{"wrong-case evidence key", strings.Replace(string(data), "\"url\":\"https://docs.example.org/analytics-sdk\"", "\"URL\":\"https://docs.example.org/analytics-sdk\"", 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "wrong-case.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil || !strings.Contains(err.Error(), "unknown field") {
+				t.Fatalf("case-mismatched schema key was not rejected: %v", err)
+			}
+		})
+	}
 }
 
 func TestTrackerDatabaseRejectsNonCanonicalAndMissingFields(t *testing.T) {
