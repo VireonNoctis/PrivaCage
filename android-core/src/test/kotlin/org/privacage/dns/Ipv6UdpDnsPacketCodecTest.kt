@@ -20,7 +20,7 @@ class Ipv6UdpDnsPacketCodecTest {
         assertEquals(6, (reply[0].toInt() ushr 4) and 0x0f)
         assertEquals(17, reply[6].toInt() and 0xff)
         assertContentEquals(query.destinationAddress, reply.copyOfRange(8, 24))
-        assertArrayEquals(query.sourceAddress, reply.copyOfRange(24, 40))
+        assertContentEquals(query.sourceAddress, reply.copyOfRange(24, 40))
         assertEquals(53, u16(reply, 40))
         assertEquals(53000, u16(reply, 42))
         assertEquals(0, udpChecksum(reply, 40, u16(reply, 44)))
