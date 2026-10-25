@@ -147,8 +147,13 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 			telemetryDescription = "Use the Security diagnostic-data level on an edition where Microsoft documents support for it. This does not promise zero Windows communications."
 		}
 		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", telemetryLevel, telemetryDescription, securityPolicyCSP)
-		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "DisabledByGroupPolicy", 1,
-			"Disable the Windows advertising identifier through the documented machine policy.", privacyPolicyCSP)
+		if supportsClientPrivacyPolicies(metadata.EditionID) {
+			if metadata.BuildNumber >= 14393 {
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "DisabledByGroupPolicy", 1,
+					"Disable the Windows advertising identifier through the documented machine policy.", privacyPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "The Windows advertising-identifier machine policy requires build 14393 or newer.")
+			}
 		if metadata.BuildNumber >= 16299 {
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "EnableActivityFeed", 0,
 				"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
@@ -185,6 +190,9 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		} else {
 			plan.Skipped = append(plan.Skipped, "The tailored-experiences policy requires Windows build 15063 or newer.")
 		}
+		} else {
+			plan.Skipped = append(plan.Skipped, "Advertising ID, Activity Feed, clipboard-sync, tailored-experience and online speech controls are client policy surfaces and are not applied to Windows Server editions.")
+		}
 		if metadata.BuildNumber >= 22000 || (strings.Contains(strings.ToLower(metadata.EditionID), "server") && metadata.BuildNumber >= 20348) {
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1,
 				"Limit additional diagnostic-log collection on supported Windows 11 builds.", securityPolicyCSP)
@@ -194,7 +202,7 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 			plan.Skipped = append(plan.Skipped, "LimitDiagnosticLogCollection and LimitDumpCollection are documented for Windows 11 builds 22000 and later.")
 		}
 
-		if profile == "strict" {
+		if profile == "strict" && supportsClientPrivacyPolicies(metadata.EditionID) {
 			if metadata.BuildNumber >= 17763 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowClipboardHistory", 0,
 					"Disable Windows clipboard history so copied content is not retained in the Win+V history.", "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience")
@@ -227,6 +235,9 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting", "Disabled", 1,
 				"Disable Windows Error Reporting submission policy. This removes a troubleshooting path and does not stop every diagnostic channel.", errorReportingPolicyCSP)
 		}
+		if profile == "strict" && !supportsClientPrivacyPolicies(metadata.EditionID) {
+			plan.Skipped = append(plan.Skipped, "The strict Windows-app privacy and Windows Error Reporting controls are not applied to Windows Server editions.")
+		}
 	}
 	if blockOutboundByDefault {
 		plan.Warnings = append(plan.Warnings,
@@ -253,13 +264,21 @@ func supportsMachinePolicy(edition string) bool {
 	return false
 }
 
+func supportsClientPrivacyPolicies(edition string) bool {
+	edition = strings.ToLower(edition)
+	return supportsMachinePolicy(edition) && !strings.Contains(edition, "server")
+}
+
 func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
 	edition = strings.ToLower(edition)
+	if strings.Contains(edition, "iot") {
+		return false
+	}
 	if strings.Contains(edition, "enterprise") || strings.Contains(edition, "education") {
 		return true
 	}
-	// Microsoft's current AllowTelemetry table identifies Server 2016 for value 0.
-	// Later Server releases remain at Required unless Microsoft documents support.
+	// Microsoft documents AllowTelemetry value 0 for Server 2016; subsequent
+	// Server releases remain at Required unless Microsoft documents support.
 	return strings.Contains(edition, "server") && buildNumber == 14393
 }
 
