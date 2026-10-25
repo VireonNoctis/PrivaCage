@@ -37,9 +37,11 @@ This document is a claim boundary for PrivaCage. A capability is not treated as 
 Run from the repository root:
 
 ```sh
-python shared/scripts/validate-signatures.py
-python shared/scripts/validate-android-backup.py
-python -m unittest discover -s tests -v
+go -C shared/go/pcage-tools test ./...
+go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+go -C shared/go/pcage-tools run . tracker-report --format markdown
+go -C shared/go/pcage-tools run . validate-android-backup
+go -C shared/go/pcage-tools run . validate-android-privacy
 cargo fmt --manifest-path shared/rust/pcage-audit/Cargo.toml --all -- --check
 cargo test --manifest-path shared/rust/pcage-audit/Cargo.toml
 cargo clippy --manifest-path shared/rust/pcage-audit/Cargo.toml --all-targets -- -D warnings
