@@ -778,7 +778,14 @@ class MainActivity : Activity() {
         }
         root.addView(statusText, matchWidth())
         refreshDnsStats()
-        setContentView(ScrollView(this).apply { addView(root) })
+        val contentScroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
+        }
+        PrivaCageDesign.apply(this, root, contentScroll, statusText)
+        contentScroll.addView(root)
+        setContentView(contentScroll)
         Thread({
             val loadResult: Pair<List<TrackerSignature>?, String?> = try {
                 TrackerSignatureCatalog.load(this@MainActivity) to null
