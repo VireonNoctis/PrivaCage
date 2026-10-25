@@ -4,6 +4,21 @@
 
 Build a local-first privacy auditor with a shared evidence format and platform-native enforcement. Shared code may normalize records and validate data; it must not erase important differences between Android, iOS, and Windows.
 
+## Web console
+
+The web workspace is a static Svelte 5 + TypeScript application in `web/`; it is not a JavaScript server or a browser extension. Its separate `web-backend/` Rust/Axum service embeds the canonical `shared/tracker-db/signatures.json` at build time and validates its schema, identifiers, dates, hostnames, status values, and evidence before serving it.
+
+The Rust API exposes:
+
+- `GET /api/health` — reports service health and explicitly says the web workspace has no connected device.
+- `GET /api/v1/tracker-catalog` — returns the source-backed catalogue and evidence URLs.
+- `GET /api/v1/summary` — derives record/status/category counts from that catalogue.
+- `GET /api/v1/capabilities` — identifies which web workspace surfaces are available, platform-local, or not connected.
+
+Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history and audit files remain device-local; web pairing, event ingestion, and audit-file verification are not connected in this initial web implementation.
+
+The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
+
 ## Proposed layers
 
 1. Platform adapters collect facts exposed by supported OS APIs.

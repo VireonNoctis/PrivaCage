@@ -1,0 +1,16 @@
+# Web UI
+web/node_modules/
+web/dist/
+web/coverage/
+web/.svelte-kit/
+web/.env
+web/.env.*
+!web/.env.example
+
+# Rust web API
+web-backend/target/
+
+# Local environment files
+.env
+.env.*
+!.env.example
