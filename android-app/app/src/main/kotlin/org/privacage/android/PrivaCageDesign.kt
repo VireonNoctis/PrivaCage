@@ -136,7 +136,7 @@ internal object PrivaCageDesign {
                 ?.trim()
                 ?.uppercase(Locale.ROOT)
 
-            if (heading in sectionHeadings) {
+            if (heading != null && heading in sectionHeadings) {
                 sectionNumber += 1
                 val card = LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
