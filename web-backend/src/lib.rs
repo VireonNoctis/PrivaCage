@@ -110,7 +110,11 @@ fn validate_catalog(catalog: &TrackerCatalog) -> Result<(), String> {
             || !entry
                 .id
                 .chars()
-                .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-')
+                .all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || character == '-'
+                })
             || entry.id.starts_with('-')
             || entry.id.ends_with('-')
             || entry.id.contains("--")
