@@ -4,7 +4,7 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * End-to-end single-packet coordinator for the supported IPv4/UDP/DNS subset.
+ * End-to-end packet coordinator for the supported IPv4/IPv6 UDP DNS subset.
  *
  * It returns a response packet for blocked or successfully forwarded DNS queries. It does not
  * read or write a TUN descriptor; an Android VpnService must own that lifecycle and I/O loop.
@@ -15,10 +15,22 @@ class DnsTunnelEngine(
 ) {
     val stats = DnsTunnelStats()
 
-    /**
-     * Processes one IPv4 packet. Upstream socket errors and timeouts propagate as IOException
-     * so the platform adapter can record and handle them instead of inventing a DNS answer.
-     */
+    /** Dispatches only supported IPv4 and IPv6 packet versions. */
+    fun processIpPacket(packet: ByteArray): DnsTunnelResult {
+        if (packet.isEmpty()) {
+            stats.recordUnsupportedOrMalformed()
+            return DnsTunnelResult.Drop("IP packet is empty")
+        }
+        return when ((packet[0].toInt() ushr 4) and 0x0f) {
+            4 -> processIpv4Packet(packet)
+            6 -> processIpv6Packet(packet)
+            else -> {
+                stats.recordUnsupportedOrMalformed()
+                DnsTunnelResult.Drop("Unsupported IP version")
+            }
+        }
+    }
+
     @Throws(IOException::class)
     fun processIpv4Packet(packet: ByteArray): DnsTunnelResult {
         return when (val result = processor.processIpv4Packet(packet)) {
@@ -52,6 +64,60 @@ class DnsTunnelEngine(
                     domain = result.question.name,
                     action = DnsTunnelAction.FORWARDED
                 )
+            }
+            is DnsPacketProcessingResult.ForwardRequiredIpv6,
+            is DnsPacketProcessingResult.BlockedIpv6 -> {
+                stats.recordUnsupportedOrMalformed()
+                DnsTunnelResult.Drop("IPv6 packet reached the IPv4 processing entry point")
+            }
+        }
+    }
+
+    @Throws(IOException::class)
+    fun processIpv6Packet(packet: ByteArray): DnsTunnelResult {
+        return when (val result = processor.processIpv6Packet(packet)) {
+            is DnsPacketProcessingResult.NotDns -> {
+                stats.recordUnsupportedOrMalformed()
+                DnsTunnelResult.NotDns(result.reason)
+            }
+            is DnsPacketProcessingResult.Drop -> {
+                stats.recordUnsupportedOrMalformed()
+                DnsTunnelResult.Drop(result.reason)
+            }
+            is DnsPacketProcessingResult.BlockedIpv6 -> {
+                stats.recordBlocked()
+                DnsTunnelResult.Response(
+                    packet = result.responsePacket,
+                    domain = result.domain,
+                    action = DnsTunnelAction.BLOCKED
+                )
+            }
+            is DnsPacketProcessingResult.ForwardRequiredIpv6 -> {
+                val dnsResponse = try {
+                    upstreamForwarder.forward(result.query.dnsPayload)
+                } catch (exception: IOException) {
+                    stats.recordUpstreamFailure()
+                    throw exception
+                }
+                val responsePacket = try {
+                    Ipv6UdpDnsPacketCodec.buildUdpResponseForValidatedQuery(result.query, dnsResponse)
+                } catch (exception: IllegalArgumentException) {
+                    stats.recordUpstreamFailure()
+                    return DnsTunnelResult.Drop(
+                        exception.message ?: "IPv6 DNS response could not fit within the TUN packet limit"
+                    )
+                }
+                stats.recordForwarded()
+                DnsTunnelResult.Response(
+                    packet = responsePacket,
+                    domain = result.question.name,
+                    action = DnsTunnelAction.FORWARDED
+                )
+            }
+            is DnsPacketProcessingResult.ForwardRequired,
+            is DnsPacketProcessingResult.Blocked -> {
+                stats.recordUnsupportedOrMalformed()
+                DnsTunnelResult.Drop("IPv4 packet reached the IPv6 processing entry point")
             }
         }
     }
