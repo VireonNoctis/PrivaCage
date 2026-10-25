@@ -160,6 +160,17 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, dp(8))
         }
         root.addView(appPermissionAuditText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Clear local permission-audit baseline"
+            setOnClickListener {
+                val cleared = AppPermissionAudit.clearBaseline(this@MainActivity)
+                appPermissionAuditText.text = if (cleared) {
+                    "The local permission-audit baseline was cleared. The next complete scan establishes a fresh baseline. No app permissions were changed."
+                } else {
+                    "Could not confirm removal of the saved local permission-audit baseline. Review app storage permissions and try again."
+                }
+            }
+        }, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "PRIVACY HARDENING"
