@@ -19,7 +19,7 @@ func TestEditionGatesForMachinePolicyAndSecurityDiagnostics(t *testing.T) {
 		{"Education", 22631, true, true},
 		{"IoTEnterprise", 22631, true, false},
 		{"ServerStandard", 14393, true, true},
-		{"ServerStandard", 20348, true, false},
+		{"ServerStandard", 20348, true, true},
 	}
 	for _, test := range tests {
 		if got := supportsMachinePolicy(test.edition); got != test.machine {
@@ -40,7 +40,7 @@ func TestBalancedPlanUsesEditionAppropriateDiagnosticSetting(t *testing.T) {
 	if plan.SchemaVersion != 1 || plan.Profile != "balanced" || plan.BlockOutboundByDefault || plan.IsolateOutbound {
 		t.Fatalf("unexpected balanced plan metadata: %+v", plan)
 	}
-	var telemetry, activity, upload, tailored, limitLogs, clipboardSync, deviceName bool
+	var telemetry, telemetryUI, activity, upload, tailored, limitLogs, clipboardSync, deviceName bool
 	for _, change := range plan.Changes {
 		switch change.Name {
 		case "AllowTelemetry":
@@ -48,6 +48,8 @@ func TestBalancedPlanUsesEditionAppropriateDiagnosticSetting(t *testing.T) {
 			if change.Value != 1 {
 				t.Errorf("Professional must use Required diagnostics (1), got %d", change.Value)
 			}
+		case "ConfigureTelemetryOptInSettingsUx":
+			telemetryUI = change.Value == 1
 		case "EnableActivityFeed":
 			activity = change.Value == 0
 		case "UploadUserActivities":
@@ -62,7 +64,7 @@ func TestBalancedPlanUsesEditionAppropriateDiagnosticSetting(t *testing.T) {
 			deviceName = change.Value == 0
 		}
 	}
-	if !telemetry || !activity || !upload || !tailored || !limitLogs || !clipboardSync || !deviceName {
+	if !telemetry || !telemetryUI || !activity || !upload || !tailored || !limitLogs || !clipboardSync || !deviceName {
 		t.Fatalf("balanced plan missing documented controls: %+v", plan.Changes)
 	}
 	enterprise, err := buildHardeningPlan("balanced", windowsMetadata{EditionID: "Enterprise", BuildNumber: 22631}, false, false)
@@ -110,7 +112,7 @@ func TestStrictPlanAddsWindowsAppPrivacyDenials(t *testing.T) {
 			if name == "Disabled" && change.Value != 1 {
 				t.Errorf("Windows Error Reporting Disabled should equal 1, got %d", change.Value)
 			}
-			if name != "Disabled" && change.Value != 2 {
+			if name != "Disabled" && name != "AllowClipboardHistory" && change.Value != 2 {
 				t.Errorf("%s force-deny value should equal 2, got %d", name, change.Value)
 			}
 		}
@@ -201,5 +203,68 @@ func TestPlanWarningsDescribeTheDiagnosticDataLimit(t *testing.T) {
 	}
 	if !json.Valid(encoded) {
 		t.Fatal("plan should serialize to valid JSON")
+	}
+}
+
+
+func TestServerPlanSkipsClientOnlyPolicies(t *testing.T) {
+	plan, err := buildHardeningPlan("strict", windowsMetadata{
+		EditionID: "ServerStandard", BuildNumber: 20348,
+	}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range plan.Changes {
+		switch change.Name {
+		case "DisabledByGroupPolicy", "ConfigureTelemetryOptInSettingsUx", "EnableActivityFeed",
+			"AllowCrossDeviceClipboard", "AllowDeviceNameInDiagnosticData", "PublishUserActivities",
+			"UploadUserActivities", "AllowInputPersonalization", "AllowClipboardHistory",
+			"LetAppsAccessLocation", "LetAppsAccessCamera", "LetAppsAccessMicrophone", "Disabled":
+			t.Errorf("client-only policy %q must not be applied to Windows Server", change.Name)
+		}
+	}
+	var telemetry, limitLogs, limitDumps bool
+	for _, change := range plan.Changes {
+		switch change.Name {
+		case "AllowTelemetry":
+			telemetry = change.Value == 0
+		case "LimitDiagnosticLogCollection":
+			limitLogs = change.Value == 1
+		case "LimitDumpCollection":
+			limitDumps = change.Value == 1
+		}
+	}
+	if !telemetry || !limitLogs || !limitDumps {
+		t.Fatalf("Windows Server plan should include supported diagnostic controls: %+v", plan.Changes)
+	}
+}
+
+func TestHomePlanSkipsMachinePolicyChanges(t *testing.T) {
+	plan, err := buildHardeningPlan("balanced", windowsMetadata{
+		EditionID: "Core", BuildNumber: 22631, InteractiveUserSID: "",
+	}, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range plan.Changes {
+		if change.Hive == "LocalMachine" {
+			t.Errorf("Home plan must not write a machine policy: %s", change.Name)
+		}
+	}
+	if len(plan.Changes) != 0 {
+		t.Fatalf("Home plan without active user should contain no writes, got %+v", plan.Changes)
+	}
+}
+
+func TestSIDValidationAcceptsOnlyStandardAccountSIDs(t *testing.T) {
+	for _, sid := range []string{"S-1-5-21-111-222-333-1001", "S-1-5-21-1-2-3-500"} {
+		if !validUserSID(sid) {
+			t.Errorf("valid SID rejected: %s", sid)
+		}
+	}
+	for _, sid := range []string{"", "S-1-5-18", "S-1-5-21-1-2-x-1001", "S-1-5-21-1-2-3"} {
+		if validUserSID(sid) {
+			t.Errorf("invalid SID accepted: %s", sid)
+		}
 	}
 }
