@@ -1,0 +1,67 @@
+name: Validate Windows privacy baseline auditor
+
+on:
+  push:
+    paths:
+      - "windows/pcage-audit/**"
+      - ".github/workflows/validate-windows-audit.yml"
+      - "README.md"
+  pull_request:
+    paths:
+      - "windows/pcage-audit/**"
+      - ".github/workflows/validate-windows-audit.yml"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-audit-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests and build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: windows/pcage-audit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: windows/pcage-audit/go.mod
+      - name: Run tests
+        run: go test ./...
+      - name: Build executable
+        run: go build ./...
+
+  windows-smoke:
+    name: Run read-only collector on Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows/pcage-audit
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: windows/pcage-audit/go.mod
+      - name: Execute and validate local report
+        run: |
+          $reportLines = go run . --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $reportJson = $reportLines -join [Environment]::NewLine
+          $report = $reportJson | ConvertFrom-Json
+          if ($report.schema_version -ne 1 -or $report.platform -ne "windows" -or $report.read_only -ne $true) {
+            throw "The auditor returned unexpected report metadata."
+          }
+          if ($report.checks.Count -lt 7) {
+            throw "The auditor returned fewer checks than the expected baseline."
+          }
