@@ -2,13 +2,13 @@
 
 **Understand what your device exposes. Block what you can. Know what you cannot.**
 
-PrivaCage is an open-source, local-first privacy auditing project for Android, iOS, and Windows. Its goal is to help people understand app permissions, identify known tracking components, inspect observable network activity, apply enforceable privacy rules, and keep an evidence-backed local audit trail.
+PrivaCage is an open-source, local-first privacy auditing project. Android is the primary mobile implementation; the Svelte and Rust web workspace provides evidence-backed tracker intelligence but is not currently paired to a device. Windows now has a local Go auditor and reversible policy-hardening CLI with explicit UAC elevation, protected rollback state, post-change verification, and optional high-impact network isolation. A separate, pinned Win11Debloat component supplies broader user-selected app removal, Windows customization, optional-feature controls, localized GUI/CLI workflows, and its upstream restore/backup support. An iOS companion remains planned and constrained by Apple's sandbox and entitlement model.
 
-PrivaCage is not an anonymity product and does not claim that an ordinary app can observe or disable every operating-system or manufacturer activity. Platform boundaries are part of the product, not fine print.
+PrivaCage is not an anonymity product. It does not claim that an ordinary app can observe or disable every operating-system, desktop-app, manufacturer, or firmware activity. Platform boundaries are part of the product, not fine print.
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The former Python tracker/privacy scripts and unittest modules have been replaced by a standard-library Go CLI and Go regression suite. GitHub Actions runs the Go tracker, backup-policy, and Android privacy gates alongside the Android build checks. Backup/restore behavior across OEM device-transfer paths still requires real-device validation. No emulator or physical-device validation has been completed.
+The repository includes an Android DNS policy core and an early user-approved VPN adapter, evidence-backed tracker intelligence, local APK analysis and metadata scrubbing, encrypted profile export, optional local DNS-history export with signed audit checkpoints, a Rust portable checkpoint verifier, Rust sync protocol/relay components, a Svelte 5 + TypeScript web console backed by Rust/Axum, and a Windows CLI that audits selected settings and applies documented reversible privacy policies. Windows policy writes are restricted to an allowlist, require confirmation and elevation, save a SYSTEM/Administrators-only backup, verify observed values, and provide a restore path. These are distinct maturity levels: Android VPN routing and backup behavior still need representative device validation; web device pairing/event ingestion is not connected; Windows policy controls do not guarantee zero Windows traffic or cover every OS component, driver, firmware, or network route.
 
 | Area | Status | Honest scope |
 |---|---|---|
@@ -24,8 +24,9 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
+| Windows privacy auditor and hardening CLI | Implemented slice; Windows CI validated | Reads selected state and applies a narrow allowlist with preview, protected backup, verification, and restore. Separate pinned Win11Debloat component offers broad optional customization; its actions are initiated separately by the user and are not covered by the audit CLI's rollback transaction. |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
-| Windows network controls | Planned | Explicit firewall rules require appropriate privileges |
+| Windows egress controls | Opt-in, disruptive | Optional outbound-default Block or all-program outbound block rule; these can break DNS, Windows Update, cloud apps and other networking, and do not prove that kernel/driver/firmware/out-of-band paths are silent |
 | Legal request assistant | Planned | Drafts and tracks requests; cannot verify deletion from company systems |
 
 ## Principles
@@ -44,6 +45,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `web-backend/` — Rust/Axum API for the canonical tracker catalogue, derived summary metrics, service health, and explicit capability boundaries. Binds to loopback by default.
 - `.github/workflows/web-validation.yml` — Svelte/TypeScript checks, frontend tests, production build, Rust formatting, and Rust API tests.
 
+- `windows/pcage-audit/` — local Windows privacy audit, reversible documented-policy controls, and explicit handoff to the pinned Win11Debloat customization toolkit.
+- `windows/Win11Debloat/` — pinned MIT-licensed upstream Win11Debloat submodule; initialize with `git submodule update --init --recursive`.
 - `docs/architecture.md` — system boundaries and data flow.
 - `docs/threat-model.md` — assets, threats, and non-goals.
 - `docs/privacy-opportunity-backlog.md` — candidate features grounded in real capabilities.
@@ -75,6 +78,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
 - `shared/go/pcage-tools/` — standard-library Go CLI for tracker schema/freshness validation, tracker review reporting, Android backup declaration checks, and the Android sensitive-permission/known-telemetry dependency baseline. Its tests replace the Python regression suite; the backup check remains static and is not an OEM transfer test.
+- `windows/pcage-audit/` — Go CLI and monochrome interactive console for Windows baseline auditing, edition-aware hardening preview/apply, UAC elevation, protected rollback backup, verification, restoration, and explicit network-isolation options. Includes unit tests and Windows/Linux CI; see its README and the Windows hardening research note for limits.
 
 ## Build and test
 
@@ -86,6 +90,31 @@ Requires Go 1.27 or newer for the repository privacy tools and regression tests:
     go run . tracker-report --format markdown
     go run . validate-android-backup
     go run . validate-android-privacy
+
+### Windows privacy audit and hardening
+
+The collector and hardening operations run on Windows 10/11 with Windows PowerShell and the NetSecurity module. Unit tests and Go compilation also run on Linux, but policy mutation and the live collector are Windows-only.
+
+From `windows/pcage-audit` on Windows:
+
+    go test ./...
+    go run . audit --format text
+    go run . plan --profile balanced
+    go run . plan --profile strict
+    go run . apply --profile balanced --confirm
+    go run . verify
+    go run . restore --confirm-restore
+
+The interactive monochrome console opens with `go run .` in a terminal. Apply and restore request UAC elevation. An apply refuses to overwrite an existing backup until the previous profile is restored. The protected backup is written under `%ProgramData%\PrivaCage\hardening-backup.json`.
+
+**High-impact network controls are separate and opt-in.** Preview before applying:
+
+    go run . plan --profile balanced --block-outbound-by-default --confirm-network-disruption
+    go run . apply --profile balanced --block-outbound-by-default --confirm --confirm-network-disruption
+    go run . plan --profile balanced --isolate-network --confirm-network-disruption
+    go run . apply --profile balanced --isolate-network --confirm --confirm-network-disruption
+
+The outbound-default mode changes all three firewall profiles' default outbound action; existing explicit allow rules may still permit some connections. Emergency isolation adds an all-program outbound block rule and may immediately break the internet, DNS, Windows Update, cloud features, downloads, and network-dependent apps. Use a local console and know how to run `restore` before enabling it.
 
 The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
 
@@ -148,10 +177,18 @@ The tracker validator checks structure and URL syntax and can enforce an evidenc
 
 - Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. The editor includes an offline hostname-rule preview and aggregate session counters. Optional local DNS event history is disabled by default and can retain hostnames; socket-owner lookup is best-effort and may identify Android's resolver rather than the initiating app. An explicit diagnostic sends one fixed `example.com` A query via the configured protected upstream, samples Android-visible non-VPN network validation/captive-portal state, and compares the snapshot around the test; it stores neither raw DNS packets nor query names. This does not prove every app uses the expected path, and Wi-Fi/mobile handover and captive-portal behavior still require device validation. A local device snapshot reports exposed location, Wi-Fi, Private DNS, and active-network VPN settings plus PrivaCage's own declared permissions, without reading SSIDs or uploading the snapshot. A separate permission audit checks dangerous permissions declared by launcher-visible apps and reports current grant flags locally; Android package visibility means this is not a complete inventory of system/OEM services. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
-- Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
+- Windows: the local CLI reads firewall profiles and selected policy values, then applies a restricted allowlist of supported privacy policies after explicit confirmation and UAC elevation. It records the original registry/firewall state in a protected local backup, verifies applied policy values, and provides a restore path. Its firewall isolation option is deliberately separate and disruptive. It cannot inspect every live connection or prove that all Windows components have stopped communicating.
 - Wi-Fi and connection privacy: a Wi-Fi operator can usually observe connected-device/network metadata, timing, traffic volume, and destination IPs. HTTPS protects application content in transit; encrypted DNS can hide DNS questions from the local network when correctly configured, while the resolver still sees them. A VPN hides tunneled destinations from the local Wi-Fi operator but shifts visibility and trust to the VPN provider; it does not prove every connection is tunneled.
 - Static APK manifest audit: PrivaCage can inspect a user-selected APK's declared permissions and exported components locally without installing it. A declared permission, exported component, SDK string, or domain is evidence of capability/surface, not proof of runtime behavior or data collection.
 - Legal requests: a sent request is not proof of deletion.
+
+## Windows privacy controls — claim boundary
+
+The balanced profile minimizes documented policy surfaces including optional diagnostic data, advertising ID, Activity Feed/user-activity upload, tailored experiences, online speech personalization, and supported Windows 11 diagnostic-log/dump collection limits. On mainstream Pro editions, PrivaCage selects Required diagnostic data and locks the end-user diagnostic-data selector in Settings on supported builds. The Diagnostic data off value (0) is supported only on Enterprise, Education, and Server editions; it controls Windows diagnostic data, not every system communication.
+
+The strict profile additionally disables clipboard history, force-denies selected Windows-app capabilities, and disables Windows Error Reporting. These policies are not a universal barrier against classic desktop programs, system services, drivers, or firmware. Domain policy or MDM may override local settings. The app preserves Defender, Windows Update, SmartScreen, licensing, and certificate validation.
+
+The CLI makes no network requests itself. Registry changes are allowlisted, saved with their prior values, checked after writing, and reversible through the captured backup. The backup is restricted to SYSTEM and Administrators. Network controls require extra confirmation; an all-program outbound block is not appropriate for normal daily operation and cannot prove every out-of-band channel is silent. Read [the research note](docs/research-notes/windows-privacy-hardening-2026-10-25.md) and [the tool guide](windows/pcage-audit/README.md) before applying policies.
 
 ## Security reporting
 

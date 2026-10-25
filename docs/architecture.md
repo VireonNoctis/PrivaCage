@@ -61,7 +61,13 @@ Use public Apple APIs and approved entitlements only. NetworkExtension design de
 
 ## Windows
 
-Start with read-only inventory of supported firewall state, then add explicit, user-confirmed rules with administrator privileges when needed. Record the exact rule added and verify it after applying. Do not claim unrestricted process attribution from standard firewall APIs alone.
+The Windows Go CLI in `windows/pcage-audit/` now supports a read-only baseline, edition-aware hardening previews, explicit apply, verify, and restore. It queries Domain/Private/Public firewall profiles and selected machine policy values through Windows PowerShell. The balanced profile targets documented diagnostic-data limits, advertising ID, Activity Feed/User Activity sharing, online speech personalization, tailored experiences, and supported Windows 11 diagnostic log/dump limits. The strict profile disables clipboard history and adds selected Windows-app capability force-denials plus Windows Error Reporting policy.
+
+Apply is not implicit: the CLI requires `--confirm`, requests UAC elevation, and refuses to overwrite an active backup. Registry writes are limited to an allowlist and DWORD values. It snapshots prior key/value existence and the old DWORDs before changing policy, restricts the ProgramData backup directory to SYSTEM and Administrators, verifies values after writes, and attempts rollback on failure. Restore restores captured registry values and optional firewall profile state, verifies the result, and removes the backup only after successful readback. A pending backup deliberately prevents applying another profile.
+
+Two network controls are separate from the normal privacy profiles. Default outbound Block changes the default action but does not override all explicit allow rules. Emergency isolation adds a named all-program outbound block rule, enables firewall profiles, and can immediately interrupt all networking, including DNS and Windows Update; it requires a second explicit confirmation and a local recovery path.
+
+The audit and hardening commands make no network requests and do not upload results. A policy registry value is not proof of effective policy or observed network traffic; domain policy and MDM can replace local values. Required diagnostic data remains on common client editions and the Settings selector is locked only on supported builds; administrators or higher-priority management policy can still change it. The Diagnostic data off value is available only on Enterprise, Education, and Server editions per Microsoft's current policy documentation. Windows-app permission policies are not a universal barrier against every desktop program, service, driver, OS component, firmware route, or external network path. This is a reversible policy controller, not a kernel filter or guarantee of zero Windows communications.
 
 ## Data flow
 
@@ -105,3 +111,13 @@ The service refuses to bind to a non-loopback address. Remote deployment require
 The Android file-picker flow stages only the user-selected image in the app cache and calls `shared/rust/pcage-metadata` through `shared/rust/pcage-metadata-jni`. It supports JPEG, PNG, and WebP with a 100 MiB input cap. Inspection does not modify the selected file. Scrubbing writes a separate temporary copy, validates the output with a second parser pass, and offers it to the user only when no metadata recognized by the parser remains. The input file is never overwritten and no image bytes are uploaded.
 
 The core preserves JPEG APP markers other than APP1, APP13, and COM; preserves unknown PNG/WebP extension chunks and ICC color profiles to avoid destroying potentially important rendering information; and reports those limitations explicitly. PNG chunk CRCs, WebP RIFF/chunk lengths and padding, JPEG marker boundaries, truncation, and trailing data are checked. The core does not decode pixels, prove every image decoder will render the result, or remove identifying information embedded in the visible image content. This is a format-bounded metadata scrubber, not a universal anonymizer.
+
+
+## Windows customization handoff
+
+The Windows workspace exposes two intentionally separate control surfaces:
+
+- `windows/pcage-audit/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
+- `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
+
+The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.

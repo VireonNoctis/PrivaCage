@@ -1,0 +1,148 @@
+name: Validate Windows privacy baseline auditor
+
+on:
+  push:
+    paths:
+      - "windows/pcage-audit/**"
+      - "windows/Win11Debloat"
+      - ".gitmodules"
+      - ".github/workflows/validate-windows-audit.yml"
+      - "README.md"
+      - "docs/architecture.md"
+      - "docs/security-boundaries.md"
+      - "docs/research-notes/windows-privacy-hardening-2026-10-25.md"
+  pull_request:
+    paths:
+      - "windows/pcage-audit/**"
+      - "windows/Win11Debloat"
+      - ".gitmodules"
+      - ".github/workflows/validate-windows-audit.yml"
+      - "README.md"
+      - "docs/architecture.md"
+      - "docs/security-boundaries.md"
+      - "docs/research-notes/windows-privacy-hardening-2026-10-25.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-audit-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests and build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: windows/pcage-audit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: windows/pcage-audit/go.mod
+          cache-dependency-path: windows/pcage-audit/go.mod
+      - name: Run tests
+        run: go test ./...
+      - name: Build executable
+        run: go build ./...
+
+  windows-smoke:
+    name: Run Windows privacy checks and validate Win11Debloat source
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows/pcage-audit
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Validate pinned Win11Debloat PowerShell source
+        run: |
+          $debloatRoot = (Resolve-Path ..\Win11Debloat).Path
+          $entryPoint = Join-Path $debloatRoot 'Win11Debloat.ps1'
+          $licensePath = Join-Path $debloatRoot 'LICENSE'
+          if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+            throw "The pinned Win11Debloat entry point is missing."
+          }
+          if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) {
+            throw "The upstream Win11Debloat MIT license is missing."
+          }
+          $scripts = @(Get-ChildItem -LiteralPath $debloatRoot -Recurse -File -Filter '*.ps1')
+          if ($scripts.Count -eq 0) { throw "No PowerShell source files were found." }
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $details = $parseErrors | ForEach-Object { "$($script.FullName):$($_.Extent.StartLineNumber): $($_.Message)" }
+              throw ("PowerShell parse errors:" + [Environment]::NewLine + ($details -join [Environment]::NewLine))
+            }
+          }
+          Write-Host "Parsed $($scripts.Count) Win11Debloat PowerShell files without syntax errors."
+      - name: Run Win11Debloat upstream Pester suite
+        shell: powershell
+        run: ..\Win11Debloat\Scripts\Run-Tests.ps1 -Bootstrap
+      - name: Run Win11Debloat PSScriptAnalyzer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -Confirm:$false
+          Import-Module PSScriptAnalyzer
+          Invoke-ScriptAnalyzer -Path ..\Win11Debloat -Recurse -Severity Error -EnableExit
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: windows/pcage-audit/go.mod
+          cache-dependency-path: windows/pcage-audit/go.mod
+      - name: Execute audit and validate no-change hardening plans
+        run: |
+          $reportLines = go run . audit --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $report = ($reportLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($report.schema_version -ne 1 -or $report.platform -ne "windows" -or $report.read_only -ne $true -or $report.checks.Count -lt 7) {
+            throw "The audit returned unexpected metadata or too few checks."
+          }
+
+          $balancedLines = go run . plan --profile balanced --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $balanced = ($balancedLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($balanced.schema_version -ne 1 -or $balanced.profile -ne "balanced" -or $balanced.changes.Count -lt 1 -or $balanced.block_outbound_by_default -or $balanced.isolate_outbound) {
+            throw "The balanced preview did not return an expected, non-disruptive plan."
+          }
+          if (@($balanced.changes | Where-Object { $_.name -eq "AllowTelemetry" }).Count -ne 1) {
+            throw "The balanced plan is missing its edition-aware diagnostic-data control."
+          }
+
+          $strictLines = go run . plan --profile strict --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $strict = ($strictLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($strict.schema_version -ne 1 -or $strict.profile -ne "strict") {
+            throw "The strict preview returned unexpected metadata."
+          }
+
+          # GitHub's hosted Windows runner may be Windows Server, where client-only App Privacy
+          # policies are intentionally skipped. The assertion follows the detected OS edition.
+          $isServerEdition = [string]$strict.edition_id -match "Server"
+          $locationControl = @($strict.changes | Where-Object { $_.name -eq "LetAppsAccessLocation" -and $_.value -eq 2 }).Count -eq 1
+          if ($isServerEdition -and $locationControl) {
+            throw "The strict preview unexpectedly applied a client-only App Privacy policy to Windows Server."
+          }
+          if (-not $isServerEdition -and -not $locationControl) {
+            throw "The strict preview omitted the documented Windows-app location denial on a supported client edition."
+          }
+
+          $isolationLines = go run . plan --profile balanced --isolate-network --confirm-network-disruption --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $isolation = ($isolationLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if (-not $isolation.isolate_outbound -or $isolation.block_outbound_by_default -or @($isolation.warnings).Count -eq 0) {
+            throw "The isolation preview did not clearly mark the disruptive network action."
+          }
