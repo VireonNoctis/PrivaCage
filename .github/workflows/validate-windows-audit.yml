@@ -6,11 +6,17 @@ on:
       - "windows/pcage-audit/**"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
+      - "docs/architecture.md"
+      - "docs/security-boundaries.md"
+      - "docs/research-notes/windows-privacy-hardening-2026-10-25.md"
   pull_request:
     paths:
       - "windows/pcage-audit/**"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
+      - "docs/architecture.md"
+      - "docs/security-boundaries.md"
+      - "docs/research-notes/windows-privacy-hardening-2026-10-25.md"
   workflow_dispatch:
 
 permissions:
@@ -55,15 +61,35 @@ jobs:
         with:
           go-version-file: windows/pcage-audit/go.mod
           cache-dependency-path: windows/pcage-audit/go.mod
-      - name: Execute and validate local report
+      - name: Execute audit and validate no-change hardening plans
         run: |
-          $reportLines = go run . --format json
+          $reportLines = go run . audit --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $reportJson = $reportLines -join [Environment]::NewLine
-          $report = $reportJson | ConvertFrom-Json
-          if ($report.schema_version -ne 1 -or $report.platform -ne "windows" -or $report.read_only -ne $true) {
-            throw "The auditor returned unexpected report metadata."
+          $report = ($reportLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($report.schema_version -ne 1 -or $report.platform -ne "windows" -or $report.read_only -ne $true -or $report.checks.Count -lt 7) {
+            throw "The audit returned unexpected metadata or too few checks."
           }
-          if ($report.checks.Count -lt 7) {
-            throw "The auditor returned fewer checks than the expected baseline."
+
+          $balancedLines = go run . plan --profile balanced --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $balanced = ($balancedLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($balanced.schema_version -ne 1 -or $balanced.profile -ne "balanced" -or $balanced.changes.Count -lt 1 -or $balanced.block_outbound_by_default -or $balanced.isolate_outbound) {
+            throw "The balanced preview did not return an expected, non-disruptive plan."
+          }
+          if (@($balanced.changes | Where-Object { $_.name -eq "AllowTelemetry" }).Count -ne 1) {
+            throw "The balanced plan is missing its edition-aware diagnostic-data control."
+          }
+
+          $strictLines = go run . plan --profile strict --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $strict = ($strictLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($strict.schema_version -ne 1 -or $strict.profile -ne "strict" -or @($strict.changes | Where-Object { $_.name -eq "LetAppsAccessLocation" -and $_.value -eq 2 }).Count -ne 1) {
+            throw "The strict preview did not include the documented Windows-app location denial."
+          }
+
+          $isolationLines = go run . plan --profile balanced --isolate-network --confirm-network-disruption --format json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $isolation = ($isolationLines -join [Environment]::NewLine) | ConvertFrom-Json
+          if (-not $isolation.isolate_outbound -or $isolation.block_outbound_by_default -or @($isolation.warnings).Count -eq 0) {
+            throw "The isolation preview did not clearly mark the disruptive network action."
           }
