@@ -808,34 +808,22 @@ class MainActivity : Activity() {
                 }
             }
         }, "PrivaCage-tracker-catalog").start()
-        syncStatusText.text = "Loading protected sync configuration locally… No network request is made."
-        Thread({
-            val savedSyncConfig: JSONObject?
-            val loadError: String?
-            try {
-                savedSyncConfig = encryptedSyncManager.storedConfigurationForUi()
-                loadError = null
-            } catch (exception: Exception) {
-                savedSyncConfig = null
-                loadError = exception.message ?: "storage error"
+        try {
+            val savedSyncConfig = encryptedSyncManager.storedConfigurationForUi()
+            if (savedSyncConfig == null) {
+                syncStatusText.text = "No local sync identity exists yet. Nothing has been uploaded."
+            } else {
+                syncRelayUrlInput.setText(savedSyncConfig.optString("relay_url", ""))
+                syncSpaceIdInput.setText(savedSyncConfig.optString("space_id", ""))
+                syncCapabilityInput.setText(savedSyncConfig.optString("capability_token", ""))
+                syncStatusText.text = "Protected sync record loaded. Trusted devices: " +
+                    savedSyncConfig.optInt("trusted_count", 0) + "; revoked fingerprints: " +
+                    savedSyncConfig.optInt("revoked_count", 0) + ". No network request was made."
             }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                if (loadError != null) {
-                    syncStatusText.text =
-                        "Could not load protected sync configuration: $loadError. No stored sync record was overwritten."
-                } else if (savedSyncConfig == null) {
-                    syncStatusText.text = "No local sync identity exists yet. Nothing has been uploaded."
-                } else {
-                    syncRelayUrlInput.setText(savedSyncConfig.optString("relay_url", ""))
-                    syncSpaceIdInput.setText(savedSyncConfig.optString("space_id", ""))
-                    syncCapabilityInput.setText(savedSyncConfig.optString("capability_token", ""))
-                    syncStatusText.text = "Protected sync record loaded. Trusted devices: " +
-                        savedSyncConfig.optInt("trusted_count", 0) + "; revoked fingerprints: " +
-                        savedSyncConfig.optInt("revoked_count", 0) + ". No network request was made."
-                }
-            }
-        }, "PrivaCage-sync-config").start()
+        } catch (exception: Exception) {
+            syncStatusText.text = "Could not load protected sync configuration: " +
+                (exception.message ?: "storage error") + " No stored sync record was overwritten."
+        }
         refreshDevicePrivacySnapshot()
     }
 
