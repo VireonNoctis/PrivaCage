@@ -48,7 +48,7 @@ class AppAlternativeCatalogTest {
     fun rejectsDuplicateSourceIdsWithinAnAlternative() {
         val invalid = document().replace(
             "\"sources\": [${source()}]",
-            "\"sources\": [${source()},${source().replace("\"url\"", "\"url\"").replace("Gmail page", "second page")}]"
+            "\"sources\": [${source()},${source()}]"
         )
         assertFails(invalid, "Duplicate source type")
     }
