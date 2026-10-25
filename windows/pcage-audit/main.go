@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+	"bufio"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -13,50 +11,30 @@ import (
 )
 
 func main() {
-	if err := execute(os.Args[1:], os.Stdout, os.Stderr, runtime.GOOS); err != nil {
+	args, hold := removeArgument(os.Args[1:], "--elevated-hold")
+	err := execute(args, os.Stdout, os.Stderr, runtime.GOOS)
+	if hold && isInteractiveInput() {
+		fmt.Fprint(os.Stdout, "\nPress Enter to close this elevated PrivaCage window...")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func execute(args []string, stdout, stderr io.Writer, goos string) error {
-	flags := flag.NewFlagSet("pcage-audit", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	format := flags.String("format", "text", "output format: text or json")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
-		return err
-	}
-	if flags.NArg() != 0 {
-		return errors.New("unexpected positional arguments")
-	}
-	if *format != "text" && *format != "json" {
-		return errors.New("format must be text or json")
+	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
+		return runWindowsCommand(args, stdout, stderr)
 	}
 	if goos != "windows" {
-		return errors.New("this read-only audit requires Windows 10/11 and Windows PowerShell; no system changes were made")
+		return errors.New("PrivaCage Windows privacy controls require Windows 10/11 and Windows PowerShell; no system changes were made")
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	snapshot, err := collectWindowsSnapshot(ctx)
-	if err != nil {
-		return err
-	}
-	result := buildReport(snapshot, time.Now().UTC())
-	if *format == "json" {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(result)
-	}
-	return writeTextReport(stdout, result)
+	return runWindowsCommand(args, stdout, stderr)
 }
 
 func writeTextReport(w io.Writer, result auditReport) error {
-	if _, err := fmt.Fprintln(w, "PrivaCage — Windows privacy baseline"); err != nil {
+	if _, err := fmt.Fprintln(w, "⠿  PrivaCage — Windows privacy baseline"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Generated: %s\nMode: read-only; no network requests\n\n", result.GeneratedAt.Format(time.RFC3339)); err != nil {
