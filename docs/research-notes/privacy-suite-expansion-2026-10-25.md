@@ -178,9 +178,10 @@ That work is deliberately not faked in this change. The sequential source queue 
 
 ## 8. Windows privacy auditor and hardening
 
-The Windows code already has two distinct tracks:
+The Windows code now has two distinct tracks:
 
-- **Read-only audit** collects a selected local baseline and labels findings by the evidence available. It is not a general packet monitor.
+- **Read-only audit** collects a selected local baseline, including Domain/Private/Public firewall state, selected policy values, adapter DNS resolver addresses, and current-user WinINET proxy toggle/configuration-presence flags. The report intentionally omits proxy endpoints and PAC URLs. DNS addresses can reveal local infrastructure, so report files should be kept private. It is not a general packet monitor and does not prove that DNS is encrypted or that an application uses those settings.
+
 - **Policy hardening** uses a fixed allowlist, explicit confirmation, UAC elevation where required, protected rollback state, post-change verification and a restore path. Balanced/strict policies are separated from disruptive network isolation options. The repository also includes a pinned Win11Debloat submodule, which has its own options, behavior, and restore semantics.
 
 Microsoft's current policy documentation says the “Diagnostic data off” value is supported only on Enterprise, Education and Server editions for the described Windows diagnostic-data setting; the common Pro setting selects Required diagnostic data instead. Additional diagnostic-log and dump controls are limited to Windows 11 and Windows Server 2022. Sources:
