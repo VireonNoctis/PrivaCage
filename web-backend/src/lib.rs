@@ -6,8 +6,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-const EMBEDDED_TRACKER_CATALOG: &str =
-    include_str!("../../shared/tracker-db/signatures.json");
+const EMBEDDED_TRACKER_CATALOG: &str = include_str!("../../shared/tracker-db/signatures.json");
 
 #[derive(Clone)]
 struct ApiState {
@@ -107,14 +106,9 @@ fn validate_catalog(catalog: &TrackerCatalog) -> Result<(), String> {
     let mut ids = HashSet::with_capacity(catalog.entries.len());
     for entry in &catalog.entries {
         if entry.id.trim().is_empty()
-            || !entry
-                .id
-                .chars()
-                .all(|character| {
-                    character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || character == '-'
-                })
+            || !entry.id.chars().all(|character| {
+                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+            })
             || entry.id.starts_with('-')
             || entry.id.ends_with('-')
             || entry.id.contains("--")
@@ -127,19 +121,31 @@ fn validate_catalog(catalog: &TrackerCatalog) -> Result<(), String> {
         }
 
         if entry.name.trim().is_empty() || entry.category.trim().is_empty() {
-            return Err(format!("Tracker entry {} has empty descriptive fields.", entry.id));
+            return Err(format!(
+                "Tracker entry {} has empty descriptive fields.",
+                entry.id
+            ));
         }
 
         if !matches!(entry.status.as_str(), "active" | "review" | "retired") {
-            return Err(format!("Tracker entry {} has an unsupported status.", entry.id));
+            return Err(format!(
+                "Tracker entry {} has an unsupported status.",
+                entry.id
+            ));
         }
 
         if !matches!(entry.confidence.as_str(), "low" | "medium" | "high") {
-            return Err(format!("Tracker entry {} has an unsupported confidence level.", entry.id));
+            return Err(format!(
+                "Tracker entry {} has an unsupported confidence level.",
+                entry.id
+            ));
         }
 
         if !is_iso_date(&entry.last_verified) {
-            return Err(format!("Tracker entry {} has an invalid verification date.", entry.id));
+            return Err(format!(
+                "Tracker entry {} has an invalid verification date.",
+                entry.id
+            ));
         }
 
         if entry.indicators.domains.is_empty() && entry.indicators.sdk_patterns.is_empty() {
@@ -156,7 +162,10 @@ fn validate_catalog(catalog: &TrackerCatalog) -> Result<(), String> {
         }
 
         if entry.evidence.is_empty() {
-            return Err(format!("Tracker entry {} has no evidence sources.", entry.id));
+            return Err(format!(
+                "Tracker entry {} has no evidence sources.",
+                entry.id
+            ));
         }
 
         for source in &entry.evidence {
@@ -261,9 +270,21 @@ async fn summary(State(state): State<ApiState>) -> Json<CatalogSummary> {
         schema_version: catalog.schema_version,
         updated_at: catalog.updated_at.clone(),
         total_records: catalog.entries.len(),
-        active: catalog.entries.iter().filter(|entry| entry.status == "active").count(),
-        review: catalog.entries.iter().filter(|entry| entry.status == "review").count(),
-        retired: catalog.entries.iter().filter(|entry| entry.status == "retired").count(),
+        active: catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.status == "active")
+            .count(),
+        review: catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.status == "review")
+            .count(),
+        retired: catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.status == "retired")
+            .count(),
         domain_indicators: catalog
             .entries
             .iter()
@@ -274,7 +295,11 @@ async fn summary(State(state): State<ApiState>) -> Json<CatalogSummary> {
             .iter()
             .map(|entry| entry.indicators.sdk_patterns.len())
             .sum(),
-        evidence_sources: catalog.entries.iter().map(|entry| entry.evidence.len()).sum(),
+        evidence_sources: catalog
+            .entries
+            .iter()
+            .map(|entry| entry.evidence.len())
+            .sum(),
         categories,
     })
 }
@@ -355,6 +380,10 @@ mod tests {
         duplicate.name = "Duplicate fixture".to_owned();
         catalog.entries.push(duplicate);
 
-        assert!(validate_catalog(&catalog).unwrap_err().contains("Duplicate"));
+        assert!(
+            validate_catalog(&catalog)
+                .unwrap_err()
+                .contains("Duplicate")
+        );
     }
 }
