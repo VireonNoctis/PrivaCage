@@ -1,0 +1,65 @@
+name: Web Console Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "web-backend/**"
+      - "shared/tracker-db/signatures.json"
+      - ".github/workflows/web-validation.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "web-backend/**"
+      - "shared/tracker-db/signatures.json"
+      - ".github/workflows/web-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  svelte:
+    name: Svelte checks, tests, and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Build production frontend
+        run: npm run build
+
+  rust-api:
+    name: Rust API format and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up stable Rust with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path web-backend/Cargo.toml --all -- --check
+
+      - name: Test Rust API
+        run: cargo test --manifest-path web-backend/Cargo.toml
