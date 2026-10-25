@@ -109,14 +109,14 @@ jobs:
     timeout-minutes: 90
     env:
       PERFORMANCE_BASELINE_SHA: 7649a85dede79c0decf33426655dc246f9c18cc6
-      PERFORMANCE_BASELINE_DIR: \${{ runner.temp }}/privacage-performance-baseline
-      PERFORMANCE_RESULTS_DIR: \${{ runner.temp }}/privacage-performance-results
-      CARGO_TARGET_DIR: \${{ runner.temp }}/privacage-cargo-target
+      PERFORMANCE_BASELINE_DIR: ${{ runner.temp }}/privacage-performance-baseline
+      PERFORMANCE_RESULTS_DIR: ${{ runner.temp }}/privacage-performance-results
+      CARGO_TARGET_DIR: ${{ runner.temp }}/privacage-cargo-target
     steps:
       - name: Check out PR head with full history
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Java
@@ -169,6 +169,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: privacage-performance-comparison
-          path: \${{ runner.temp }}/privacage-performance-results/
+          path: ${{ runner.temp }}/privacage-performance-results/
           if-no-files-found: warn
           retention-days: 30
