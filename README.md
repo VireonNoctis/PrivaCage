@@ -8,7 +8,7 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker database validator and Python regression tests passed, and GitHub Actions successfully built the debug APK and ran DNS core tests, APK scanner tests, privacy-baseline checks, and bundled-catalog inspection for the SDK wildcard revision. The newer local DNS event-history and review-report additions are awaiting their own CI run. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker/privacy validation commands are being migrated from Python to a standard-library Go module with regression tests. The Go migration and associated CI runs are not considered complete until the branch's checks pass. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
@@ -46,7 +46,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/security-boundaries.md` — explicit implemented/not-implemented claims and required verification.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
-- `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
+- `docs/research-notes/privacy-feature-research-2026-10-23.md` — sourced privacy feature ideas, feasibility, limits, and integration points.
+- `docs/research-notes/go-tooling-and-android-backup-audit-2026-10-25.md` — Go tooling migration findings, Android backup/restore limits, and concrete remediation plans.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK audit, Rust-powered JPEG/PNG/WebP metadata inspection and scrubbing, and Android build workflow.
 - `shared/rust/pcage-metadata/` — platform-neutral Rust metadata inspection/scrubbing core and local CLI for JPEG, PNG, and WebP.
@@ -68,19 +69,18 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
-- `shared/scripts/validate-signatures.py` — standard-library tracker schema and evidence-structure validator.
-- `shared/scripts/tracker-review-report.py` — local evidence freshness report with due-soon/overdue status; does not fetch or certify source truth.
-- `shared/scripts/validate-android-backup.py` — static check for the declared Android backup policy; not an OEM transfer test.
-- `tests/test_validate_signatures.py` and `tests/test_android_backup_policy.py` — regression tests for signature evidence and backup configuration.
+- `shared/go/pcage-tools/` — standard-library Go CLI for tracker schema/freshness validation, tracker review reporting, Android backup declaration checks, and the Android sensitive-permission/known-telemetry dependency baseline. Its tests replace the Python regression suite; the backup check remains static and is not an OEM transfer test.
 
 ## Build and test
 
-Requires Python 3.11 or newer for the tracker database validator/tests:
+Requires Go 1.27 or newer for the repository privacy tools and regression tests:
 
-    python shared/scripts/validate-signatures.py --max-age-days 180
-    python shared/scripts/tracker-review-report.py --format markdown
-    python shared/scripts/validate-android-backup.py
-    python -m unittest discover -s tests -v
+    cd shared/go/pcage-tools
+    go test ./...
+    go run . validate-tracker --max-age-days 180
+    go run . tracker-report --format markdown
+    go run . validate-android-backup
+    go run . validate-android-privacy
 
 The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
 
