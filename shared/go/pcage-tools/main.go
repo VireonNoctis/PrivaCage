@@ -271,7 +271,7 @@ func defaultAndroidDir() string {
 func runValidateTracker(args []string) int {
 	flags := newFlagSet("validate-tracker")
 	path := flags.String("file", defaultTrackerPath(), "path to tracker database JSON")
-	maxAgeDays := flags.Int("max-age-days", -1, "fail if evidence reviews are older than this many days")
+	maxAgeDays := flags.Int("max-age-days", 0, "fail if evidence reviews are older than this many days")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -279,7 +279,13 @@ func runValidateTracker(args []string) int {
 		fmt.Fprintln(os.Stderr, "ERROR: unexpected positional arguments")
 		return 2
 	}
-	if *maxAgeDays != -1 && *maxAgeDays <= 0 {
+	maxAgeSpecified := false
+	flags.Visit(func(item *flag.Flag) {
+		if item.Name == "max-age-days" {
+			maxAgeSpecified = true
+		}
+	})
+	if maxAgeSpecified && *maxAgeDays <= 0 {
 		fmt.Fprintln(os.Stderr, "ERROR: max-age-days must be a positive integer")
 		return 2
 	}
@@ -289,10 +295,10 @@ func runValidateTracker(args []string) int {
 		return 2
 	}
 	var ageLimit *int
-	if *maxAgeDays != -1 {
+	if maxAgeSpecified {
 		ageLimit = maxAgeDays
 	}
-	errorsFound := validateTrackerDatabase(document, ageLimit, time.Now().UTC())
+	errorsFound := validateTrackerDatabase(document, ageLimit, todayDate())
 	if len(errorsFound) > 0 {
 		for _, validationErr := range errorsFound {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", validationErr)
@@ -308,7 +314,7 @@ func runTrackerReport(args []string) int {
 	path := flags.String("file", defaultTrackerPath(), "path to tracker database JSON")
 	intervalDays := flags.Int("interval-days", 180, "review interval in days")
 	dueSoonDays := flags.Int("due-soon-days", 30, "number of days before due date to flag as due soon")
-	todayText := flags.String("today", time.Now().UTC().Format(dateLayout), "override date (YYYY-MM-DD), mainly for tests")
+	todayText := flags.String("today", todayDate().Format(dateLayout), "override date (YYYY-MM-DD), mainly for tests")
 	format := flags.String("format", "markdown", "output format: markdown or json")
 	failOverdue := flags.Bool("fail-overdue", false, "return exit code 1 when any entry is overdue or future-dated")
 	if err := flags.Parse(args); err != nil {
@@ -598,6 +604,11 @@ func parseDate(value, field string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("%s is not a valid canonical YYYY-MM-DD date: %q", field, value)
 	}
 	return parsed.UTC(), nil
+}
+
+func todayDate() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func dateDifference(later, earlier time.Time) int {
