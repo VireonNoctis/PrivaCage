@@ -16,7 +16,7 @@ android {
 
     buildTypes {
         create("benchmark") {
-            isDebuggable = false
+            isDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
         }
     }
