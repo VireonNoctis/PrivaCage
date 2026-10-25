@@ -356,7 +356,7 @@ pub fn scan_apk(path: impl AsRef<Path>, catalog: &Catalog)->Result<(Vec<Observat
             for (indicator_kind,indicator) in sdk.indicators.dex_strings.iter().map(|v|(IndicatorKind::DexString,v)).chain(sdk.indicators.sdk_patterns.iter().map(|v|(IndicatorKind::SdkPattern,v))) {
                 let pattern=indicator.trim().to_ascii_lowercase();
                 let needle=if pattern.ends_with(".**")||pattern.ends_with(".*"){pattern.trim_end_matches('*').to_owned()}else{pattern};
-                let slash_needle=needle.replace('.','/');
+                let slash_needle=needle.replace('.', "/");
                 if strings.iter().any(|value|value.contains(&needle)||value.contains(&slash_needle)) {
                     let kind_label=if indicator_kind==IndicatorKind::SdkPattern{"sdk_pattern"}else{"dex_string"};
                     hits.push(json!({"entry_id":sdk.id,"name":sdk.name,"indicator_type":kind_label,"matched_string":indicator,"evidence":sdk.evidence}));
