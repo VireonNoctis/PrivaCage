@@ -14,6 +14,8 @@ const (
 	firewallSource       = "https://learn.microsoft.com/en-us/powershell/module/netsecurity/get-netfirewallprofile"
 	diagnosticDataSource = "https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization"
 	appPrivacySource     = "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy"
+	dnsResolverSource    = "https://learn.microsoft.com/en-us/powershell/module/dnsclient/get-dnsclientserveraddress"
+	winINetProxySource   = "https://learn.microsoft.com/en-us/windows/win32/wininet/setting-and-retrieving-internet-options"
 )
 
 type auditCheck struct {
@@ -47,7 +49,7 @@ type auditReport struct {
 }
 
 func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport {
-	checks := make([]auditCheck, 0, 7)
+	checks := make([]auditCheck, 0, 9)
 	checks = append(checks, firewallChecks(snapshot)...)
 	checks = append(checks, policyCheck(
 		"diagnostics.allow_telemetry",
@@ -62,6 +64,8 @@ func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport
 		appPrivacyCheck("location", "Windows app location policy", snapshot.AppPrivacy.Location),
 		appPrivacyCheck("camera", "Windows app camera policy", snapshot.AppPrivacy.Camera),
 		appPrivacyCheck("microphone", "Windows app microphone policy", snapshot.AppPrivacy.Microphone),
+		dnsResolverCheck(snapshot),
+		userProxyCheck(snapshot.UserProxy),
 	)
 	return auditReport{
 		SchemaVersion: 1,
@@ -78,6 +82,102 @@ func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport
 			"The command is read-only and makes no network requests. It does not change settings or create firewall rules.",
 		},
 	}
+}
+
+
+func dnsResolverCheck(snapshot powershellSnapshot) auditCheck {
+	finding := auditCheck{
+		ID: "network.dns_resolvers", Title: "Configured DNS resolver inventory",
+		Category: "network", Status: statusUnknown, Severity: "info",
+		SourceURL: dnsResolverSource,
+	}
+	if snapshot.DNSReadError {
+		finding.Observed = "Resolver configuration unavailable"
+		finding.Meaning = "Windows did not return the adapter DNS server configuration. PrivaCage will not infer that no resolver is configured."
+		finding.Recommendation = "Inspect Network & Internet > advanced network settings and the active adapter's DNS settings."
+		return finding
+	}
+
+	var entries []string
+	for _, adapter := range snapshot.DNSServers {
+		alias := strings.TrimSpace(adapter.InterfaceAlias)
+		family := strings.TrimSpace(adapter.AddressFamily)
+		for _, address := range adapter.ServerAddresses {
+			address = strings.TrimSpace(address)
+			if address == "" {
+				continue
+			}
+			entries = append(entries, fmt.Sprintf("%s [%s]: %s", aliasOrUnknown(alias), familyOrUnknown(family), address))
+			if len(entries) >= 32 {
+				break
+			}
+		}
+		if len(entries) >= 32 {
+			break
+		}
+	}
+	if len(entries) == 0 {
+		finding.Observed = "No adapter DNS resolver address was returned"
+		finding.Meaning = "This inventory did not return an adapter resolver address. It does not prove that Windows or applications cannot resolve names through another interface, VPN, proxy, or application-managed resolver."
+		finding.Recommendation = "Check active network interfaces and VPN configuration if name resolution is expected."
+		return finding
+	}
+	finding.Observed = "Configured addresses (up to 32): " + strings.Join(entries, "; ")
+	finding.Meaning = "This is a configuration inventory only. It cannot determine whether the connection uses encrypted DNS, whether the selected resolver is trustworthy, which adapter wins for a particular query, or whether an application bypasses system DNS. Resolver addresses can identify local network infrastructure, so keep the report local if that detail is sensitive."
+	finding.Recommendation = "Review the resolver owner and configure supported encrypted DNS where appropriate; do not infer DNS-over-HTTPS/TLS from the IP address alone."
+	return finding
+}
+
+func userProxyCheck(snapshot userProxySnapshot) auditCheck {
+	finding := auditCheck{
+		ID: "network.wininet_proxy", Title: "Current-user WinINET proxy setting",
+		Category: "network", SourceURL: winINetProxySource,
+	}
+	if snapshot.ReadError {
+		finding.Status = statusUnknown
+		finding.Severity = "unknown"
+		finding.Observed = "Current-user proxy setting could not be read"
+		finding.Meaning = "PrivaCage could not inspect the current user's WinINET proxy registry settings. No proxy state is inferred."
+		finding.Recommendation = "Review Settings > Network & Internet > Proxy."
+		return finding
+	}
+	if !snapshot.ProxyEnableConfigured || snapshot.ProxyEnabled == nil {
+		finding.Status = statusNotConfigured
+		finding.Severity = "info"
+		finding.Observed = fmt.Sprintf("No valid ProxyEnable toggle returned; server setting present=%t; PAC URL configured=%t",
+			snapshot.ProxyServerConfigured, snapshot.AutoConfigURLConfigured)
+		finding.Meaning = "The current-user WinINET proxy toggle is not explicitly known. Absence of this value does not prove that all applications connect directly or that no proxy/VPN is in use."
+		finding.Recommendation = "Review the Windows Proxy settings and any work-managed, WinHTTP, VPN, or per-application proxy configuration."
+		return finding
+	}
+	finding.Observed = fmt.Sprintf("WinINET proxy enabled=%t; manual server setting present=%t; automatic configuration URL present=%t",
+		*snapshot.ProxyEnabled, snapshot.ProxyServerConfigured, snapshot.AutoConfigURLConfigured)
+	if *snapshot.ProxyEnabled {
+		finding.Status = statusReview
+		finding.Severity = "info"
+		finding.Meaning = "A current-user WinINET proxy is enabled. This may be intentional and does not by itself indicate a privacy problem. PrivaCage deliberately does not print the proxy hostname or automatic configuration URL, and it does not validate the proxy operator or know which apps use this configuration."
+		finding.Recommendation = "Confirm that the proxy is expected and trusted. Review separate WinHTTP and per-application proxy settings if those stacks matter."
+		return finding
+	}
+	finding.Status = statusOK
+	finding.Severity = "info"
+	finding.Meaning = "The current-user WinINET proxy toggle is disabled. This does not prove that Windows, WinHTTP, a VPN, an enterprise agent, or individual apps are using a direct route."
+	finding.Recommendation = "No change is implied by this finding; inspect other proxy/VPN stacks only if required by your threat model."
+	return finding
+}
+
+func aliasOrUnknown(value string) string {
+	if value == "" {
+		return "interface unknown"
+	}
+	return value
+}
+
+func familyOrUnknown(value string) string {
+	if value == "" {
+		return "family unknown"
+	}
+	return value
 }
 
 func firewallChecks(snapshot powershellSnapshot) []auditCheck {
