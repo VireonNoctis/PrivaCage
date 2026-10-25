@@ -5,15 +5,31 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
+import org.json.JSONException
+import org.json.JSONObject
+import org.privacage.audit.PermissionChangeKind
+import org.privacage.audit.PermissionGrantSnapshot
+import java.io.IOException
 
 /**
  * Local audit of dangerous permissions declared by launcher-visible applications.
  *
  * Android package visibility intentionally limits this to apps discoverable through
- * the launcher intent. It does not claim to inventory headless/system/OEM services.
+ * the launcher intent. The optional comparison baseline stores only package names,
+ * dangerous permission names, and grant booleans in app-private preferences.
  */
 internal object AppPermissionAudit {
     private const val MAX_APPS_IN_REPORT = 60
+    private const val MAX_CHANGES_IN_REPORT = 100
+    private const val PREFERENCES_NAME = "privacage_permission_audit"
+    private const val KEY_BASELINE = "dangerous_permission_baseline_v1"
+    private const val BASELINE_SCHEMA_VERSION = 1
+
+    fun clearBaseline(context: Context): Boolean =
+        context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_BASELINE)
+            .commit()
 
     fun scan(context: Context): String {
         val packageManager = context.packageManager
@@ -35,6 +51,8 @@ internal object AppPermissionAudit {
         var inspected = 0
         var skipped = 0
         val rows = mutableListOf<String>()
+        val labelsByPackage = mutableMapOf<String, String>()
+        val observedPermissions = linkedMapOf<String, Map<String, Boolean>>()
 
         for (packageName in packageNames) {
             val packageInfo = try {
@@ -48,9 +66,23 @@ internal object AppPermissionAudit {
             }
 
             inspected++
-            val requested = packageInfo.requestedPermissions ?: continue
+            val label = try {
+                packageInfo.applicationInfo?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName
+            } catch (exception: RuntimeException) {
+                packageName
+            }
+            labelsByPackage[packageName] = label
+
+            val requested = packageInfo.requestedPermissions
+            if (requested == null) {
+                observedPermissions[packageName] = emptyMap()
+                continue
+            }
+
             val flags = packageInfo.requestedPermissionsFlags
-            val sensitive = requested.mapIndexedNotNull { index, permission ->
+            val perPackage = linkedMapOf<String, Boolean>()
+            val sensitive = mutableListOf<String>()
+            requested.forEachIndexed { index, permission ->
                 val isDangerous = try {
                     val info = packageManager.getPermissionInfo(permission, 0)
                     (info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
@@ -60,21 +92,19 @@ internal object AppPermissionAudit {
                 } catch (exception: SecurityException) {
                     false
                 }
-                if (!isDangerous) return@mapIndexedNotNull null
+                if (!isDangerous) return@forEachIndexed
 
                 val granted = flags?.getOrNull(index)
                     ?.and(PackageInfo.REQUESTED_PERMISSION_GRANTED) == PackageInfo.REQUESTED_PERMISSION_GRANTED
-                permission.substringAfterLast('.') +
+                perPackage[permission] = granted
+                sensitive += permission.substringAfterLast('.') +
                     if (granted) " — GRANTED" else " — NOT CURRENTLY GRANTED"
-            }.sorted()
+            }
+            observedPermissions[packageName] = perPackage
 
             if (sensitive.isNotEmpty()) {
-                val label = try {
-                    packageInfo.applicationInfo?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName
-                } catch (exception: RuntimeException) {
-                    packageName
-                }
-                rows += label + " (" + packageName + ")\n" + sensitive.joinToString("\n") { "  • " + it }
+                rows += label + " (" + packageName + ")\n" +
+                    sensitive.sorted().joinToString("\n") { "  • " + it }
             }
         }
 
@@ -96,10 +126,148 @@ internal object AppPermissionAudit {
             }
         }
 
+        val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
+        output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
+        if (skipped > 0) {
+            output.append("Comparison was not run and the saved baseline was not changed because ")
+                .append(skipped).append(" package(s) could not be inspected. This avoids treating an incomplete scan as a real permission change.")
+        } else {
+            val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+            val rawBaseline = preferences.getString(KEY_BASELINE, null)
+            var baselineWarning: String? = null
+            val previousSnapshot = if (rawBaseline.isNullOrBlank()) {
+                null
+            } else {
+                try {
+                    decodeBaseline(rawBaseline)
+                } catch (exception: Exception) {
+                    baselineWarning = "The saved baseline was invalid and has been replaced: " +
+                        (exception.message ?: exception.javaClass.simpleName)
+                    null
+                }
+            }
+
+            if (previousSnapshot == null) {
+                output.append("No usable previous snapshot was available; this completed scan establishes the next comparison baseline.")
+                if (baselineWarning != null) output.append("\n").append(baselineWarning)
+            } else {
+                val diff = currentSnapshot.compare(previousSnapshot)
+                if (diff.changes.isEmpty() &&
+                    diff.newlyObservedPackages.isEmpty() &&
+                    diff.noLongerObservedPackages.isEmpty()) {
+                    output.append("No changes were found in the comparable launcher-visible dangerous-permission declarations and grant states.")
+                } else {
+                    if (diff.changes.isNotEmpty()) {
+                        output.append("Permission changes (").append(diff.changes.size).append("):")
+                        diff.changes.take(MAX_CHANGES_IN_REPORT).forEach { change ->
+                            val appLabel = labelsByPackage[change.packageName] ?: change.packageName
+                            output.append("\n[")
+                            output.append(
+                                when (change.kind) {
+                                    PermissionChangeKind.NEWLY_REQUESTED -> "NEWLY REQUESTED"
+                                    PermissionChangeKind.NO_LONGER_REQUESTED -> "NO LONGER REQUESTED"
+                                    PermissionChangeKind.NEWLY_GRANTED -> "NEWLY GRANTED"
+                                    PermissionChangeKind.GRANT_REVOKED -> "GRANT REVOKED"
+                                }
+                            )
+                            output.append("] ").append(appLabel).append(" (").append(change.packageName).append(") — ")
+                                .append(change.permissionName.substringAfterLast('.'))
+                            when (change.kind) {
+                                PermissionChangeKind.NEWLY_REQUESTED -> output.append(
+                                    if (change.currentlyGranted == true) "; declared and currently granted"
+                                    else "; declared but not currently granted"
+                                )
+                                PermissionChangeKind.NO_LONGER_REQUESTED -> output.append(
+                                    if (change.previouslyGranted == true) "; previously granted, no longer declared"
+                                    else "; previously declared, no longer requested"
+                                )
+                                PermissionChangeKind.NEWLY_GRANTED -> output.append("; grant changed from off to on")
+                                PermissionChangeKind.GRANT_REVOKED -> output.append("; grant changed from on to off")
+                            }
+                        }
+                        if (diff.changes.size > MAX_CHANGES_IN_REPORT) {
+                            output.append("\n… ").append(diff.changes.size - MAX_CHANGES_IN_REPORT)
+                                .append(" additional permission changes omitted from this view.")
+                        }
+                    } else {
+                        output.append("No permission declaration or grant changes were found.")
+                    }
+                    if (diff.newlyObservedPackages.isNotEmpty()) {
+                        output.append("\n\nNewly observed launcher package(s): ")
+                            .append(diff.newlyObservedPackages.joinToString(", "))
+                    }
+                    if (diff.noLongerObservedPackages.isNotEmpty()) {
+                        output.append("\n\nPackages no longer visible in the launcher scan: ")
+                            .append(diff.noLongerObservedPackages.joinToString(", "))
+                            .append(". No permission revocation is inferred for packages that left the scan.")
+                    }
+                }
+            }
+
+            try {
+                preferences.edit().putString(KEY_BASELINE, encodeBaseline(currentSnapshot)).commit()
+            } catch (exception: RuntimeException) {
+                output.append("\nBaseline write failed: ")
+                    .append(exception.message ?: exception.javaClass.simpleName)
+            }
+        }
+
         output.append("\n\nImportant limits: this reads manifest declarations and current grant flags, not live sensor use or data transmission. ")
             .append("Apps without launcher activities, many headless system components, privileged Google/Samsung services, work-profile apps, and hidden packages may be absent. ")
             .append("A granted permission does not prove it was used; a missing permission does not prove an app collects no data. ")
-            .append("Use Android Settings to change permissions; PrivaCage does not silently revoke them.")
+            .append("The saved comparison baseline is local and removable from the dashboard; PrivaCage does not silently revoke permissions.")
         return output.toString()
+    }
+
+    private fun encodeBaseline(snapshot: PermissionGrantSnapshot): String {
+        val packages = JSONObject()
+        snapshot.packages.toSortedMap().forEach { (packageName, permissions) ->
+            val permissionObject = JSONObject()
+            permissions.toSortedMap().forEach { (permission, granted) ->
+                permissionObject.put(permission, granted)
+            }
+            packages.put(packageName, permissionObject)
+        }
+        return JSONObject()
+            .put("schema_version", BASELINE_SCHEMA_VERSION)
+            .put("packages", packages)
+            .toString()
+    }
+
+    private fun decodeBaseline(text: String): PermissionGrantSnapshot {
+        val root = try {
+            JSONObject(text)
+        } catch (exception: JSONException) {
+            throw IOException("Baseline is not valid JSON", exception)
+        }
+        if (root.opt("schema_version") !is Number ||
+            (root.opt("schema_version") as Number).toInt() != BASELINE_SCHEMA_VERSION ||
+            root.opt("packages") !is JSONObject) {
+            throw IOException("Baseline schema version or package map is invalid")
+        }
+        val packagesObject = root.getJSONObject("packages")
+        val packages = linkedMapOf<String, Map<String, Boolean>>()
+        val packageIterator = packagesObject.keys()
+        while (packageIterator.hasNext()) {
+            val packageName = packageIterator.next()
+            if (packageName.isBlank() || packageName.length > 255) {
+                throw IOException("Baseline contains an invalid package name")
+            }
+            val permissionsObject = packagesObject.opt(packageName) as? JSONObject
+                ?: throw IOException("Baseline permission map is invalid for " + packageName)
+            val permissions = linkedMapOf<String, Boolean>()
+            val permissionIterator = permissionsObject.keys()
+            while (permissionIterator.hasNext()) {
+                val permission = permissionIterator.next()
+                val granted = permissionsObject.opt(permission) as? Boolean
+                    ?: throw IOException("Baseline grant flag is invalid for " + packageName)
+                if (permission.isBlank() || permission.length > 255) {
+                    throw IOException("Baseline contains an invalid permission name")
+                }
+                permissions[permission] = granted
+            }
+            packages[packageName] = permissions
+        }
+        return PermissionGrantSnapshot(packages)
     }
 }
