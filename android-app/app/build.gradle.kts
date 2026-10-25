@@ -43,5 +43,6 @@ kotlin {
 dependencies {
     implementation(project(":android-core"))
     implementation("com.android.tools.build:apksig:8.10.1")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }
