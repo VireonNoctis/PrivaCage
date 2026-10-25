@@ -83,8 +83,19 @@ jobs:
           $strictLines = go run . plan --profile strict --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $strict = ($strictLines -join [Environment]::NewLine) | ConvertFrom-Json
-          if ($strict.schema_version -ne 1 -or $strict.profile -ne "strict" -or @($strict.changes | Where-Object { $_.name -eq "LetAppsAccessLocation" -and $_.value -eq 2 }).Count -ne 1) {
-            throw "The strict preview did not include the documented Windows-app location denial."
+          if ($strict.schema_version -ne 1 -or $strict.profile -ne "strict") {
+            throw "The strict preview returned unexpected metadata."
+          }
+
+          # GitHub's hosted Windows runner may be Windows Server, where client-only App Privacy
+          # policies are intentionally skipped. The assertion follows the detected OS edition.
+          $isServerEdition = [string]$strict.edition_id -match "Server"
+          $locationControl = @($strict.changes | Where-Object { $_.name -eq "LetAppsAccessLocation" -and $_.value -eq 2 }).Count -eq 1
+          if ($isServerEdition -and $locationControl) {
+            throw "The strict preview unexpectedly applied a client-only App Privacy policy to Windows Server."
+          }
+          if (-not $isServerEdition -and -not $locationControl) {
+            throw "The strict preview omitted the documented Windows-app location denial on a supported client edition."
           }
 
           $isolationLines = go run . plan --profile balanced --isolate-network --confirm-network-disruption --format json
