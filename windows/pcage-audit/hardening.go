@@ -141,15 +141,27 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 	} else {
 		telemetryLevel := 1
 		telemetryDescription := "Use Required diagnostic data, the lowest documented level on mainstream Pro editions. Required diagnostic data is not zero diagnostic traffic."
-		if supportsSecurityOnlyTelemetry(metadata.EditionID) {
+		if supportsSecurityOnlyTelemetry(metadata.EditionID, metadata.BuildNumber) {
 			telemetryLevel = 0
 			telemetryDescription = "Use the Security diagnostic-data level on an edition where Microsoft documents support for it. This does not promise zero Windows communications."
 		}
 		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", telemetryLevel, telemetryDescription, securityPolicyCSP)
 		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "DisabledByGroupPolicy", 1,
 			"Disable the Windows advertising identifier through the documented machine policy.", privacyPolicyCSP)
-		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "EnableActivityFeed", 0,
-			"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
+		if metadata.BuildNumber >= 16299 {
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "EnableActivityFeed", 0,
+				"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
+		} else {
+			plan.Skipped = append(plan.Skipped, "EnableActivityFeed requires Windows build 16299 or newer.")
+		}
+		if metadata.BuildNumber >= 17763 {
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowCrossDeviceClipboard", 0,
+				"Prevent clipboard contents from syncing to other devices logged in to the same account.", privacyPolicyCSP)
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowDeviceNameInDiagnosticData", 0,
+				"Disallow inclusion of the Windows device name in diagnostic data.", securityPolicyCSP)
+		} else {
+			plan.Skipped = append(plan.Skipped, "Cross-device clipboard and diagnostic device-name policies require Windows build 17763 or newer.")
+		}
 		if metadata.BuildNumber >= 16299 {
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "PublishUserActivities", 0,
 				"Prevent Windows apps and the OS from publishing User Activities.", privacyPolicyCSP)
@@ -172,7 +184,7 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		} else {
 			plan.Skipped = append(plan.Skipped, "The tailored-experiences policy requires Windows build 15063 or newer.")
 		}
-		if metadata.BuildNumber >= 22000 {
+		if metadata.BuildNumber >= 22000 || (strings.Contains(strings.ToLower(metadata.EditionID), "server") && metadata.BuildNumber >= 20348) {
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDiagnosticLogCollection", 1,
 				"Limit additional diagnostic-log collection on supported Windows 11 builds.", securityPolicyCSP)
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "LimitDumpCollection", 1,
@@ -182,6 +194,12 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		}
 
 		if profile == "strict" {
+			if metadata.BuildNumber >= 17763 {
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowClipboardHistory", 0,
+					"Disable Windows clipboard history so copied content is not retained in the Win+V history.", "https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience")
+			} else {
+				plan.Skipped = append(plan.Skipped, "AllowClipboardHistory requires Windows build 17763 or newer.")
+			}
 			if metadata.BuildNumber >= 14393 {
 				appPrivacy := "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy"
 				for _, item := range []struct {
@@ -234,14 +252,14 @@ func supportsMachinePolicy(edition string) bool {
 	return false
 }
 
-func supportsSecurityOnlyTelemetry(edition string) bool {
+func supportsSecurityOnlyTelemetry(edition string, buildNumber int) bool {
 	edition = strings.ToLower(edition)
-	for _, token := range []string{"enterprise", "education", "iotenterprise", "server"} {
-		if strings.Contains(edition, token) {
-			return true
-		}
+	if strings.Contains(edition, "enterprise") || strings.Contains(edition, "education") {
+		return true
 	}
-	return false
+	// Microsoft's current AllowTelemetry table identifies Server 2016 for value 0.
+	// Later Server releases remain at Required unless Microsoft documents support.
+	return strings.Contains(edition, "server") && buildNumber == 14393
 }
 
 func collectWindowsMetadata(ctx context.Context) (windowsMetadata, error) {
