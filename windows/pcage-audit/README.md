@@ -11,16 +11,17 @@ The terminal UI follows the PrivaCage design language: near-black background, wh
 ### Balanced
 
 Previews and can apply edition/build-supported controls:
-- Limit Windows diagnostic data to Required on mainstream Professional editions, or the documented Security level on editions supporting it.
-- Disable the user advertising-ID preference and, where supported, the machine advertising-ID policy.
-- Disable Activity Feed publication/cloud roaming and User Activities publication/upload on supported builds.
-- Disable the documented online speech-personalization policy.
+- Set AllowTelemetry to Required (value 1) on mainstream Professional editions, or Diagnostic data off (value 0) on Enterprise, Education, and Server editions that support it. This governs Windows diagnostic data, not every system communication.
+- Disable the active interactive user's advertising-ID preference and, where supported, the machine advertising-ID policy.
+- Prevent users from changing diagnostic-data selection in Settings on supported client builds with ConfigureTelemetryOptInSettingsUx=1; administrators and higher-priority policy can still change it.
+- Disable Activity Feed publication/cloud roaming, User Activities publication/upload, cross-device clipboard sync, and inclusion of the device name in diagnostic data on supported client builds.
+- Disable the documented online speech-recognition/personalization policy.
 - Disable tailored experiences based on diagnostic data for the active interactive user when that user hive is available.
-- On supported Windows 11 builds, limit additional diagnostic-log collection and diagnostic dump collection.
+- On supported Windows 11 and Windows Server 2022 builds, limit additional diagnostic-log collection and diagnostic dump collection.
 
 ### Strict
 
-Includes the balanced profile plus documented Windows-app permission policy denials for location, camera, microphone, contacts, calendar, email, messaging, call history, tasks, notifications, and diagnostic information about other apps. It also disables Windows Error Reporting policy.
+Includes the balanced profile plus disables Windows clipboard history and adds documented Windows-app permission policy denials for location, camera, microphone, contacts, calendar, email, messaging, call history, tasks, notifications, and diagnostic information about other apps. It also disables Windows Error Reporting policy.
 
 These policies have a narrower scope than the whole machine. They do not create a universal barrier for every classic desktop program, service, driver, OS component, firmware path, or remote administrator. Applications that use denied Windows-app capabilities or Windows Error Reporting can lose functionality.
 
@@ -81,7 +82,7 @@ If an apply fails, the tool attempts rollback. If rollback cannot be completed, 
 
 ## Limits and safety
 
-- Required diagnostic data remains on ordinary client editions. The Security diagnostic level is only supported by editions Microsoft documents for it. No policy here means "Windows sends zero data".
+- Required diagnostic data remains on ordinary client editions. The Diagnostic data off value (0) is only supported by Enterprise, Education, and Server editions in Microsoft's current policy documentation; IoT Enterprise and mainstream client editions use Required instead. No policy here means "Windows sends zero data".
 - Domain policy or MDM can later override local settings. A readback is a point-in-time check, not a complete effective-policy calculation.
 - Capability policies cover the Windows-app scope described by Microsoft and do not govern every classic desktop app, service, driver, or OS component.
 - Windows Update, Defender, SmartScreen, licensing, certificate validation, and essential security services are deliberately not disabled.
