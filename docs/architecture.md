@@ -61,7 +61,11 @@ Use public Apple APIs and approved entitlements only. NetworkExtension design de
 
 ## Windows
 
-Start with read-only inventory of supported firewall state, then add explicit, user-confirmed rules with administrator privileges when needed. Record the exact rule added and verify it after applying. Do not claim unrestricted process attribution from standard firewall APIs alone.
+The first Windows implementation is the read-only Go CLI in `windows/pcage-audit/`. On Windows 10/11 it queries the active Domain, Private, and Public firewall profile configuration through PowerShell's NetSecurity module. It also reads the machine-level AllowTelemetry policy and the machine App Privacy policy values for location, camera, and microphone. Output is a versioned text or JSON snapshot with official source links and explicit `ok`, `review`, `not_configured`, or `unknown` states.
+
+The collector does not make network requests, write registry values, change privacy settings, or create firewall rules. An absent machine policy is not treated as a disabled permission, and inaccessible or unrecognized values are not treated as safe. The queried machine policy does not resolve the effective combination of user settings, MDM, Windows edition, or individual app permissions. Firewall profile configuration is not evidence of a live connection and does not attribute traffic to a process.
+
+Next Windows work should add more complete, user-scoped permission inventory through supported APIs and only later consider opt-in firewall-rule management. Any write operation must require explicit user intent and appropriate privileges, preserve an exact change record, verify the result using the OS, and fail visibly. Do not claim unrestricted process attribution from standard firewall APIs alone.
 
 ## Data flow
 
