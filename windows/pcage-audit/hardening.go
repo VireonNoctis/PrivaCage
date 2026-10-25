@@ -148,49 +148,45 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		}
 		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", telemetryLevel, telemetryDescription, securityPolicyCSP)
 		if supportsClientPrivacyPolicies(metadata.EditionID) {
-				if metadata.BuildNumber >= 14393 {
+			if metadata.BuildNumber >= 14393 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo", "DisabledByGroupPolicy", 1,
 					"Disable the Windows advertising identifier through the documented machine policy.", privacyPolicyCSP)
-				} else {
+			} else {
 				plan.Skipped = append(plan.Skipped, "The Windows advertising-identifier machine policy requires build 14393 or newer.")
 			}
-				if metadata.BuildNumber >= 16299 {
+			if metadata.BuildNumber >= 16299 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "EnableActivityFeed", 0,
-				"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
-				} else {
-			plan.Skipped = append(plan.Skipped, "EnableActivityFeed requires Windows build 16299 or newer.")
-		}
-				if metadata.BuildNumber >= 17763 {
-				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowCrossDeviceClipboard", 0,
-				"Prevent clipboard contents from syncing to other devices logged in to the same account.", privacyPolicyCSP)
-				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowDeviceNameInDiagnosticData", 0,
-				"Disallow inclusion of the Windows device name in diagnostic data.", securityPolicyCSP)
-				} else {
-			plan.Skipped = append(plan.Skipped, "Cross-device clipboard and diagnostic device-name policies require Windows build 17763 or newer.")
-		}
-				if metadata.BuildNumber >= 16299 {
+					"Disable Windows Activity Feed publication and cloud roaming.", privacyPolicyCSP)
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "PublishUserActivities", 0,
-				"Prevent Windows apps and the OS from publishing User Activities.", privacyPolicyCSP)
-				} else {
-			plan.Skipped = append(plan.Skipped, "PublishUserActivities requires Windows build 16299 or newer.")
-		}
-				if metadata.BuildNumber >= 17134 {
+					"Prevent Windows apps and the OS from publishing User Activities.", privacyPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "Activity Feed and PublishUserActivities require Windows build 16299 or newer.")
+			}
+			if metadata.BuildNumber >= 17763 {
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "AllowCrossDeviceClipboard", 0,
+					"Prevent clipboard contents from syncing to other devices logged in to the same account.", privacyPolicyCSP)
+				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowDeviceNameInDiagnosticData", 0,
+					"Disallow inclusion of the Windows device name in diagnostic data.", securityPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "Cross-device clipboard and diagnostic device-name policies require Windows build 17763 or newer.")
+			}
+			if metadata.BuildNumber >= 17134 {
 				add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\System", "UploadUserActivities", 0,
-				"Prevent published User Activities from being uploaded to Microsoft cloud services.", privacyPolicyCSP)
-				} else {
-			plan.Skipped = append(plan.Skipped, "UploadUserActivities requires Windows build 17134 or newer.")
-		}
-		add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\InputPersonalization", "AllowInputPersonalization", 0,
-			"Disable the documented online speech-recognition/personalization policy.", privacyPolicyCSP)
-		if metadata.InteractiveUserSID != "" && metadata.BuildNumber >= 15063 {
-			add("Users", metadata.InteractiveUserSID+"\\Software\\Policies\\Microsoft\\Windows\\CloudContent", "DisableTailoredExperiencesWithDiagnosticData", 1,
-				"Stop diagnostic data being used for tailored lock-screen, tips, and consumer-feature experiences for the active user.", experiencePolicyCSP)
-		} else if metadata.InteractiveUserSID == "" {
-			plan.Skipped = append(plan.Skipped, "The tailored-experiences policy was skipped because Windows did not identify an active interactive user hive.")
-				} else {
-			plan.Skipped = append(plan.Skipped, "The tailored-experiences policy requires Windows build 15063 or newer.")
-		}
-				} else {
+					"Prevent published User Activities from being uploaded to Microsoft cloud services.", privacyPolicyCSP)
+			} else {
+				plan.Skipped = append(plan.Skipped, "UploadUserActivities requires Windows build 17134 or newer.")
+			}
+			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\InputPersonalization", "AllowInputPersonalization", 0,
+				"Disable the documented online speech-recognition/personalization policy.", privacyPolicyCSP)
+			if metadata.InteractiveUserSID != "" && metadata.BuildNumber >= 15063 {
+				add("Users", metadata.InteractiveUserSID+"\\Software\\Policies\\Microsoft\\Windows\\CloudContent", "DisableTailoredExperiencesWithDiagnosticData", 1,
+					"Stop diagnostic data being used for tailored lock-screen, tips, and consumer-feature experiences for the active user.", experiencePolicyCSP)
+			} else if metadata.InteractiveUserSID == "" {
+				plan.Skipped = append(plan.Skipped, "The tailored-experiences policy was skipped because Windows did not identify an active interactive user hive.")
+			} else {
+				plan.Skipped = append(plan.Skipped, "The tailored-experiences policy requires Windows build 15063 or newer.")
+			}
+		} else {
 			plan.Skipped = append(plan.Skipped, "Advertising ID, Activity Feed, clipboard-sync, tailored-experience and online speech controls are client policy surfaces and are not applied to Windows Server editions.")
 		}
 		if metadata.BuildNumber >= 22000 || (strings.Contains(strings.ToLower(metadata.EditionID), "server") && metadata.BuildNumber >= 20348) {
