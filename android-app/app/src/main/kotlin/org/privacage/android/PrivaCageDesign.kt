@@ -48,6 +48,11 @@ internal object PrivaCageDesign {
         "ENCRYPTED DEVICE SYNC"
     )
 
+    private val primaryActionLabels = setOf(
+        "save configuration",
+        "enable dns filtering"
+    )
+
     private data class SectionCard(
         val heading: String,
         val view: LinearLayout
@@ -381,10 +386,7 @@ internal object PrivaCageDesign {
     }
 
     internal fun isPrimaryAction(label: CharSequence?): Boolean =
-        label?.toString()?.trim()?.lowercase(Locale.ROOT) in setOf(
-            "save configuration",
-            "enable dns filtering"
-        )
+        label?.toString()?.trim()?.lowercase(Locale.ROOT) in primaryActionLabels
 
     private fun styleButton(context: Context, view: Button) {
         val primary = isPrimaryAction(view.text)
