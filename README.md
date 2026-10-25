@@ -60,6 +60,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/rust/pcage-audit/` — offline Rust CLI/library to verify signed Android audit checkpoints without network access.
 - `shared/audit/test-vectors/checkpoint-v1.json` — fixed, test-only signed interoperability vector (no private key included).
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
+- `shared/rust/tracker-intelligence/` — Rust tracker catalog and schema-v2 intelligence tooling; release manifests use Ed25519-signed metadata, a sequential predecessor-linked release history, expiry checks, a signed current pointer, and optional externally persisted rollback floors. This is a local release store, not a remote catalog updater or full TUF client; see its README for the key-management and rollback boundary.
 - `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, dual-signed peer/owner key rotation, and recovery bundles.
 - Android sync peer management maintains a local denylist and removes pending profiles when a trusted fingerprint is revoked. This is device-local trust revocation; shared relay capability rotation is a separate administrator action and invalidates all devices using that capability.
 - `shared/rust/pcage-sync-relay/` — SQLite-backed loopback HTTP relay that stores opaque sync packets and never decrypts them.
@@ -118,6 +119,19 @@ The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
     cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings
     cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-sync-jni/Cargo.toml --all-targets -- -D warnings
+
+The tracker-intelligence release tooling uses Rust 1.85 or newer. It validates legacy catalog schema v1 and intelligence bundle schema v2, and supports locally signed release snapshots. Keep the 32-byte Ed25519 signing seed outside the repository and shell history; pin the public key out of band.
+
+    cargo test --manifest-path shared/rust/tracker-intelligence/Cargo.toml
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- publish path/to/catalog.json ./release-store release-2026-10-25 2026-10-25 "$PCAGE_ED25519_SEED_HEX"
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX" "$PCAGE_MINIMUM_RELEASE_SEQUENCE" "$PCAGE_MINIMUM_STATE_REVISION"
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
+
+An intentional local rollback requires the signing seed, signs a new current pointer, and preserves the release-chain head:
+
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- rollback ./release-store release-2026-10-23 "$PCAGE_ED25519_SEED_HEX"
+
+The minimum sequence and pointer revision must be persisted by the caller outside the release store to detect signed pointer replay. No remote updater, release-signing-key rotation, or full TUF client is implemented.
 
 The opaque relay service requires Rust 1.85 or newer:
 
