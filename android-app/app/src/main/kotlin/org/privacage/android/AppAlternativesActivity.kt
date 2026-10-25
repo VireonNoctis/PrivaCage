@@ -4,11 +4,13 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -71,7 +73,7 @@ class AppAlternativesActivity : Activity() {
             setPadding(0, dp(18), 0, dp(4))
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "Select the apps you want to replace. “Completed” is a manual reminder only; PrivaCage cannot verify that a store installed the app."
+            text = "Select the apps you want to replace. When you return from a store, PrivaCage refreshes install status for these explicitly listed packages and skips confirmed installs. Download and installation remain controlled by the selected source and Android."
             textSize = 12f
         }, matchWidth())
         root.addView(Button(this).apply {
@@ -206,6 +208,21 @@ class AppAlternativesActivity : Activity() {
                 setTextColor(Color.rgb(220, 220, 220))
                 setLineSpacing(dp(2).toFloat(), 1f)
             }, matchWidth())
+            val installState = installationStatus(alternative)
+            card.addView(TextView(this).apply {
+                text = when (installState) {
+                    InstallationStatus.INSTALLED -> "INSTALL STATUS  ·  INSTALLED FOR THIS ANDROID USER"
+                    InstallationStatus.NOT_INSTALLED -> "INSTALL STATUS  ·  NOT FOUND IN THE CURRENT ANDROID USER"
+                    InstallationStatus.UNKNOWN -> "INSTALL STATUS  ·  UNKNOWN — ANDROID DID NOT CONFIRM"
+                }
+                textSize = 10f
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                setTextColor(
+                    if (installState == InstallationStatus.INSTALLED) Color.rgb(175, 210, 190)
+                    else Color.LTGRAY
+                )
+                setPadding(0, dp(6), 0, dp(4))
+            }, matchWidth())
             card.addView(TextView(this).apply {
                 text = "TRADE-OFFS\n" + alternative.tradeoffs
                 textSize = 11f
@@ -252,7 +269,7 @@ class AppAlternativesActivity : Activity() {
             card.addView(sourceSpinner, matchWidth())
 
             val completion = CheckBox(this).apply {
-                text = "I completed this install"
+                text = "Mark complete manually (not verified)"
                 isChecked = alternative.id in completedIds
                 setTextColor(Color.LTGRAY)
                 textSize = 12f
@@ -278,12 +295,16 @@ class AppAlternativesActivity : Activity() {
     }
 
     private fun openNextQueuedSource() {
-        val next = catalog.firstOrNull { it.id in selectedIds && it.id !in completedIds }
+        val next = catalog.firstOrNull {
+            it.id in selectedIds &&
+                it.id !in completedIds &&
+                installationStatus(it) != InstallationStatus.INSTALLED
+        }
         if (next == null) {
             val message = if (selectedIds.isEmpty()) {
                 "Choose at least one app alternative to start the queue."
             } else {
-                "Every selected item is manually marked completed. Untick one item to reopen its source."
+                "Every selected item is installed or manually marked complete. Untick a manual completion to reopen its source."
             }
             statusView.text = message
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -294,7 +315,7 @@ class AppAlternativesActivity : Activity() {
         openTrustedUrl(
             source.url,
             "Opened " + source.label + " for " + next.name +
-                ". Complete the download/install in that source, then return and mark it completed. PrivaCage does not verify installation."
+                ". Return here after installing; PrivaCage will refresh the package status. Android and the selected source retain control of download and install confirmation."
         )
     }
 
@@ -313,10 +334,53 @@ class AppAlternativesActivity : Activity() {
 
     private fun updateQueueStatus() {
         if (!::statusView.isInitialized) return
-        val queued = selectedIds.size
-        val completed = selectedIds.count { it in completedIds }
-        statusView.text = "Selected: " + queued + "  /  manually marked complete: " + completed +
-            "\nQueue items open one official/project page at a time. The source app controls download and installation; no APK is silently fetched or installed."
+        val selected = catalog.filter { it.id in selectedIds }
+        val completed = selected.count {
+            it.id in completedIds || installationStatus(it) == InstallationStatus.INSTALLED
+        }
+        val unknown = selected.count {
+            it.id !in completedIds && installationStatus(it) == InstallationStatus.UNKNOWN
+        }
+        val queued = selected.size
+        statusView.text = "Selected: " + queued +
+            "  /  installed or manually completed: " + completed +
+            "  /  status unknown: " + unknown +
+            "\\nReturning from a store refreshes package visibility. Unknown never means uninstalled; manual completion is a reminder only. PrivaCage does not download arbitrary APKs or bypass Android install confirmation."
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::catalogContainer.isInitialized) {
+            renderAlternatives()
+            updateQueueStatus()
+        }
+    }
+
+    private fun installationStatus(alternative: AppAlternative): InstallationStatus {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(
+                    alternative.packageName,
+                    PackageManager.PackageInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(alternative.packageName, 0)
+            }
+            InstallationStatus.INSTALLED
+        } catch (_: PackageManager.NameNotFoundException) {
+            InstallationStatus.NOT_INSTALLED
+        } catch (_: SecurityException) {
+            InstallationStatus.UNKNOWN
+        } catch (_: RuntimeException) {
+            InstallationStatus.UNKNOWN
+        }
+    }
+
+    private enum class InstallationStatus {
+        INSTALLED,
+        NOT_INSTALLED,
+        UNKNOWN
     }
 
     private fun restoreSelectionState() {
