@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "shared/tracker-db/**"
+      - "shared/app-alternatives/**"
       - "shared/go/pcage-tools/**"
       - "android-app/app/src/main/AndroidManifest.xml"
       - "tests/**"
@@ -33,6 +34,8 @@ jobs:
         run: go -C shared/go/pcage-tools test ./...
       - name: Validate tracker database and evidence freshness
         run: go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+      - name: Validate curated app-alternative catalogue
+        run: go -C shared/go/pcage-tools run . validate-app-alternatives
       - name: Validate declared Android backup posture
         run: go -C shared/go/pcage-tools run . validate-android-backup
       - name: Validate Android permission and telemetry baseline
