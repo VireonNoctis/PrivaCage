@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Tag
  * Repeatable relative microbenchmark. Results are measurements, not pass/fail thresholds.
  * The runner compares the same workload on a baseline commit and the candidate commit.
  */
+private fun jsonString(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 @Tag("performance")
 class DnsPerformanceBenchmarkTest {
 
@@ -219,6 +222,4 @@ class DnsPerformanceBenchmarkTest {
         bytes[offset + 1] = value.toByte()
     }
 
-    private fun jsonString(value: String): String =
-        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
