@@ -36,6 +36,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: windows/pcage-audit/go.mod
+          cache-dependency-path: windows/pcage-audit/go.mod
       - name: Run tests
         run: go test ./...
       - name: Build executable
@@ -53,6 +54,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: windows/pcage-audit/go.mod
+          cache-dependency-path: windows/pcage-audit/go.mod
       - name: Execute and validate local report
         run: |
           $reportLines = go run . --format json
