@@ -180,8 +180,9 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 		}
 
 		if profile == "strict" {
-			appPrivacy := "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy"
-			for _, item := range []struct {
+			if metadata.BuildNumber >= 14393 {
+				appPrivacy := "SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy"
+				for _, item := range []struct {
 				name string
 				description string
 			}{
@@ -196,8 +197,11 @@ func buildHardeningPlan(profile string, metadata windowsMetadata, blockOutboundB
 				{"LetAppsAccessTasks", "Force-deny Windows-app tasks access."},
 				{"LetAppsAccessNotifications", "Force-deny Windows-app notification access."},
 				{"LetAppsGetDiagnosticInfo", "Force-deny Windows apps from reading diagnostic information about other apps."},
-			} {
-				add("LocalMachine", appPrivacy, item.name, 2, item.description, privacyPolicyCSP)
+				} {
+					add("LocalMachine", appPrivacy, item.name, 2, item.description, privacyPolicyCSP)
+				}
+			} else {
+				plan.Skipped = append(plan.Skipped, "Windows App Privacy force-deny policies require Windows build 14393 or newer.")
 			}
 			add("LocalMachine", "SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting", "Disabled", 1,
 				"Disable Windows Error Reporting submission policy. This removes a troubleshooting path and does not stop every diagnostic channel.", errorReportingPolicyCSP)
