@@ -24,6 +24,7 @@ func applyWindowsHardening(ctx context.Context, plan hardeningPlan) ([]byte, err
 	lines := hardeningPowerShellBase()
 	lines = append(lines,
 		"$plan = ConvertFrom-Json -InputObject ([System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+encoded+"')))",
+		"if (-not (Test-IsAdministrator)) { throw 'Administrator privileges are required for apply.' }",
 		"if ([int]$plan.schema_version -ne 1 -or @('balanced','strict') -notcontains [string]$plan.profile) { throw 'Unsupported hardening-plan schema or profile.' }",
 		"if (@($plan.changes).Count -gt 32) { throw 'Plan exceeds the maximum supported number of policy changes.' }",
 		"$backupPath = Join-Path (Join-Path $env:ProgramData 'PrivaCage') 'hardening-backup.json'",
@@ -147,7 +148,6 @@ func hardeningPowerShellBase() []string {
 	return []string{
 		"$ErrorActionPreference = 'Stop'",
 		"function Test-IsAdministrator { $i=[System.Security.Principal.WindowsIdentity]::GetCurrent(); $p=[System.Security.Principal.WindowsPrincipal]::new($i); return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator) }",
-		"if (-not (Test-IsAdministrator)) { throw 'Administrator privileges are required for this operation.' }",
 		"function Test-AllowedTarget($p) {",
 		"  $allowed=@(",
 		"    'LocalMachine|SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection|AllowTelemetry',",
@@ -230,7 +230,7 @@ func hardeningPowerShellBase() []string {
 		"  if ($LASTEXITCODE -ne 0) { throw 'Could not restrict the hardening-backup directory to SYSTEM and Administrators.' }",
 		"  $temp=$path+'.'+[Guid]::NewGuid().ToString('N')+'.tmp'",
 		"  [System.IO.File]::WriteAllText($temp,(ConvertTo-Json -InputObject $b -Depth 16),(New-Object System.Text.UTF8Encoding($false)))",
-		"  try { Move-Item -LiteralPath $temp -Destination $path -ErrorAction Stop } catch { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue; throw }",
+		"  try { Move-Item -LiteralPath $temp -Destination $path -Force -ErrorAction Stop } catch { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue; throw }",
 		"}",
 	}
 }
@@ -240,7 +240,7 @@ func activeBackupPathDisplay() string {
 	if programData == "" {
 		programData = "%ProgramData%"
 	}
-	return filepath.Join(programData, hardeningBackupPath)
+	return filepath.Join(programData, "PrivaCage", "hardening-backup.json")
 }
 
 func hardeningCommandAvailable() error {
