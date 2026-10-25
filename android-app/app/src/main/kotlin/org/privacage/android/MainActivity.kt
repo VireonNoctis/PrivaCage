@@ -783,7 +783,7 @@ class MainActivity : Activity() {
             isVerticalScrollBarEnabled = false
             overScrollMode = android.view.View.OVER_SCROLL_NEVER
         }
-        PrivaCageDesign.apply(this, root, contentScroll)
+        PrivaCageDesign.apply(this, root, contentScroll, statusText)
         contentScroll.addView(root)
         setContentView(contentScroll)
         Thread({
