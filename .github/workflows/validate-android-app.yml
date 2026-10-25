@@ -24,7 +24,7 @@ on:
       - "shared/rust/pcage-metadata/**"
       - "shared/rust/pcage-metadata-jni/**"
       - "shared/tracker-db/**"
-      - "shared/scripts/**"
+      - "shared/go/pcage-tools/**"
       - "tests/**"
       - ".github/workflows/validate-android-app.yml"
   workflow_dispatch:
