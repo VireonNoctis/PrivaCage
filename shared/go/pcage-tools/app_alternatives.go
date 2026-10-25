@@ -54,6 +54,7 @@ var appAlternativeHosts = map[string]struct{}{
 }
 
 var appAlternativeIDPattern = regexp.MustCompile("^[a-z0-9]+(-[a-z0-9]+)*$")
+var appAlternativePackagePattern = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$")
 
 type appAlternativeCatalog struct {
 	SchemaVersion int                    `json:"schema_version"`
@@ -63,6 +64,7 @@ type appAlternativeCatalog struct {
 
 type appAlternativeRecord struct {
 	ID          string                 `json:"id"`
+	PackageName string                 `json:"package_name"`
 	Replaces    string                 `json:"replaces"`
 	Category    string                 `json:"category"`
 	Name        string                 `json:"name"`
@@ -92,7 +94,7 @@ func (catalog *appAlternativeCatalog) UnmarshalJSON(data []byte) error {
 }
 
 func (record *appAlternativeRecord) UnmarshalJSON(data []byte) error {
-	if err := rejectUnknownJSONFields(data, []string{"id", "replaces", "category", "name", "summary", "tradeoffs", "evidence_url", "sources"}, "app-alternative record"); err != nil {
+	if err := rejectUnknownJSONFields(data, []string{"id", "package_name", "replaces", "category", "name", "summary", "tradeoffs", "evidence_url", "sources"}, "app-alternative record"); err != nil {
 		return err
 	}
 	type wire appAlternativeRecord
@@ -190,6 +192,10 @@ func validateAppAlternativeCatalog(catalog appAlternativeCatalog, today time.Tim
 			if value == "" || strings.TrimSpace(value) != value || len(value) > maxLength || strings.ContainsRune(value, '\x00') {
 				add("%s.%s must be non-empty trimmed text within %d bytes", context, field, maxLength)
 			}
+		}
+		requireAlternativeText("package_name", record.PackageName, 255)
+		if !appAlternativePackagePattern.MatchString(record.PackageName) {
+			add("%s.package_name must be a valid dotted Android package name", context)
 		}
 		requireAlternativeText("replaces", record.Replaces, 100)
 		requireAlternativeText("category", record.Category, 60)
