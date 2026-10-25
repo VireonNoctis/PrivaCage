@@ -146,9 +146,12 @@ class DnsTunnelEngineTest {
         assertContentEquals(expectedResponse, result.packet.copyOfRange(48, result.packet.size))
         assertEquals(6, (result.packet[0].toInt() ushr 4) and 0x0f)
         assertEquals(17, result.packet[6].toInt() and 0xff)
-        assertContentEquals(result.packet.copyOfRange(24, 40), result.packet.copyOfRange(8, 24))
         assertContentEquals(
             byteArrayOf(0xfd.toByte(), 0x42, 0x11, 0x11, 0x22, 0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2),
+            result.packet.copyOfRange(8, 24)
+        )
+        assertContentEquals(
+            InetAddress.getByName("2001:db8::2").address,
             result.packet.copyOfRange(24, 40)
         )
         assertEquals(53, u16(result.packet, 40))
