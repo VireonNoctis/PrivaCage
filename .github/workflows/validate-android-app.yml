@@ -12,6 +12,8 @@ on:
       - "shared/rust/pcage-metadata-jni/**"
       - "shared/rust/tracker-intelligence/**"
       - "shared/tracker-db/**"
+      - "shared/app-alternatives/**"
+      - "shared/app-alternatives/**"
       - "shared/go/pcage-tools/**"
       - "tests/**"
       - ".github/workflows/validate-android-app.yml"
@@ -105,11 +107,14 @@ jobs:
           go -C shared/go/pcage-tools run . validate-android-backup
           go -C shared/go/pcage-tools run . validate-android-privacy
           go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+          go -C shared/go/pcage-tools run . validate-app-alternatives
       - name: Validate and inspect the bundled tracker catalog
         run: |
           unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
           unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/signatures.json > "$RUNNER_TEMP/bundled-signatures.json"
           go -C shared/go/pcage-tools run . validate-tracker --file "$RUNNER_TEMP/bundled-signatures.json"
+          unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/catalog.json > "$RUNNER_TEMP/bundled-app-alternatives.json"
+          go -C shared/go/pcage-tools run . validate-app-alternatives --file "$RUNNER_TEMP/bundled-app-alternatives.json"
 
   performance-comparison:
     name: Baseline vs candidate performance measurements
