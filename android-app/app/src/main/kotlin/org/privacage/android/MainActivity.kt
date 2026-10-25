@@ -15,6 +15,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -283,6 +285,22 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
             setPadding(0, dp(8), 0, dp(8))
         }
+        val trackerSearchInput = EditText(this).apply {
+            hint = "Search name, category, domain, SDK pattern, status or evidence"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            visibility = android.view.View.GONE
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable?) {
+                    trackerCatalog?.let { records ->
+                        trackerDetails.text = formatTrackerCatalogDetails(records, s?.toString().orEmpty())
+                    }
+                }
+            })
+        }
+        root.addView(trackerSearchInput, matchWidth())
         root.addView(Button(this).apply {
             text = "Show tracker records and evidence"
             setOnClickListener {
@@ -291,11 +309,15 @@ class MainActivity : Activity() {
                 } else if (trackerCatalog == null) {
                     statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Manual domain rules still work."
                 } else {
-                    if (trackerDetails.text.isNullOrBlank()) {
-                        trackerDetails.text = formatTrackerCatalogDetails(trackerCatalog.orEmpty())
-                    }
                     val expanded = trackerDetails.visibility != android.view.View.VISIBLE
+                    trackerSearchInput.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.GONE
                     trackerDetails.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.GONE
+                    if (expanded) {
+                        trackerDetails.text = formatTrackerCatalogDetails(
+                            trackerCatalog.orEmpty(),
+                            trackerSearchInput.text.toString()
+                        )
+                    }
                     text = if (expanded) "Hide tracker records and evidence" else "Show tracker records and evidence"
                 }
             }
@@ -861,29 +883,35 @@ class MainActivity : Activity() {
         return true
     }
 
-    private fun formatTrackerCatalogDetails(records: List<TrackerSignature>): String = buildString {
+    private fun formatTrackerCatalogDetails(records: List<TrackerSignature>, query: String = ""): String = buildString {
+        val matches = TrackerCatalogSearch.filter(records, query)
         append("CATALOG SUMMARY\n")
         append("Records: ").append(records.size)
+        append(" | Showing: ").append(matches.size)
         append(" | Active: ").append(records.count { it.status == "active" })
         append(" | Review-only: ").append(records.count { it.status == "review" })
         append(" | Retired: ").append(records.count { it.status == "retired" })
-        append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
-        append(records.joinToString("\n\n") { record ->
-            buildString {
-                append(record.name)
-                append(" [")
-                append(record.status.uppercase())
-                append(", ")
-                append(record.confidence)
-                append(" confidence]\n")
-                append("Category: ").append(record.category)
-                append("\nDomains: ").append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
-                append("\nSDK patterns: ").append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
-                append("\nLast verified: ").append(record.lastVerified)
-                append("\nEvidence:\n")
-                append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
-            }
-        })
+        append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. SDK patterns are static indicators, not proof of runtime use. Review-only records are not included in bulk import.\n\n")
+        if (matches.isEmpty()) {
+            append("No tracker records matched this search. Search includes names, categories, domains, SDK class patterns, status, confidence and evidence text.")
+        } else {
+            append(matches.joinToString("\n\n") { record ->
+                buildString {
+                    append(record.name)
+                    append(" [")
+                    append(record.status.uppercase())
+                    append(", ")
+                    append(record.confidence)
+                    append(" confidence]\n")
+                    append("Category: ").append(record.category)
+                    append("\nDomains: ").append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
+                    append("\nSDK patterns: ").append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
+                    append("\nLast verified: ").append(record.lastVerified)
+                    append("\nEvidence:\n")
+                    append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
+                }
+            })
+        }
     }
 
     override fun onStart() {
