@@ -17,6 +17,7 @@ internal data class AppAlternativeSource(
 
 internal data class AppAlternative(
     val id: String,
+    val packageName: String,
     val replaces: String,
     val category: String,
     val name: String,
@@ -39,11 +40,12 @@ internal object AppAlternativeCatalog {
     private const val MAX_CATALOG_BYTES = 512 * 1024
     private val topLevelKeys = setOf("schema_version", "updated_at", "alternatives")
     private val alternativeKeys = setOf(
-        "id", "replaces", "category", "name", "summary", "tradeoffs", "evidence_url", "sources"
+        "id", "package_name", "replaces", "category", "name", "summary", "tradeoffs", "evidence_url", "sources"
     )
     private val sourceKeys = setOf("id", "label", "url")
     private val sourceIds = setOf("play", "fdroid", "official", "github", "gitlab")
     private val idPattern = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    private val packageNamePattern = Regex("^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)+$")
     private val approvedHosts = setOf(
         "anysoftkeyboard.github.io",
         "bitwarden.com",
@@ -132,6 +134,10 @@ internal object AppAlternativeCatalog {
             if (!id.matches(idPattern)) throw IOException(contextLabel + ".id must be lowercase kebab-case")
             if (!seenIds.add(id)) throw IOException("Duplicate alternative id: " + id)
 
+            val packageName = requiredString(item, "package_name", contextLabel, 255)
+            if (!packageName.matches(packageNamePattern)) {
+                throw IOException(contextLabel + ".package_name must be a valid dotted Android package name")
+            }
             val replaces = requiredString(item, "replaces", contextLabel, 100)
             val category = requiredString(item, "category", contextLabel, 60)
             val name = requiredString(item, "name", contextLabel, 100)
@@ -163,6 +169,7 @@ internal object AppAlternativeCatalog {
 
             output += AppAlternative(
                 id = id,
+                packageName = packageName,
                 replaces = replaces,
                 category = category,
                 name = name,
