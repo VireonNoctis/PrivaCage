@@ -47,9 +47,14 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         var node = ruleRoot
         var matchingRule: String? = null
 
-        for (label in name.split('.').asReversed()) {
-            node = node.children[label] ?: break
+        var end = name.length
+        while (end > 0) {
+            val separator = name.lastIndexOf('.', end - 1)
+            val labelStart = separator + 1
+            node = node.children[name.substring(labelStart, end)] ?: break
             node.terminalRule?.let { matchingRule = it }
+            if (separator < 0) break
+            end = separator
         }
         return matchingRule
     }
@@ -109,11 +114,13 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
                 throw DnsFormatException("Invalid or truncated DNS label")
             }
 
-            val bytes = message.copyOfRange(offset, offset + length)
-            if (bytes.any { (it.toInt() and 0xff) !in 0x21..0x7e }) {
-                throw DnsFormatException("DNS label contains unsupported non-ASCII characters")
+            val labelEnd = offset + length
+            for (index in offset until labelEnd) {
+                if ((message[index].toInt() and 0xff) !in 0x21..0x7e) {
+                    throw DnsFormatException("DNS label contains unsupported non-ASCII characters")
+                }
             }
-            val label = bytes.toString(Charsets.US_ASCII).lowercase()
+            val label = String(message, offset, length, Charsets.US_ASCII).lowercase()
             if (!isValidLabel(label)) throw DnsFormatException("Invalid DNS label")
             labels += label
             totalNameLength += length + 1
