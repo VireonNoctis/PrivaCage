@@ -1,6 +1,16 @@
 name: Compare PrivaCage performance
 
 on:
+  push:
+    paths:
+      - "android-app/**"
+      - "android-core/**"
+      - "shared/rust/tracker-intelligence/**"
+      - ".github/scripts/prepare-performance-baseline.sh"
+      - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/compare-performance.py"
+      - ".github/workflows/benchmark-performance.yml"
+      - "docs/performance/**"
   pull_request:
     paths:
       - "android-app/**"
