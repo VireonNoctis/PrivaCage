@@ -46,7 +46,7 @@ func applyWindowsHardening(ctx context.Context, plan hardeningPlan) ([]byte, err
 		"  }",
 		"  if ([bool]$plan.isolate_outbound) {",
 		"    Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True -ErrorAction Stop",
-		"    New-NetFirewallRule -Name 'PrivaCage.EmergencyOutboundIsolation' -DisplayName 'PrivaCage - Emergency Outbound Isolation' -Description 'Managed by PrivaCage. Restore with pcage-audit restore.' -Direction Outbound -Action Block -Enabled True -Profile Any -Program Any -RemoteAddress Any -ErrorAction Stop | Out-Null",
+		"    New-NetFirewallRule -Name 'PrivaCage.EmergencyOutboundIsolation' -DisplayName 'PrivaCage - Emergency Outbound Isolation' -Description 'Managed by PrivaCage. Restore with pcage-audit restore.' -Direction Outbound -Action Block -Enabled True -Profile Any -RemoteAddress Any -ErrorAction Stop | Out-Null",
 		"    $backup.emergency_rule_created = $true",
 		"    Save-Backup $backup $backupPath",
 		"  }",
