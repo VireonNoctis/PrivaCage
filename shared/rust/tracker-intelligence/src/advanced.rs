@@ -1,12 +1,12 @@
 use crate::{
-    build_release, normalize_domain, normalize_ip, sdk_pattern_matches, valid_sdk_pattern, sha256_hex,
+    build_release_with_metadata, normalize_domain, normalize_ip, sdk_pattern_matches, valid_sdk_pattern, sha256_hex,
     verify_release, Candidate, Catalog, Entry, Evidence, IndicatorKind, IntelligenceBundle,
     Observation, ReleaseManifest, IntelError,
 };
 use serde::{Deserialize, Serialize};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde_json::{json, Value};
-use std::{collections::{BTreeMap, BTreeSet}, fs, fs::OpenOptions, io::{Read, Write}, path::{Path, PathBuf}};
+use std::{collections::{BTreeMap, BTreeSet}, fs, fs::OpenOptions, io::{Read, Write}, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 
 fn invalid(s: impl Into<String>) -> IntelError { IntelError::Invalid(s.into()) }
 fn read_json<T: for<'de> Deserialize<'de>>(p: &Path) -> Result<T, IntelError> {
@@ -432,39 +432,394 @@ pub fn correlate_bundle(bundle:&IntelligenceBundle)->Value{
     json!({"schema_version":1,"nodes":nodes,"edges":edges,"counts":{"nodes":nodes.len(),"edges":edges.len()}})
 }
 
-#[derive(Debug,Serialize,Deserialize)]
-struct CurrentRelease { release_id:String, catalog_sha256:String }
-pub fn publish_release(catalog_path:&Path,root:&Path,release_id:&str,date:&str,seed:&str)->Result<ReleaseManifest,IntelError>{
-    if !safe_id(release_id){return Err(invalid("release id may contain only letters, digits, dot, underscore, and hyphen (max 80 chars)"))}
-    let bytes=fs::read(catalog_path).map_err(|e|IntelError::Io(e.to_string()))?;
-    let v:Value=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;
-    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_value(v).map_err(|e|IntelError::Json(e.to_string()))?;crate::validate_catalog(&c)?;},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?;},_=>return Err(invalid("release must be schema v1 catalog or schema v2 bundle"))}
-    let m=build_release(&bytes,date,seed)?;let dir=root.join("releases").join(release_id);
-    fs::create_dir_all(&dir).map_err(|e|IntelError::Io(e.to_string()))?;
-    if dir.join("catalog.json").exists(){return Err(invalid(format!("release {release_id} already exists; releases are immutable")))}
-    write_atomic(&dir.join("catalog.json"),&bytes)?;
-    write_atomic(&dir.join("manifest.json"),&serde_json::to_vec_pretty(&m).map_err(|e|IntelError::Json(e.to_string()))?)?;
-    let current=CurrentRelease{release_id:release_id.into(),catalog_sha256:m.catalog_sha256.clone()};
-    write_atomic(&root.join("current.json"),&serde_json::to_vec_pretty(&current).map_err(|e|IntelError::Json(e.to_string()))?)?;
-    Ok(m)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CurrentReleaseStatement {
+    format_version: u32,
+    release_id: String,
+    catalog_sha256: String,
+    release_sequence: u64,
+    head_sequence: u64,
+    head_manifest_sha256: String,
+    state_revision: u64,
+    operation: String,
+    updated_at: String,
+    signer_public_key_hex: String,
 }
-pub fn rollback_release(root:&Path,release_id:&str,trusted_key:&str)->Result<(),IntelError>{
-    if !safe_id(release_id){return Err(invalid("invalid release id"))}
-    let dir=root.join("releases").join(release_id);
-    let bytes=fs::read(dir.join("catalog.json")).map_err(|e|IntelError::Io(format!("read release catalog: {e}")))?;
-    let m:ReleaseManifest=read_json(&dir.join("manifest.json"))?;
-    verify_release(&bytes,&m,trusted_key)?;
-    let v:Value=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;
-    match v.get("schema_version").and_then(Value::as_u64){Some(1)=>{let c:Catalog=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;crate::validate_catalog(&c)?},Some(2)=>{let b:IntelligenceBundle=serde_json::from_slice(&bytes).map_err(|e|IntelError::Json(e.to_string()))?;validate_bundle(&b)?},_=>return Err(invalid("unsupported catalog schema"))}
-    let current=CurrentRelease{release_id:release_id.into(),catalog_sha256:m.catalog_sha256};
-    write_atomic(&root.join("current.json"),&serde_json::to_vec_pretty(&current).map_err(|e|IntelError::Json(e.to_string()))?)
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CurrentRelease {
+    #[serde(flatten)]
+    statement: CurrentReleaseStatement,
+    signature_hex: String,
 }
-pub fn verify_current_release(root:&Path,trusted_key:&str)->Result<(),IntelError>{
-    let c:CurrentRelease=read_json(&root.join("current.json"))?;
-    rollback_release(root,&c.release_id,trusted_key)?;
-    let b=fs::read(root.join("releases").join(&c.release_id).join("catalog.json")).map_err(|e|IntelError::Io(e.to_string()))?;
-    if sha256_hex(&b)!=c.catalog_sha256{return Err(invalid("current pointer digest does not match release catalog"))}
+
+#[derive(Debug, Clone)]
+struct VerifiedRelease {
+    release_id: String,
+    manifest: ReleaseManifest,
+    manifest_bytes: Vec<u8>,
+}
+
+fn current_statement_bytes(statement: &CurrentReleaseStatement) -> Result<Vec<u8>, IntelError> {
+    let mut payload = b"PrivaCage tracker current pointer v2\\0".to_vec();
+    payload.extend(serde_json::to_vec(statement).map_err(|e| IntelError::Json(e.to_string()))?);
+    Ok(payload)
+}
+
+fn signing_key_from_seed(seed_hex: &str) -> Result<SigningKey, IntelError> {
+    let seed_bytes = hex::decode(seed_hex).map_err(|e| invalid(format!("seed must be hex: {e}")))?;
+    let seed: [u8; 32] = seed_bytes.try_into()
+        .map_err(|_| invalid("Ed25519 seed must be 32 bytes"))?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+fn sign_current_pointer(statement: CurrentReleaseStatement, seed_hex: &str) -> Result<CurrentRelease, IntelError> {
+    let key = signing_key_from_seed(seed_hex)?;
+    if statement.signer_public_key_hex != hex::encode(key.verifying_key().as_bytes()) {
+        return Err(invalid("current pointer signing key does not match release signer"));
+    }
+    let payload = current_statement_bytes(&statement)?;
+    let signature_hex = hex::encode(key.sign(&payload).to_bytes());
+    Ok(CurrentRelease { statement, signature_hex })
+}
+
+fn verify_current_pointer_signature(pointer: &CurrentRelease, trusted_key: &str) -> Result<(), IntelError> {
+    let s = &pointer.statement;
+    if s.format_version != 2 {
+        return Err(IntelError::Signature("unsupported current pointer version; expected v2".into()));
+    }
+    if s.signer_public_key_hex != trusted_key {
+        return Err(IntelError::Signature("current pointer uses an untrusted signer key".into()));
+    }
+    if !safe_id(&s.release_id) {
+        return Err(IntelError::Signature("current pointer release ID is invalid".into()));
+    }
+    if s.release_sequence == 0 || s.head_sequence < s.release_sequence || s.state_revision == 0 {
+        return Err(IntelError::Signature("current pointer sequence or revision is invalid".into()));
+    }
+    if !valid_digest(&s.catalog_sha256) || !valid_digest(&s.head_manifest_sha256) {
+        return Err(IntelError::Signature("current pointer digest is malformed".into()));
+    }
+    if s.operation != "publish" && s.operation != "rollback" {
+        return Err(IntelError::Signature("current pointer operation is unsupported".into()));
+    }
+    if date_ordinal(&s.updated_at).is_none() {
+        return Err(IntelError::Signature("current pointer updated_at must be a canonical YYYY-MM-DD date".into()));
+    }
+    let public_key_bytes = hex::decode(trusted_key).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let public_key: [u8; 32] = public_key_bytes.try_into()
+        .map_err(|_| IntelError::Signature("public key must be 32 bytes".into()))?;
+    let key = VerifyingKey::from_bytes(&public_key).map_err(|e| IntelError::Signature(e.to_string()))?;
+    let signature_bytes = hex::decode(&pointer.signature_hex)
+        .map_err(|e| IntelError::Signature(format!("invalid current pointer signature: {e}")))?;
+    let signature = Signature::from_slice(&signature_bytes)
+        .map_err(|e| IntelError::Signature(format!("invalid current pointer signature: {e}")))?;
+    key.verify(&current_statement_bytes(s)?, &signature)
+        .map_err(|_| IntelError::Signature("current pointer signature verification failed".into()))
+}
+
+fn valid_digest(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn validate_catalog_bytes(bytes: &[u8]) -> Result<(), IntelError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|e| IntelError::Json(format!("parse release catalog: {e}")))?;
+    match value.get("schema_version").and_then(Value::as_u64) {
+        Some(1) => {
+            let catalog: Catalog = serde_json::from_value(value).map_err(|e| IntelError::Json(e.to_string()))?;
+            crate::validate_catalog(&catalog)
+        }
+        Some(2) => {
+            let bundle: IntelligenceBundle = serde_json::from_slice(bytes).map_err(|e| IntelError::Json(e.to_string()))?;
+            validate_bundle(&bundle)
+        }
+        _ => Err(invalid("release must be a supported schema v1 catalog or schema v2 bundle")),
+    }
+}
+
+fn verified_release_history(root: &Path, trusted_key: &str) -> Result<Vec<VerifiedRelease>, IntelError> {
+    let release_dir = root.join("releases");
+    let entries = match fs::read_dir(&release_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(IntelError::Io(format!("read release history {}: {error}", release_dir.display()))),
+    };
+    let mut releases = Vec::new();
+    for item in entries {
+        let item = item.map_err(|e| IntelError::Io(e.to_string()))?;
+        if !item.file_type().map_err(|e| IntelError::Io(e.to_string()))?.is_dir() {
+            continue;
+        }
+        let id = item.file_name().to_string_lossy().into_owned();
+        if !safe_id(&id) {
+            return Err(invalid(format!("unsafe release directory name: {id}")));
+        }
+        let catalog_path = item.path().join("catalog.json");
+        let manifest_path = item.path().join("manifest.json");
+        let catalog_bytes = fs::read(&catalog_path)
+            .map_err(|e| IntelError::Io(format!("release {id} catalog: {e}")))?;
+        validate_catalog_bytes(&catalog_bytes)?;
+        let manifest_bytes = fs::read(&manifest_path)
+            .map_err(|e| IntelError::Io(format!("release {id} manifest: {e}")))?;
+        let manifest: ReleaseManifest = serde_json::from_slice(&manifest_bytes)
+            .map_err(|e| IntelError::Json(format!("parse release {id} manifest: {e}")))?;
+        verify_release(&catalog_bytes, &manifest, trusted_key)?;
+        releases.push(VerifiedRelease { release_id: id, manifest, manifest_bytes });
+    }
+    releases.sort_by_key(|release| release.manifest.sequence);
+
+    for (index, release) in releases.iter().enumerate() {
+        let expected_sequence = index as u64 + 1;
+        if release.manifest.sequence != expected_sequence {
+            return Err(invalid(format!(
+                "release history has a sequence gap or duplicate: expected {expected_sequence}, found {}",
+                release.manifest.sequence
+            )));
+        }
+        if index == 0 {
+            if release.manifest.previous_manifest_sha256.is_some() {
+                return Err(invalid("first release must not reference a predecessor manifest"));
+            }
+        } else {
+            let expected_previous = sha256_hex(&releases[index - 1].manifest_bytes);
+            if release.manifest.previous_manifest_sha256.as_deref() != Some(expected_previous.as_str()) {
+                return Err(invalid(format!("release {} has a broken predecessor link", release.release_id)));
+            }
+        }
+    }
+    Ok(releases)
+}
+
+fn current_utc_date() -> Result<String, IntelError> {
+    let seconds = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map_err(|e| IntelError::Io(format!("system clock precedes Unix epoch: {e}")))?
+        .as_secs();
+    let mut days = (seconds / 86_400) as i64;
+    let mut year = 1970_i64;
+    loop {
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let year_days = if leap { 366 } else { 365 };
+        if days < year_days {
+            break;
+        }
+        days -= year_days;
+        year += 1;
+        if year > 9999 {
+            return Err(invalid("system date exceeds supported release calendar range"));
+        }
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1usize;
+    for length in month_days {
+        if days < length {
+            break;
+        }
+        days -= length;
+        month += 1;
+    }
+    Ok(format!("{year:04}-{month:02}-{:02}", days + 1))
+}
+
+fn release_expired(manifest: &ReleaseManifest) -> Result<bool, IntelError> {
+    let today = current_utc_date()?;
+    let today_ordinal = date_ordinal(&today).ok_or_else(|| invalid("cannot validate current system date"))?;
+    let expiry_ordinal = date_ordinal(&manifest.expires_at)
+        .ok_or_else(|| IntelError::Signature("release expiry date is malformed".into()))?;
+    Ok(expiry_ordinal < today_ordinal)
+}
+
+fn load_verified_current_state(
+    root: &Path,
+    trusted_key: &str,
+    history: &[VerifiedRelease],
+) -> Result<CurrentRelease, IntelError> {
+    let pointer: CurrentRelease = read_json(&root.join("current.json"))?;
+    verify_current_pointer_signature(&pointer, trusted_key)?;
+    let head = history.last().ok_or_else(|| invalid("current pointer exists without any verified release"))?;
+    let head_manifest_sha256 = sha256_hex(&head.manifest_bytes);
+    if pointer.statement.head_sequence != head.manifest.sequence ||
+       pointer.statement.head_manifest_sha256 != head_manifest_sha256 {
+        return Err(IntelError::Signature("current pointer does not reference the latest verified release-chain head".into()));
+    }
+    let active = history.iter().find(|release| release.release_id == pointer.statement.release_id)
+        .ok_or_else(|| IntelError::Signature("current pointer references a release absent from the verified history".into()))?;
+    if active.manifest.sequence != pointer.statement.release_sequence ||
+       active.manifest.catalog_sha256 != pointer.statement.catalog_sha256 {
+        return Err(IntelError::Signature("current pointer target sequence or catalog digest does not match its signed release".into()));
+    }
+    if pointer.statement.operation == "publish" && pointer.statement.release_sequence != pointer.statement.head_sequence {
+        return Err(IntelError::Signature("publish pointer cannot select an older release than its history head".into()));
+    }
+    Ok(pointer)
+}
+
+fn create_current_pointer(
+    release_id: &str,
+    catalog_sha256: &str,
+    release_sequence: u64,
+    head_sequence: u64,
+    head_manifest_sha256: &str,
+    state_revision: u64,
+    operation: &str,
+    updated_at: &str,
+    signer_public_key_hex: &str,
+    seed_hex: &str,
+) -> Result<CurrentRelease, IntelError> {
+    let statement = CurrentReleaseStatement {
+        format_version: 2,
+        release_id: release_id.into(),
+        catalog_sha256: catalog_sha256.into(),
+        release_sequence,
+        head_sequence,
+        head_manifest_sha256: head_manifest_sha256.into(),
+        state_revision,
+        operation: operation.into(),
+        updated_at: updated_at.into(),
+        signer_public_key_hex: signer_public_key_hex.into(),
+    };
+    sign_current_pointer(statement, seed_hex)
+}
+
+pub fn publish_release(catalog_path: &Path, root: &Path, release_id: &str, date: &str, seed: &str) -> Result<ReleaseManifest, IntelError> {
+    if !safe_id(release_id) {
+        return Err(invalid("release id may contain only letters, digits, dot, underscore, and hyphen (max 80 chars)"));
+    }
+    let bytes = fs::read(catalog_path).map_err(|e| IntelError::Io(e.to_string()))?;
+    validate_catalog_bytes(&bytes)?;
+    let expiry = crate::release_expiry_after_days(date, 365)?;
+    if date_ordinal(&expiry).unwrap_or(i64::MIN) < date_ordinal(&current_utc_date()?).unwrap_or(i64::MAX) {
+        return Err(invalid("new release would already be expired; use a current creation date"));
+    }
+    let signing_key = signing_key_from_seed(seed)?;
+    let public_key = hex::encode(signing_key.verifying_key().as_bytes());
+    let history = verified_release_history(root, &public_key)?;
+    let state_revision = if root.join("current.json").exists() {
+        load_verified_current_state(root, &public_key, &history)?.statement.state_revision
+            .checked_add(1).ok_or_else(|| invalid("current pointer revision overflow"))?
+    } else {
+        if !history.is_empty() {
+            return Err(invalid("release history exists without current.json; refusing to guess the active state"));
+        }
+        1
+    };
+    let sequence = history.last().map_or(1, |release| release.manifest.sequence + 1);
+    let predecessor = history.last().map(|release| sha256_hex(&release.manifest_bytes));
+    let manifest = build_release_with_metadata(&bytes, sequence, predecessor, date, &expiry, seed)?;
+    let release_dir = root.join("releases").join(release_id);
+    match fs::symlink_metadata(&release_dir) {
+        Ok(_) => return Err(invalid(format!("release {release_id} already exists; releases are immutable"))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(IntelError::Io(format!("inspect release path: {error}"))),
+    }
+    fs::create_dir_all(&release_dir).map_err(|e| IntelError::Io(e.to_string()))?;
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| IntelError::Json(e.to_string()))?;
+    write_atomic(&release_dir.join("catalog.json"), &bytes)?;
+    write_atomic(&release_dir.join("manifest.json"), &manifest_bytes)?;
+    let head_manifest_sha256 = sha256_hex(&manifest_bytes);
+    let today = current_utc_date()?;
+    let current = create_current_pointer(
+        release_id, &manifest.catalog_sha256, manifest.sequence, manifest.sequence,
+        &head_manifest_sha256, state_revision, "publish", &today, &public_key, seed,
+    )?;
+    let current_bytes = serde_json::to_vec_pretty(&current).map_err(|e| IntelError::Json(e.to_string()))?;
+    write_atomic(&root.join("current.json"), &current_bytes)?;
+    Ok(manifest)
+}
+
+pub fn rollback_release(root: &Path, release_id: &str, signing_seed: &str) -> Result<(), IntelError> {
+    if !safe_id(release_id) {
+        return Err(invalid("invalid release id"));
+    }
+    let signing_key = signing_key_from_seed(signing_seed)?;
+    let public_key = hex::encode(signing_key.verifying_key().as_bytes());
+    let history = verified_release_history(root, &public_key)?;
+    let current = load_verified_current_state(root, &public_key, &history)?;
+    let target = history.iter().find(|release| release.release_id == release_id)
+        .ok_or_else(|| invalid(format!("release {release_id} is not in the verified release history")))?;
+    if release_expired(&target.manifest)? {
+        return Err(invalid("cannot roll back to an expired release; republish a reviewed catalog with a fresh expiry"));
+    }
+    let latest = history.last().ok_or_else(|| invalid("release history is empty"))?;
+    let today = current_utc_date()?;
+    let next_revision = current.statement.state_revision.checked_add(1)
+        .ok_or_else(|| invalid("current pointer revision overflow"))?;
+    let pointer = create_current_pointer(
+        release_id,
+        &target.manifest.catalog_sha256,
+        target.manifest.sequence,
+        latest.manifest.sequence,
+        &sha256_hex(&latest.manifest_bytes),
+        next_revision,
+        "rollback",
+        &today,
+        &public_key,
+        signing_seed,
+    )?;
+    write_atomic(
+        &root.join("current.json"),
+        &serde_json::to_vec_pretty(&pointer).map_err(|e| IntelError::Json(e.to_string()))?,
+    )
+}
+
+pub fn verify_current_release(root: &Path, trusted_key: &str) -> Result<(), IntelError> {
+    verify_current_release_with_floors(root, trusted_key, None, None)
+}
+
+/// Floors must be persisted by the caller outside the release store to detect replay
+/// of an older, otherwise correctly signed current pointer.
+pub fn verify_current_release_with_floors(
+    root: &Path,
+    trusted_key: &str,
+    minimum_release_sequence: Option<u64>,
+    minimum_state_revision: Option<u64>,
+) -> Result<(), IntelError> {
+    let history = verified_release_history(root, trusted_key)?;
+    let current = load_verified_current_state(root, trusted_key, &history)?;
+    let active = history.iter().find(|release| release.release_id == current.statement.release_id)
+        .ok_or_else(|| invalid("current release is missing from verified history"))?;
+    if release_expired(&active.manifest)? {
+        return Err(IntelError::Signature(format!(
+            "current release {} expired on {}; do not activate it",
+            active.release_id, active.manifest.expires_at
+        )));
+    }
+    if let Some(floor) = minimum_release_sequence {
+        if current.statement.release_sequence < floor {
+            return Err(IntelError::Signature(format!(
+                "rollback blocked: active release sequence {} is below caller's trusted floor {floor}",
+                current.statement.release_sequence
+            )));
+        }
+    }
+    if let Some(floor) = minimum_state_revision {
+        if current.statement.state_revision < floor {
+            return Err(IntelError::Signature(format!(
+                "current pointer replay blocked: state revision {} is below caller's trusted floor {floor}",
+                current.statement.state_revision
+            )));
+        }
+    }
     Ok(())
+}
+
+pub fn list_verified_releases(root: &Path, trusted_key: &str) -> Result<Vec<Value>, IntelError> {
+    let history = verified_release_history(root, trusted_key)?;
+    let mut out = Vec::new();
+    for release in history {
+        let expired = release_expired(&release.manifest)?;
+        out.push(json!({
+            "release_id": release.release_id,
+            "catalog_sha256": release.manifest.catalog_sha256,
+            "sequence": release.manifest.sequence,
+            "previous_manifest_sha256": release.manifest.previous_manifest_sha256,
+            "created_at": release.manifest.created_at,
+            "expires_at": release.manifest.expires_at,
+            "expired": expired,
+            "verified": true
+        }));
+    }
+    Ok(out)
 }
 
 
