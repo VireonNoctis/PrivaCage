@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 )
@@ -18,33 +17,33 @@ const (
 )
 
 type auditCheck struct {
-	ID             string `json:"id"`"
-	Title          string `json:"title"`"
-	Category       string `json:"category"`"
-	Status         string `json:"status"`"
-	Severity       string `json:"severity"`"
-	Observed       string `json:"observed"`"
-	Meaning        string `json:"meaning"`"
-	Recommendation string `json:"recommendation,omitempty"`"
-	SourceURL      string `json:"source_url"`"
+	ID             string `"id"`
+	Title          string `"title"`
+	Category       string `"category"`
+	Status         string `"status"`
+	Severity       string `"severity"`
+	Observed       string `"observed"`
+	Meaning        string `"meaning"`
+	Recommendation string `"recommendation,omitempty"`
+	SourceURL      string `"source_url"`
 }
 
 type auditSummary struct {
-	Total         int `json:"total"`"
-	OK            int `json:"ok"`"
-	Review        int `json:"review"`"
-	NotConfigured int `json:"not_configured"`"
-	Unknown       int `json:"unknown"`"
+	Total         int `"total"`
+	OK            int `"ok"`
+	Review        int `"review"`
+	NotConfigured int `"not_configured"`
+	Unknown       int `"unknown"`
 }
 
 type auditReport struct {
-	SchemaVersion int          `json:"schema_version"`"
-	GeneratedAt   time.Time    `json:"generated_at"`"
-	Platform      string       `json:"platform"`"
-	ReadOnly      bool         `json:"read_only"`"
-	Summary       auditSummary `json:"summary"`"
-	Checks        []auditCheck `json:"checks"`"
-	Limitations   []string     `json:"limitations"`"
+	SchemaVersion int          `"schema_version"`
+	GeneratedAt   time.Time    `"generated_at"`
+	Platform      string       `"platform"`
+	ReadOnly      bool         `"read_only"`
+	Summary       auditSummary `"summary"`
+	Checks        []auditCheck `"checks"`
+	Limitations   []string     `"limitations"`
 }
 
 func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport {
@@ -58,7 +57,7 @@ func buildReport(snapshot powershellSnapshot, generatedAt time.Time) auditReport
 		diagnosticDataSource,
 		diagnosticDataMeaning,
 		"Review Settings > Privacy & security > Diagnostics & feedback and any organization-managed policy.",
-	)...)
+	))
 	checks = append(checks,
 		appPrivacyCheck("location", "Windows app location policy", snapshot.AppPrivacy.Location),
 		appPrivacyCheck("camera", "Windows app camera policy", snapshot.AppPrivacy.Camera),
@@ -150,7 +149,13 @@ func firewallChecks(snapshot powershellSnapshot) []auditCheck {
 	return checks
 }
 
-func policyCheck(id, title, category string, setting registryPolicy, source, configuredMeaning, recommendation string) []auditCheck {
+func policyCheck(
+	id, title, category string,
+	setting registryPolicy,
+	source string,
+	meaningForValue func(int) (string, string, string, string),
+	recommendation string,
+) auditCheck {
 	finding := auditCheck{
 		ID: id, Title: title, Category: category, Status: statusNotConfigured,
 		Severity: "info", Observed: "No machine-level policy value found",
@@ -162,20 +167,20 @@ func policyCheck(id, title, category string, setting registryPolicy, source, con
 		finding.Severity = "unknown"
 		finding.Observed = "Policy value could not be read"
 		finding.Meaning = "The registry query failed. PrivaCage does not treat a read failure as an absent policy."
-		return []auditCheck{finding}
+		return finding
 	}
 	if !setting.Configured {
-		return []auditCheck{finding}
+		return finding
 	}
 	if setting.InvalidType || setting.Value == nil {
 		finding.Status = statusUnknown
 		finding.Severity = "unknown"
 		finding.Observed = "Policy exists but is not a readable DWORD"
 		finding.Meaning = "The policy value has an unexpected registry type; its meaning is not inferred."
-		return []auditCheck{finding}
+		return finding
 	}
-	finding.Observed, finding.Status, finding.Severity, finding.Meaning = configuredMeaning(*setting.Value)
-	return []auditCheck{finding}
+	finding.Observed, finding.Status, finding.Severity, finding.Meaning = meaningForValue(*setting.Value)
+	return finding
 }
 
 func diagnosticDataMeaning(value int) (string, string, string, string) {
@@ -199,14 +204,13 @@ func diagnosticDataMeaning(value int) (string, string, string, string) {
 }
 
 func appPrivacyCheck(kind, title string, setting registryPolicy) auditCheck {
-	source := appPrivacySource
 	finding := auditCheck{
 		ID: "app_privacy." + kind, Title: title, Category: "app_privacy",
 		Status: statusNotConfigured, Severity: "info",
 		Observed: "No machine-level forced policy value found",
 		Meaning: "No machine-level force-allow/force-deny policy was found for this capability. This does not say whether the current user or a specific app has access.",
 		Recommendation: "Review Windows Settings > Privacy & security and the setting for the relevant capability.",
-		SourceURL: source,
+		SourceURL: appPrivacySource,
 	}
 	if setting.ReadError {
 		finding.Status = statusUnknown
@@ -253,10 +257,6 @@ func appPrivacyCheck(kind, title string, setting registryPolicy) auditCheck {
 	return finding
 }
 
-func configuredMeaning(value int) (string, string, string, string) {
-	return diagnosticDataMeaning(value)
-}
-
 func actionOrUnknown(action string) string {
 	if strings.TrimSpace(action) == "" {
 		return "unknown"
@@ -279,13 +279,4 @@ func summarize(checks []auditCheck) auditSummary {
 		}
 	}
 	return summary
-}
-
-func normalizeFirewallProfiles(profiles []firewallProfile) []firewallProfile {
-	result := append([]firewallProfile(nil), profiles...)
-	order := map[string]int{"domain": 0, "private": 1, "public": 2}
-	sort.SliceStable(result, func(i, j int) bool {
-		return order[strings.ToLower(result[i].Name)] < order[strings.ToLower(result[j].Name)]
-	})
-	return result
 }
