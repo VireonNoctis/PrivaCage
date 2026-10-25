@@ -95,7 +95,7 @@ func TestStrictPlanAddsWindowsAppPrivacyDenials(t *testing.T) {
 		"LetAppsAccessLocation", "LetAppsAccessCamera", "LetAppsAccessMicrophone",
 		"LetAppsAccessContacts", "LetAppsAccessCalendar", "LetAppsAccessEmail",
 		"LetAppsAccessMessaging", "LetAppsAccessCallHistory", "LetAppsAccessTasks",
-		"LetAppsAccessNotifications", "LetAppsGetDiagnosticInfo", "Disabled",
+		"LetAppsAccessNotifications", "LetAppsGetDiagnosticInfo", "AllowClipboardHistory", "Disabled",
 	}
 	for _, name := range required {
 		found := false
