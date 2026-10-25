@@ -139,7 +139,7 @@ internal object PrivaCageDesign {
 
         for (view in originalViews.drop(2)) {
             if (view === statusView) continue
-            val heading = sectionHeading(view as? TextView)
+            val heading = sectionHeading((view as? TextView)?.text)
 
             if (heading != null) {
                 sectionNumber += 1
@@ -315,8 +315,8 @@ internal object PrivaCageDesign {
         return scroller
     }
 
-    internal fun sectionHeading(view: TextView?): String? =
-        view?.text?.toString()?.trim()?.uppercase(Locale.ROOT)?.takeIf { it in sectionHeadings }
+    internal fun sectionHeading(text: CharSequence?): String? =
+        text?.toString()?.trim()?.uppercase(Locale.ROOT)?.takeIf { it in sectionHeadings }
 
     internal fun navigationLabel(heading: String): String = when (heading) {
         "ANDROID PRIVACY CONTROLS" -> "DEVICE"
