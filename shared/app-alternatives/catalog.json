@@ -21,7 +21,8 @@
           "label": "Proton download page",
           "url": "https://proton.me/mail/download"
         }
-      ]
+      ],
+      "package_name": "ch.protonmail.android"
     },
     {
       "id": "gmail-thunderbird",
@@ -42,7 +43,8 @@
           "label": "Thunderbird website",
           "url": "https://www.thunderbird.net/en-US/mobile/"
         }
-      ]
+      ],
+      "package_name": "net.thunderbird.android"
     },
     {
       "id": "drive-proton-drive",
@@ -63,7 +65,8 @@
           "label": "Proton Drive download",
           "url": "https://proton.me/drive/download"
         }
-      ]
+      ],
+      "package_name": "me.proton.android.drive"
     },
     {
       "id": "drive-nextcloud",
@@ -84,7 +87,8 @@
           "label": "Nextcloud clients",
           "url": "https://nextcloud.com/install/"
         }
-      ]
+      ],
+      "package_name": "com.nextcloud.client"
     },
     {
       "id": "photos-ente",
@@ -105,7 +109,8 @@
           "label": "Ente downloads",
           "url": "https://ente.io/download/"
         }
-      ]
+      ],
+      "package_name": "io.ente.photos"
     },
     {
       "id": "maps-organic",
@@ -131,7 +136,8 @@
           "label": "Organic Maps website",
           "url": "https://organicmaps.app/"
         }
-      ]
+      ],
+      "package_name": "app.organicmaps"
     },
     {
       "id": "maps-osmand",
@@ -152,7 +158,8 @@
           "label": "OsmAnd website",
           "url": "https://osmand.net/"
         }
-      ]
+      ],
+      "package_name": "net.osmand"
     },
     {
       "id": "chrome-firefox",
@@ -173,7 +180,8 @@
           "label": "Mozilla mobile browser",
           "url": "https://www.mozilla.org/firefox/browsers/mobile/android/"
         }
-      ]
+      ],
+      "package_name": "org.mozilla.firefox"
     },
     {
       "id": "chrome-brave",
@@ -194,7 +202,8 @@
           "label": "Brave download",
           "url": "https://brave.com/download/"
         }
-      ]
+      ],
+      "package_name": "com.brave.browser"
     },
     {
       "id": "search-duckduckgo",
@@ -215,7 +224,8 @@
           "label": "DuckDuckGo app",
           "url": "https://duckduckgo.com/app"
         }
-      ]
+      ],
+      "package_name": "com.duckduckgo.mobile.android"
     },
     {
       "id": "youtube-newpipe",
@@ -236,7 +246,8 @@
           "label": "NewPipe website",
           "url": "https://newpipe.net/"
         }
-      ]
+      ],
+      "package_name": "org.schabi.newpipe"
     },
     {
       "id": "youtube-libretube",
@@ -257,7 +268,8 @@
           "label": "Project releases",
           "url": "https://github.com/libre-tube/LibreTube/releases"
         }
-      ]
+      ],
+      "package_name": "com.github.libretube"
     },
     {
       "id": "calendar-etar",
@@ -278,7 +290,8 @@
           "label": "Source repository",
           "url": "https://github.com/Etar-Group/Etar-Calendar"
         }
-      ]
+      ],
+      "package_name": "ws.xsoh.etar"
     },
     {
       "id": "calendar-proton",
@@ -299,7 +312,8 @@
           "label": "Proton Calendar",
           "url": "https://proton.me/calendar"
         }
-      ]
+      ],
+      "package_name": "me.proton.android.calendar"
     },
     {
       "id": "keep-joplin",
@@ -325,7 +339,8 @@
           "label": "Joplin Android install",
           "url": "https://joplinapp.org/help/install/android/"
         }
-      ]
+      ],
+      "package_name": "net.cozic.joplin"
     },
     {
       "id": "keyboard-anysoft",
@@ -346,7 +361,8 @@
           "label": "Project website",
           "url": "https://anysoftkeyboard.github.io/"
         }
-      ]
+      ],
+      "package_name": "com.menny.android.anysoftkeyboard"
     },
     {
       "id": "auth-aegis",
@@ -372,7 +388,8 @@
           "label": "Aegis website",
           "url": "https://getaegis.app/"
         }
-      ]
+      ],
+      "package_name": "com.beemdevelopment.aegis"
     },
     {
       "id": "contacts-fossify",
@@ -398,7 +415,8 @@
           "label": "Fossify website",
           "url": "https://www.fossify.org/"
         }
-      ]
+      ],
+      "package_name": "org.fossify.contacts"
     },
     {
       "id": "store-fdroid",
@@ -419,7 +437,8 @@
           "label": "F-Droid website",
           "url": "https://f-droid.org/"
         }
-      ]
+      ],
+      "package_name": "org.fdroid.fdroid"
     },
     {
       "id": "store-aurora",
@@ -440,7 +459,8 @@
           "label": "Project repository",
           "url": "https://gitlab.com/AuroraOSS/AuroraStore"
         }
-      ]
+      ],
+      "package_name": "com.aurora.store"
     },
     {
       "id": "messages-signal",
@@ -461,7 +481,8 @@
           "label": "Signal Android",
           "url": "https://signal.org/android/"
         }
-      ]
+      ],
+      "package_name": "org.thoughtcrime.securesms"
     },
     {
       "id": "messages-simplex",
@@ -482,7 +503,8 @@
           "label": "SimpleX downloads",
           "url": "https://simplex.chat/downloads/"
         }
-      ]
+      ],
+      "package_name": "chat.simplex.app"
     },
     {
       "id": "meet-jitsi",
@@ -503,7 +525,8 @@
           "label": "Jitsi downloads",
           "url": "https://jitsi.org/downloads/"
         }
-      ]
+      ],
+      "package_name": "org.jitsi.meet"
     },
     {
       "id": "password-bitwarden",
@@ -524,7 +547,8 @@
           "label": "Bitwarden download",
           "url": "https://bitwarden.com/download/"
         }
-      ]
+      ],
+      "package_name": "com.x8bit.bitwarden"
     },
     {
       "id": "password-keepassdx",
@@ -545,7 +569,8 @@
           "label": "KeePassDX website",
           "url": "https://www.keepassdx.com/"
         }
-      ]
+      ],
+      "package_name": "com.kunzisoft.keepass.free"
     },
     {
       "id": "news-feeder",
@@ -566,7 +591,8 @@
           "label": "Source repository",
           "url": "https://github.com/spacecowboy/Feeder"
         }
-      ]
+      ],
+      "package_name": "com.nononsenseapps.feeder"
     },
     {
       "id": "translate-translateyou",
@@ -582,7 +608,8 @@
           "label": "Source repository",
           "url": "https://github.com/Bnyro/TranslateYou"
         }
-      ]
+      ],
+      "package_name": "com.bnyro.translate"
     },
     {
       "id": "docs-collabora",
@@ -603,7 +630,8 @@
           "label": "Collabora Office",
           "url": "https://www.collaboraoffice.com/collabora-office-android/"
         }
-      ]
+      ],
+      "package_name": "com.collabora.libreoffice"
     },
     {
       "id": "browser-firefox-search",
@@ -624,7 +652,8 @@
           "label": "Mozilla mobile browser",
           "url": "https://www.mozilla.org/firefox/browsers/mobile/android/"
         }
-      ]
+      ],
+      "package_name": "org.mozilla.firefox"
     }
   ]
 }
