@@ -20,14 +20,14 @@ class DnsPacketProcessor(
                     question = decision.question
                 )
                 is DnsDecision.Block -> {
-                    val refusedDns = Ipv4UdpDnsPacketCodec.buildRefusedDnsResponse(decoded.dnsPayload)
+                    val refusedDns = Ipv4UdpDnsPacketCodec.buildRefusedDnsResponseForValidatedQuery(decoded.dnsPayload)
                         ?: return DnsPacketProcessingResult.Drop(
                             "Policy matched a query that could not be encoded as a DNS response"
                         )
                     DnsPacketProcessingResult.Blocked(
                         domain = decision.question.name,
                         matchedRule = decision.matchedRule,
-                        responsePacket = Ipv4UdpDnsPacketCodec.buildUdpResponse(decoded, refusedDns)
+                        responsePacket = Ipv4UdpDnsPacketCodec.buildUdpResponseForValidatedQuery(decoded, refusedDns)
                     )
                 }
                 is DnsDecision.Malformed -> DnsPacketProcessingResult.Drop(decision.reason)

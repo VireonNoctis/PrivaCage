@@ -1,0 +1,32 @@
+name: Validate portable audit checkpoint verifier
+
+on:
+  push:
+    paths:
+      - "shared/rust/pcage-audit/**"
+      - ".github/workflows/validate-audit-verifier.yml"
+  pull_request:
+    paths:
+      - "shared/rust/pcage-audit/**"
+      - ".github/workflows/validate-audit-verifier.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-verifier:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --manifest-path shared/rust/pcage-audit/Cargo.toml --all -- --check
+      - name: Run verifier regression tests
+        run: cargo test --manifest-path shared/rust/pcage-audit/Cargo.toml
+      - name: Run Clippy
+        run: cargo clippy --manifest-path shared/rust/pcage-audit/Cargo.toml --all-targets -- -D warnings

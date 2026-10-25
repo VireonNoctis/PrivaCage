@@ -11,10 +11,18 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
     private val ruleRoot = RuleNode()
 
     init {
-        blockedDomains.map(::normalizeRule).toSet().forEach { rule ->
+        // Normalize and insert each rule directly. A temporary mapped list/set and split/reverse
+        // label lists are unnecessary because inserting an already-seen normalized rule is idempotent.
+        for (rawRule in blockedDomains) {
+            val rule = normalizeRule(rawRule)
             var node = ruleRoot
-            for (label in rule.split('.').asReversed()) {
-                node = node.children.getOrPut(label) { RuleNode() }
+            var end = rule.length
+            while (end > 0) {
+                val separator = rule.lastIndexOf('.', end - 1)
+                val labelStart = separator + 1
+                node = node.children.getOrPut(rule.substring(labelStart, end)) { RuleNode() }
+                if (separator < 0) break
+                end = separator
             }
             node.terminalRule = rule
         }
@@ -47,9 +55,14 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
         var node = ruleRoot
         var matchingRule: String? = null
 
-        for (label in name.split('.').asReversed()) {
-            node = node.children[label] ?: break
+        var end = name.length
+        while (end > 0) {
+            val separator = name.lastIndexOf('.', end - 1)
+            val labelStart = separator + 1
+            node = node.children[name.substring(labelStart, end)] ?: break
             node.terminalRule?.let { matchingRule = it }
+            if (separator < 0) break
+            end = separator
         }
         return matchingRule
     }
@@ -109,11 +122,13 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
                 throw DnsFormatException("Invalid or truncated DNS label")
             }
 
-            val bytes = message.copyOfRange(offset, offset + length)
-            if (bytes.any { (it.toInt() and 0xff) !in 0x21..0x7e }) {
-                throw DnsFormatException("DNS label contains unsupported non-ASCII characters")
+            val labelEnd = offset + length
+            for (index in offset until labelEnd) {
+                if ((message[index].toInt() and 0xff) !in 0x21..0x7e) {
+                    throw DnsFormatException("DNS label contains unsupported non-ASCII characters")
+                }
             }
-            val label = bytes.toString(Charsets.US_ASCII).lowercase()
+            val label = String(message, offset, length, Charsets.US_ASCII).lowercase()
             if (!isValidLabel(label)) throw DnsFormatException("Invalid DNS label")
             labels += label
             totalNameLength += length + 1

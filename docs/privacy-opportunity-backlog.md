@@ -70,6 +70,10 @@ Explain VPN replacement behavior and data handling before consent. Report actual
 
 **Limits:** signatures do not establish human identity, correct time, complete observation, or that events were not omitted before the checkpoint. The public-key fingerprint must be trusted independently. Keystore hardware backing is not guaranteed, and checkpoint JSON is not encrypted.
 
+**Implemented portable-verification slice (25 October 2026):** a standalone Rust CLI verifies the embedded payload digest, P-256 ECDSA signature, exact event chain and head, schema, bounded record/counter totals, supported categories, date-range constraints, and truthful redaction flags. It rejects oversized inputs, unknown/duplicate JSON fields, and unsupported key curves. A fixed signed test vector and a dedicated Rust format/test/Clippy workflow are included. The CLI is offline and read-only.
+
+**Limits:** embedded public keys are self-asserted; users still need to compare the fingerprint independently. The portable Rust verifier cannot independently recalculate every IANA timezone conversion. CI must pass before this slice is considered build-verified. The JSON checkpoint remains plaintext.
+
 ### Offline breach-exposure lookup
 Use a sourced, appropriately licensed local dataset with an explicit refresh date and coverage limitations. Do not send a raw email address to a third-party lookup service by default.
 

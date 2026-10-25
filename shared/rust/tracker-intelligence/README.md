@@ -25,17 +25,24 @@ cargo run -- review-candidate-signed /tmp/candidates.json domain collector.examp
 ```
 
 ## Release workflow
-Set a 32-byte Ed25519 seed in a secret manager or protected environment variable; never commit it or put it in shell history.
+
+Set a 32-byte Ed25519 seed in a secret manager or protected environment variable; never commit it or put it in shell history. The v2 manifest signs the exact catalog SHA-256, sequence, predecessor-manifest digest, creation/expiry dates, and signer public key using a domain-separated Ed25519 statement.
 
 ```sh
-cargo run -- publish catalog.json ./release-store release-2026-10-23 2026-10-23 "$PCAGE_ED25519_SEED_HEX"
+cargo run -- publish catalog.json ./release-store release-2026-10-25 2026-10-25 "$PCAGE_ED25519_SEED_HEX"
 cargo run -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
-cargo run -- rollback ./release-store release-2026-10-01 "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
+# For callers that persist these floors outside the release directory:
+cargo run -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX" "$PCAGE_MINIMUM_RELEASE_SEQUENCE" "$PCAGE_MINIMUM_STATE_REVISION"
+# An intentional rollback is signed and requires access to the release signing seed:
+cargo run -- rollback ./release-store release-2026-10-23 "$PCAGE_ED25519_SEED_HEX"
+cargo run -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
 ```
 
-The legacy `review-candidate` command writes hash-chained but unsigned records. For authenticated review, `review-candidate-signed` requires a 32-byte Ed25519 seed whose public key matches the reviewer ID in a trusted `reviewer-keys.json` registry; `verify-review-ledger` verifies every signature, reviewer mapping, record hash, and chain link. Never commit signing seeds. Strict verification rejects unsigned legacy records; keep legacy and signed ledgers separate or migrate them through an explicitly reviewed process.
+Published releases are immutable under `releases/<id>/catalog.json` and `manifest.json`. The sequence starts at 1 and must be contiguous; each v2 manifest links to the exact prior manifest bytes. The `current.json` pointer is itself signed and records both the active release and the latest chain head. Verification rejects altered manifest fields, changed pointers, missing history, malformed links, and expired active releases. An explicit rollback changes the active release but does not reduce the chain head or pointer state revision.
 
-The release store keeps immutable `releases/<id>/catalog.json` and `manifest.json`, plus an atomically replaced `current.json` pointer. Rollback verifies the selected release against a separately pinned trusted public key before changing the pointer. Back up the release directory; this is a local release store, not a remote distribution/rollback service.
+**Rollback/freeze boundary:** the optional minimum release sequence and state revision must come from trusted state retained outside the release store. Without these externally persisted floors, a previously signed pointer from the same current chain head can be replayed after an authorized rollback. No local JSON format can reliably detect replay of an entire old store snapshot if all of its state is rolled back together. This is a local release-store tool, not a remote update client or a full TUF implementation; the Android app still uses the catalog bundled inside the APK. Before remote catalog updates are added, use an established update framework such as TUF rather than treating these local commands as a complete online update protocol. Key rotation for the release signer is not implemented; keep the public key pinned out of band.
+
+The legacy `review-candidate` command writes hash-chained but unsigned records. For authenticated review, `review-candidate-signed` requires a 32-byte Ed25519 seed whose public key matches the reviewer ID in a trusted `reviewer-keys.json` registry; `verify-review-ledger` verifies every signature, reviewer mapping, record hash, and chain link. Never commit signing seeds. Strict verification rejects unsigned legacy records; keep legacy and signed ledgers separate or migrate them through an explicitly reviewed process.
 
 ## Implemented behavior and limits
 - Legacy schema-v1 catalog load/validation remains supported.

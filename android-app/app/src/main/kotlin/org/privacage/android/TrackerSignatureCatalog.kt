@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.dns.DnsPolicyEngine
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.URI
 import java.time.LocalDate
@@ -12,6 +13,8 @@ import java.time.format.DateTimeParseException
 /** Reads the bundled tracker database; importing a domain is always an explicit user action. */
 internal object TrackerSignatureCatalog {
     private const val ASSET_NAME = "signatures.json"
+    private const val SUPPORTED_SCHEMA_VERSION = 1
+    private const val MAX_CATALOG_BYTES = 5 * 1024 * 1024
     private val topLevelKeys = setOf("schema_version", "updated_at", "entries")
     private val entryKeys = setOf("id", "name", "category", "indicators", "confidence", "status", "last_verified", "evidence")
     private val evidenceKeys = setOf("url", "description")
@@ -21,19 +24,34 @@ internal object TrackerSignatureCatalog {
     private val sdkPatternRegex = Regex("^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)+(?:\\.(?:\\*|\\*\\*))?$")
 
     fun load(context: Context): List<TrackerSignature> {
-        val text = context.assets.open(ASSET_NAME).bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val catalogBytes = context.assets.open(ASSET_NAME).use { input ->
+            val output = ByteArrayOutputStream(minOf(MAX_CATALOG_BYTES, 8192))
+            val buffer = ByteArray(4096)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (output.size().toLong() + count > MAX_CATALOG_BYTES.toLong()) {
+                    throw IOException("Tracker catalog exceeds the $MAX_CATALOG_BYTES-byte size limit")
+                }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+        val text = String(catalogBytes, Charsets.UTF_8)
         val root = try {
             JSONObject(text)
         } catch (exception: Exception) {
             throw IOException("Tracker catalog is not valid JSON", exception)
         }
         requireExactKeys(root, topLevelKeys, "tracker catalog")
-        if (root.optInt("schema_version", -1) != 1) throw IOException("Unsupported tracker catalog schema version")
+        if (!isSupportedSchemaVersion(root.opt("schema_version"))) throw IOException("Unsupported tracker catalog schema version")
         requireDate(root.opt("updated_at"), "updated_at")
         val entries = root.opt("entries") as? JSONArray
             ?: throw IOException("Tracker catalog entries must be an array")
         val seenIds = mutableSetOf<String>()
         val parsedEntries = mutableListOf<TrackerSignature>()
+        val allCatalogDomains = linkedSetOf<String>()
 
         for (index in 0 until entries.length()) {
             val contextLabel = "entries[$index]"
@@ -65,13 +83,7 @@ internal object TrackerSignatureCatalog {
             for (domain in domains) {
                 if (domain != domain.lowercase() || domain.endsWith(".")) throw IOException("$contextLabel has a non-normalized domain: $domain")
             }
-            if (domains.isNotEmpty()) {
-                try {
-                    DnsPolicyEngine(domains.toSet())
-                } catch (exception: IllegalArgumentException) {
-                    throw IOException("$contextLabel contains an invalid DNS domain", exception)
-                }
-            }
+            allCatalogDomains.addAll(domains)
 
             val evidenceArray = item.opt("evidence") as? JSONArray ?: throw IOException("$contextLabel.evidence must be an array")
             if (evidenceArray.length() == 0) throw IOException("$contextLabel.evidence must not be empty")
@@ -95,8 +107,18 @@ internal object TrackerSignatureCatalog {
                 requiredString(item, "last_verified", contextLabel), evidence
             )
         }
+        if (allCatalogDomains.isNotEmpty()) {
+            try {
+                DnsPolicyEngine(allCatalogDomains)
+            } catch (exception: IllegalArgumentException) {
+                throw IOException("Tracker catalog contains an invalid DNS domain", exception)
+            }
+        }
         return parsedEntries
     }
+
+    internal fun isSupportedSchemaVersion(value: Any?): Boolean =
+        value is Int && value == SUPPORTED_SCHEMA_VERSION
 
     private fun requireExactKeys(value: JSONObject, expected: Set<String>, context: String) {
         if (keys(value) != expected) throw IOException("$context fields do not match the supported schema")

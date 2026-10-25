@@ -32,6 +32,7 @@ import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
 import org.privacage.android.sync.AndroidEncryptedSyncManager
+import org.privacage.android.sync.OwnerRotationResult
 import org.privacage.android.sync.SyncRelayClient
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -63,6 +64,8 @@ class MainActivity : Activity() {
     private lateinit var devicePrivacyText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
+    @Volatile private var trackerCatalogLoadComplete = false
+    @Volatile private var trackerCatalogLoadFailure: String? = null
     private var lastImportedTrackerDomains: Set<String> = emptySet()
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
@@ -97,13 +100,7 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
-        try {
-            trackerCatalog = TrackerSignatureCatalog.load(this)
-        } catch (exception: Exception) {
-            // Surface the failure to the user while preserving manual-rule functionality.
-            trackerCatalogError = exception.message ?: exception.javaClass.simpleName
-        }
-        apkTrackerCatalog = trackerCatalog.orEmpty()
+        var trackerCatalogLoading = true
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(24))
@@ -259,47 +256,12 @@ class MainActivity : Activity() {
             text = "Bundled tracker intelligence (optional)"
             setPadding(0, dp(18), 0, dp(4))
         })
-        val activeTrackerCount = trackerCatalog.orEmpty().count { it.status == "active" }
-        val reviewTrackerCount = trackerCatalog.orEmpty().count { it.status == "review" }
-        val retiredTrackerCount = trackerCatalog.orEmpty().count { it.status == "retired" }
-        root.addView(TextView(this).apply {
-            text = if (trackerCatalog == null) {
-                "Catalog unavailable: $trackerCatalogError. Manual domain rules still work."
-            } else {
-                "Bundled records: ${trackerCatalog!!.size}; active: $activeTrackerCount; review: $reviewTrackerCount; retired: $retiredTrackerCount. Nothing is blocked until you import domains and save."
-            }
+        val trackerCatalogStatus = TextView(this).apply {
+            text = "Loading bundled tracker intelligence in the background…"
             textSize = 13f
-        })
+        }
+        root.addView(trackerCatalogStatus)
         val trackerDetails = TextView(this).apply {
-            text = buildString {
-                val records = trackerCatalog.orEmpty()
-                append("CATALOG SUMMARY\n")
-                append("Records: ").append(records.size)
-                append(" | Active: ").append(records.count { it.status == "active" })
-                append(" | Review-only: ").append(records.count { it.status == "review" })
-                append(" | Retired: ").append(records.count { it.status == "retired" })
-                append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
-                append(records.joinToString("\n\n") { record ->
-                    buildString {
-                    append(record.name)
-                    append(" [")
-                    append(record.status.uppercase())
-                    append(", ")
-                    append(record.confidence)
-                    append(" confidence]\n")
-                    append("Category: ")
-                    append(record.category)
-                    append("\nDomains: ")
-                    append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
-                    append("\nSDK patterns: ")
-                    append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
-                    append("\nLast verified: ")
-                    append(record.lastVerified)
-                    append("\nEvidence:\n")
-                    append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
-                    }
-                })
-            }
             textSize = 12f
             visibility = android.view.View.GONE
             setPadding(0, dp(8), 0, dp(8))
@@ -307,9 +269,14 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Show tracker records and evidence"
             setOnClickListener {
-                if (trackerCatalog == null) {
-                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Rebuild with a valid bundled signatures.json."
+                if (trackerCatalogLoading) {
+                    statusText.text = "Tracker catalog is still loading in the background. Manual DNS rules remain available."
+                } else if (trackerCatalog == null) {
+                    statusText.text = "Tracker catalog unavailable: $trackerCatalogError. Manual domain rules still work."
                 } else {
+                    if (trackerDetails.text.isNullOrBlank()) {
+                        trackerDetails.text = formatTrackerCatalogDetails(trackerCatalog.orEmpty())
+                    }
                     val expanded = trackerDetails.visibility != android.view.View.VISIBLE
                     trackerDetails.visibility = if (expanded) android.view.View.VISIBLE else android.view.View.GONE
                     text = if (expanded) "Hide tracker records and evidence" else "Show tracker records and evidence"
@@ -321,7 +288,9 @@ class MainActivity : Activity() {
             text = "Review and import active tracker domains"
             setOnClickListener {
                 val catalog = trackerCatalog
-                if (catalog == null) {
+                if (trackerCatalogLoading) {
+                    statusText.text = "Tracker catalog is still loading. No domains were imported."
+                } else if (catalog == null) {
                     statusText.text = "Tracker catalog unavailable: $trackerCatalogError. No domains were imported."
                 } else {
                     val activeDomains = catalog.filter { it.status == "active" }.flatMap { it.domains }.toSet()
@@ -651,6 +620,33 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(Button(this).apply {
+            text = "Rotate roster owner key"
+            setOnClickListener { showOwnerKeyRotationPrompt() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Import owner-key rotation package"
+            setOnClickListener { showOwnerKeyRotationImport() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Copy saved owner-key rotation package"
+            setOnClickListener {
+                runSyncTask(
+                    progress = "Validating the saved owner transition and replacement roster...",
+                    task = { encryptedSyncManager.lastOwnerKeyRotationPackage() },
+                    onSuccess = { packageJson ->
+                        getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                            ClipData.newPlainText("PrivaCage owner-key rotation", packageJson)
+                        )
+                        syncStatusText.text = "Last public owner-key rotation package copied. It remains stored in the protected local record. Distribute it through a trusted channel."
+                    }
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Confirm owner-key handoff complete"
+            setOnClickListener { showOwnerKeyHandoffConfirmation() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
             text = "Import owner-signed device roster"
             setOnClickListener { showSignedDeviceRosterImport() }
         }, matchWidth())
@@ -783,6 +779,33 @@ class MainActivity : Activity() {
         root.addView(statusText, matchWidth())
         refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
+        Thread({
+            val loadResult: Pair<List<TrackerSignature>?, String?> = try {
+                TrackerSignatureCatalog.load(this@MainActivity) to null
+            } catch (exception: Exception) {
+                null to (exception.message ?: exception.javaClass.simpleName)
+            }
+            val loadedCatalog = loadResult.first
+            val loadError = loadResult.second
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                trackerCatalogLoading = false
+                trackerCatalog = loadedCatalog
+                trackerCatalogError = loadError
+                trackerCatalogLoadFailure = loadError
+                trackerCatalogLoadComplete = true
+                apkTrackerCatalog = loadedCatalog.orEmpty()
+                if (loadedCatalog == null) {
+                    trackerCatalogStatus.text = "Catalog unavailable: $loadError. Manual domain rules still work."
+                } else {
+                    val active = loadedCatalog.count { it.status == "active" }
+                    val review = loadedCatalog.count { it.status == "review" }
+                    val retired = loadedCatalog.count { it.status == "retired" }
+                    trackerCatalogStatus.text =
+                        "Bundled records: ${loadedCatalog.size}; active: $active; review: $review; retired: $retired. Nothing is blocked until you import domains and save."
+                }
+            }
+        }, "PrivaCage-tracker-catalog").start()
         try {
             val savedSyncConfig = encryptedSyncManager.storedConfigurationForUi()
             if (savedSyncConfig == null) {
@@ -800,6 +823,43 @@ class MainActivity : Activity() {
                 (exception.message ?: "storage error") + " No stored sync record was overwritten."
         }
         refreshDevicePrivacySnapshot()
+    }
+
+    private fun requireTrackerCatalogForApkAudit(): Boolean {
+        if (!trackerCatalogLoadComplete) {
+            statusText.text = "Tracker intelligence is still loading. Retry this APK audit in a moment so matching is not silently skipped."
+            return false
+        }
+        trackerCatalogLoadFailure?.let { error ->
+            statusText.text = "Tracker intelligence is unavailable: $error. APK tracker matching cannot be performed."
+            return false
+        }
+        return true
+    }
+
+    private fun formatTrackerCatalogDetails(records: List<TrackerSignature>): String = buildString {
+        append("CATALOG SUMMARY\n")
+        append("Records: ").append(records.size)
+        append(" | Active: ").append(records.count { it.status == "active" })
+        append(" | Review-only: ").append(records.count { it.status == "review" })
+        append(" | Retired: ").append(records.count { it.status == "retired" })
+        append("\nA hostname match identifies a known endpoint indicator; it does not prove which app sent data, what a payload contained, or that collection completed. Review-only records are not included in bulk import.\n\n")
+        append(records.joinToString("\n\n") { record ->
+            buildString {
+                append(record.name)
+                append(" [")
+                append(record.status.uppercase())
+                append(", ")
+                append(record.confidence)
+                append(" confidence]\n")
+                append("Category: ").append(record.category)
+                append("\nDomains: ").append(record.domains.ifEmpty { listOf("none") }.joinToString(", "))
+                append("\nSDK patterns: ").append(record.sdkPatterns.ifEmpty { listOf("none") }.joinToString(", "))
+                append("\nLast verified: ").append(record.lastVerified)
+                append("\nEvidence:\n")
+                append(record.evidence.joinToString("\n") { source -> "${source.url}\n${source.description}" })
+            }
+        })
     }
 
     override fun onStart() {
@@ -1074,6 +1134,109 @@ class MainActivity : Activity() {
                     " copied. Import it on every trusted device; revocation takes effect there only after importing a newer revision."
             }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showOwnerKeyRotationPrompt() {
+        AlertDialog.Builder(this)
+            .setTitle("Rotate roster owner key?")
+            .setMessage(
+                "This operation replaces this installation's owner identity with a new key epoch and signs a transition with both the current and replacement keys. It binds the exact relay space and current roster revision, then creates the next owner-signed roster. The replacement private identity stays in this device's encrypted local record and is never included in the package.\n\nShare the public package with every trusted device. Each device must independently confirm the new full fingerprint through a separate trusted channel before it changes its pinned owner. This does not rotate relay credentials or revoke the old key at the relay."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Generate owner transition") { _, _ ->
+                runSyncTask(
+                    progress = "Creating the next owner identity, dual-signed transition and replacement roster...",
+                    task = { encryptedSyncManager.rotateRosterOwnerKey() },
+                    onSuccess = { result -> showOwnerKeyRotationPackage(result) }
+                )
+            }
+            .show()
+    }
+
+    private fun showOwnerKeyRotationPackage(result: OwnerRotationResult) {
+        val packageJson = result.packageJson
+        val message = buildString {
+            append("Previous owner fingerprint:\n").append(result.previousFingerprint).append("\n\n")
+            append("Replacement owner fingerprint:\n").append(result.nextFingerprint).append("\n\n")
+            append("New roster revision: ").append(result.rosterRevision).append('\n')
+            append(result.publicationMessage).append("\n\n")
+            append("The public package contains both signatures and the new signed roster. It contains no private key or recovery bundle. A copy is retained in this installation's protected local record so it can be copied again after the dialog closes. Every device must verify this transition and independently confirm the replacement fingerprint before pinning it.\n\n")
+            append(packageJson)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Owner-key rotation package")
+            .setMessage(message)
+            .setPositiveButton("Copy public package") { _, _ ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText("PrivaCage owner-key rotation", packageJson)
+                )
+                syncStatusText.text = result.publicationMessage + " Public owner-key rotation package copied; distribute it over a trusted channel."
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showOwnerKeyHandoffConfirmation() {
+        val fingerprintInput = EditText(this).apply {
+            hint = "Re-enter this installation's full owner SHA-256 fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Confirm owner-key handoff?")
+            .setMessage(
+                "Only confirm after every intended trusted device has received the saved owner-key rotation package, independently verified the new full fingerprint, and accepted the exact next signed roster. This is an explicit local acknowledgement; the app cannot remotely prove every peer completed the handoff. Until you confirm, another owner-key rotation is blocked. The last public package remains saved for re-copying after confirmation."
+            )
+            .setView(fingerprintInput)
+            .setNegativeButton("Not yet", null)
+            .setPositiveButton("Confirm all intended devices updated") { _, _ ->
+                val fingerprint = fingerprintInput.text.toString().trim().lowercase()
+                runSyncTask(
+                    progress = "Verifying the local owner fingerprint and closing the handoff gate...",
+                    task = { encryptedSyncManager.confirmOwnerKeyRotationHandoff(fingerprint) }
+                )
+            }
+            .show()
+    }
+
+    private fun showOwnerKeyRotationImport() {
+        val packageInput = EditText(this).apply {
+            hint = "Paste the complete owner-key rotation package JSON"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP
+            minLines = 6
+            maxLines = 14
+        }
+        val fingerprintInput = EditText(this).apply {
+            hint = "Independently confirmed new owner SHA-256 fingerprint"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "The transition must be signed by both the currently pinned owner key and the replacement key, and the signed roster must be exactly the next revision in the same relay space. Compare the complete new fingerprint through a separate trusted channel; do not accept a key based only on a package received from the relay."
+                textSize = 14f
+            }, matchWidth())
+            addView(fingerprintInput, matchWidth())
+            addView(packageInput, matchWidth())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Verify owner-key rotation")
+            .setView(fields)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Verify and update owner pin") { _, _ ->
+                val packageJson = packageInput.text.toString().trim()
+                val confirmedFingerprint = fingerprintInput.text.toString().trim().lowercase()
+                runSyncTask(
+                    progress = "Checking the previous owner pin, both signatures, revision linkage, fingerprint and new roster...",
+                    task = {
+                        encryptedSyncManager.importOwnerKeyRotationPackage(packageJson, confirmedFingerprint)
+                    }
+                )
+            }
             .show()
     }
 
@@ -1729,6 +1892,8 @@ class MainActivity : Activity() {
             return
         }
 
+        if (!requireTrackerCatalogForApkAudit()) return
+
         pendingApkDiffBaseline = null
         statusText.text = "Scanning the baseline APK locally. It will not be installed or uploaded."
         Thread({
@@ -1785,6 +1950,10 @@ class MainActivity : Activity() {
         }
         if (baseline == null) {
             statusText.text = "The baseline report is no longer available. Start the comparison again."
+            return
+        }
+        if (!requireTrackerCatalogForApkAudit()) {
+            pendingApkDiffBaseline = null
             return
         }
 
@@ -1848,6 +2017,8 @@ class MainActivity : Activity() {
             statusText.text = "APK inspection cancelled; no file was installed or uploaded."
             return
         }
+
+        if (!requireTrackerCatalogForApkAudit()) return
 
         statusText.text = "Inspecting the selected APK locally. It will not be installed or executed."
         Thread({

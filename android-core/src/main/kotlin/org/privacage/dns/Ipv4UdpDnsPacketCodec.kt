@@ -68,30 +68,40 @@ object Ipv4UdpDnsPacketCodec {
 
     /** Builds a reply with reversed IP/UDP endpoints and recalculated checksums. */
     fun buildUdpResponse(query: Ipv4UdpDnsDecode.Query, dnsPayload: ByteArray): ByteArray {
-        // Re-decode the packet instead of trusting mutable arrays or fields on the public result.
+        // Keep the public API defensive because callers can mutate fields on the result object.
         val validated = decode(query.originalPacket) as? Ipv4UdpDnsDecode.Query
             ?: throw IllegalArgumentException("Response source is not a valid IPv4 UDP DNS query")
+        return buildUdpResponseForValidatedQuery(validated, dnsPayload)
+    }
 
-        val headerLength = validated.ipHeaderLength
+    /**
+     * Fast path for a query decoded immediately before this call inside the DNS packet processor.
+     * Do not pass a Query object retained across calls or exposed to external code.
+     */
+    internal fun buildUdpResponseForValidatedQuery(
+        query: Ipv4UdpDnsDecode.Query,
+        dnsPayload: ByteArray
+    ): ByteArray {
+        val headerLength = query.ipHeaderLength
         val udpLength = UDP_HEADER_SIZE + dnsPayload.size
         val totalLength = headerLength + udpLength
         require(totalLength <= IPV4_MAX_PACKET_SIZE) { "IPv4 response exceeds maximum packet size" }
 
         val response = ByteArray(totalLength)
-        validated.originalPacket.copyInto(response, endIndex = headerLength)
+        query.originalPacket.copyInto(response, endIndex = headerLength)
         putU16(response, 2, totalLength)
 
-        validated.destinationAddress.copyInto(response, destinationOffset = 12)
-        validated.sourceAddress.copyInto(response, destinationOffset = 16)
-        putU16(response, 6, u16(validated.originalPacket, 6) and DONT_FRAGMENT_FLAG)
+        query.destinationAddress.copyInto(response, destinationOffset = 12)
+        query.sourceAddress.copyInto(response, destinationOffset = 16)
+        putU16(response, 6, u16(query.originalPacket, 6) and DONT_FRAGMENT_FLAG)
         response[8] = DEFAULT_TTL.toByte()
         response[10] = 0
         response[11] = 0
         putU16(response, 10, checksum(response, 0, headerLength))
 
         val udpOffset = headerLength
-        putU16(response, udpOffset, validated.destinationPort)
-        putU16(response, udpOffset + 2, validated.sourcePort)
+        putU16(response, udpOffset, query.destinationPort)
+        putU16(response, udpOffset + 2, query.sourcePort)
         putU16(response, udpOffset + 4, udpLength)
         putU16(response, udpOffset + 6, 0)
         dnsPayload.copyInto(response, destinationOffset = udpOffset + UDP_HEADER_SIZE)
@@ -107,7 +117,14 @@ object Ipv4UdpDnsPacketCodec {
      */
     fun buildRefusedDnsResponse(query: ByteArray): ByteArray? {
         if (DnsPolicyEngine(emptySet()).evaluate(query) is DnsDecision.Malformed) return null
+        return buildRefusedDnsResponseForValidatedQuery(query)
+    }
 
+    /**
+     * Fast path for a DNS payload that has already passed DnsPolicyEngine.evaluate.
+     * The normal public method must be used for arbitrary input.
+     */
+    internal fun buildRefusedDnsResponseForValidatedQuery(query: ByteArray): ByteArray? {
         var questionEnd = DNS_HEADER_SIZE
         while (true) {
             if (questionEnd >= query.size) return null

@@ -121,9 +121,8 @@ privacage/
 │   │   ├── gdpr_article17.md
 │   │   ├── ccpa_1798_105.md
 │   │   └── company-contact-registry.json
-│   └── scripts/
-│       ├── update-tracker-db.py
-│       └── validate-signatures.py
+│   └── go/
+│       └── pcage-tools/           # Go CLI: catalog validation, review report, Android policy gates
 ├── backend/ (optional sync/cloud features — fully opt-in, E2E encrypted)
 │   ├── api/
 │   ├── requests-relay/             # proxies deletion requests, no data retention
@@ -217,7 +216,7 @@ Because a privacy tool recommending *other* apps is a prime target for someone s
 1. **Minimum evidence bar** — PR must cite: open-source status (link to repo) or a published third-party audit, data handling policy, and jurisdiction. No evidence = auto-rejected by the PR template checklist.
 2. **Automated signature scan** — the app's APK/IPA (if obtainable) gets run through the same `SdkSignatureMatcher` used for the pre-install scanner. If it contains known tracker/ad SDKs, it's auto-labeled "convenience pick, not privacy-first" (like Telegram above) rather than silently approved.
 3. **Two-maintainer sign-off** — no single contributor (including the repo owner) can merge a new entry solo; requires two independent maintainer approvals, logged in the PR.
-4. **Re-audit cadence** — every entry is re-scanned quarterly via a scheduled GitHub Action (`update-tracker-db.py` run against the latest app version); a regression (new tracker SDK added in an update) opens an auto-generated issue and flags the entry "under review" in the UI until resolved.
+4. **Re-audit cadence (planned)** — future review automation may compare user-selected or explicitly supplied app versions against the curated tracker database. The current Go tooling validates catalog structure and review dates; no automated app download, APK re-scan schedule, or auto-generated regression issue is implemented.
 5. **Revocation path** — any maintainer can open a "delist" issue with evidence (policy change, acquisition by an ad company, leaked audit failure); delisting requires one maintainer approval (lower bar than adding, intentionally — removing a bad recommendation should be fast).
 6. **No paid placement, ever** — `CONTRIBUTING.md` explicitly bans sponsored/paid entries; the list order within a category is alphabetical, never ranked by anything resembling a bid.
 7. **Full changelog** — every add/remove/re-label is tracked in `shared/recommended-apps-CHANGELOG.md` so users can see exactly when and why an app's status changed.
@@ -320,7 +319,7 @@ Both modes write to the same underlying structured event store; the formatters a
 | Static scanning | Custom manifest + dex analysis (Kotlin) | Can't scan other apps' binaries pre-install on iOS at all — App Store sandboxing blocks this entirely; limited to **your own** app's declared data via Apple's Privacy Nutrition Labels/App Privacy Report |
 | Local storage | SQLite (Room) | SQLite (Core Data / GRDB) |
 | UI | Jetpack Compose | SwiftUI |
-| Tracker DB sync | Python scripts + GitHub Actions cron | same, shared repo |
+| Tracker DB checks and reports | Go standard-library CLI + GitHub Actions | same, shared repo |
 | Optional backend | Go/Python API, Docker | same |
 
 ---

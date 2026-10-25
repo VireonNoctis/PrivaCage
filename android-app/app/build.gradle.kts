@@ -21,6 +21,15 @@ android {
         versionName = "0.1.0"
     }
 
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -34,5 +43,6 @@ kotlin {
 dependencies {
     implementation(project(":android-core"))
     implementation("com.android.tools.build:apksig:8.10.1")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }

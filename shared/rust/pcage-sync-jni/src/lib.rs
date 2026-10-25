@@ -6,7 +6,7 @@ use jni::{
     sys::{jlong, jstring},
     JNIEnv,
 };
-use pcage_sync::{DeviceIdentity, IdentityCard, KeyRotation, RosterMember, SignedDeviceRoster, SyncError, SyncPacket};
+use pcage_sync::{DeviceIdentity, IdentityCard, KeyRotation, OwnerKeyRotation, RosterMember, SignedDeviceRoster, SyncError, SyncPacket};
 use serde_json::{json, Value};
 use std::{path::PathBuf, ptr};
 use zeroize::Zeroize;
@@ -181,6 +181,81 @@ pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeVe
             "previous_fingerprint": rotation.unsigned.previous_fingerprint,
             "next_card": rotation.unsigned.next_card,
             "rotation": rotation
+        }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeRotateOwnerKey(
+    mut env: JNIEnv, _this: JObject,
+    local_bundle_base64: JString, local_passphrase: JString, next_local_passphrase: JString,
+    space_id: JString, previous_roster_revision: jlong, issued_at_unix: jlong,
+) -> jstring {
+    let result = (|| {
+        let bundle_base64 = read_string(&mut env, local_bundle_base64)?;
+        let passphrase = read_string(&mut env, local_passphrase)?;
+        let mut next_passphrase = read_string(&mut env, next_local_passphrase)?;
+        let space_id = read_string(&mut env, space_id)?;
+        let previous_roster_revision = u64::try_from(previous_roster_revision)
+            .map_err(|_| "Invalid previous owner roster revision".to_owned())?;
+        let issued_at_unix = u64::try_from(issued_at_unix)
+            .map_err(|_| "Invalid owner rotation timestamp".to_owned())?;
+        let identity = restore_identity(&bundle_base64, &passphrase)?;
+        let (next, transition) = identity.rotate_owner_key(
+            &space_id, previous_roster_revision, issued_at_unix
+        ).map_err(|_| "Could not create dual-signed owner-key rotation".to_owned())?;
+        let mut next_bundle = next.create_recovery_bundle(&next_passphrase)
+            .map_err(|_| "Could not protect the replacement owner identity".to_owned())?;
+        let next_bundle_base64 = STANDARD.encode(&next_bundle);
+        next_bundle.zeroize();
+        next_passphrase.zeroize();
+        Ok(json!({
+            "ok": true,
+            "previous_owner_card": identity.card,
+            "next_owner_card": next.card,
+            "transition": transition,
+            "next_bundle_base64": next_bundle_base64
+        }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeVerifyOwnerKeyRotation(
+    mut env: JNIEnv, _this: JObject,
+    previous_owner_card_json: JString, rotation_json: JString, expected_space_id: JString,
+    expected_previous_revision: jlong, expected_next_owner_fingerprint: JString, now_unix: jlong,
+) -> jstring {
+    let result = (|| {
+        let previous_owner_card_json = read_string(&mut env, previous_owner_card_json)?;
+        let rotation_json = read_string(&mut env, rotation_json)?;
+        let expected_space_id = read_string(&mut env, expected_space_id)?;
+        let expected_next_owner_fingerprint = read_string(&mut env, expected_next_owner_fingerprint)?;
+        let expected_previous_revision = u64::try_from(expected_previous_revision)
+            .map_err(|_| "Invalid previous owner roster revision".to_owned())?;
+        let now_unix = u64::try_from(now_unix)
+            .map_err(|_| "Invalid owner rotation verification timestamp".to_owned())?;
+        if rotation_json.len() > 64 * 1024 {
+            return Err("Owner-key rotation transition exceeds the supported size".to_owned());
+        }
+        let previous_owner = parse_card(&previous_owner_card_json)?;
+        let transition: OwnerKeyRotation = serde_json::from_str(&rotation_json)
+            .map_err(|_| "Owner-key rotation transition is not valid protocol JSON".to_owned())?;
+        transition.verify(
+            &previous_owner,
+            &expected_space_id,
+            expected_previous_revision,
+            &expected_next_owner_fingerprint,
+            now_unix,
+        ).map_err(|_| "Owner-key rotation signatures, pin, space, or revision are invalid".to_owned())?;
+        Ok(json!({
+            "ok": true,
+            "previous_owner_fingerprint": transition.unsigned.previous_owner_card.fingerprint_sha256,
+            "next_owner_card": transition.unsigned.next_owner_card,
+            "previous_roster_revision": transition.unsigned.previous_roster_revision,
+            "next_roster_revision": transition.unsigned.next_roster_revision,
+            "transition": transition
         }))
     })();
     respond(&mut env, result)

@@ -4,16 +4,14 @@ on:
   push:
     paths:
       - "shared/tracker-db/**"
-      - "shared/scripts/validate-signatures.py"
-      - "shared/scripts/tracker-review-report.py"
-      - "shared/scripts/validate-android-backup.py"
+      - "shared/go/pcage-tools/**"
       - "android-app/app/src/main/AndroidManifest.xml"
       - "tests/**"
       - ".github/workflows/validate-tracker-db.yml"
   pull_request:
     paths:
       - "shared/tracker-db/**"
-      - "shared/scripts/validate-signatures.py"
+      - "shared/go/pcage-tools/**"
       - "tests/**"
       - ".github/workflows/validate-tracker-db.yml"
   workflow_dispatch:
@@ -27,15 +25,17 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Go
+        uses: actions/setup-go@v7
         with:
-          python-version: "3.12"
-      - name: Validate tracker database
-        run: python shared/scripts/validate-signatures.py --max-age-days 180
+          go-version-file: shared/go/pcage-tools/go.mod
+      - name: Run Go privacy tool regression tests
+        run: go -C shared/go/pcage-tools test ./...
+      - name: Validate tracker database and evidence freshness
+        run: go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
       - name: Validate declared Android backup posture
-        run: python shared/scripts/validate-android-backup.py
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: go -C shared/go/pcage-tools run . validate-android-backup
+      - name: Validate Android permission and telemetry baseline
+        run: go -C shared/go/pcage-tools run . validate-android-privacy
       - name: Publish tracker evidence freshness report
-        run: python shared/scripts/tracker-review-report.py --format markdown >> "$GITHUB_STEP_SUMMARY"
+        run: go -C shared/go/pcage-tools run . tracker-report --format markdown >> "$GITHUB_STEP_SUMMARY"

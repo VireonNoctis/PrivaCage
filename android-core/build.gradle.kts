@@ -17,7 +17,28 @@ kotlin {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("performance")
+    }
+}
+
+tasks.register<Test>("performanceTest") {
+    description = "Runs relative DNS performance measurements; no timing thresholds are enforced."
+    group = "verification"
+    val testSourceSet = sourceSets["test"]
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.runtimeClasspath
+    useJUnitPlatform {
+        includeTags("performance")
+    }
+    systemProperty(
+        "performance.output",
+        layout.buildDirectory.file("reports/performance/dns-benchmark.json").get().asFile.absolutePath
+    )
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
 }
 
 dependencies {

@@ -152,7 +152,7 @@ The catalog accepts exact dotted package/class names and terminal `.*` or `.**` 
 
 ## Evidence freshness report
 
-`shared/scripts/tracker-review-report.py` calculates review due dates from `last_verified`, highlights overdue and due-soon entries, and can emit Markdown or JSON. The CI freshness gate fails records older than 180 days. The report does not fetch URLs or prove source truth; a reviewer must actually recheck the cited source before changing a review date.
+`go -C shared/go/pcage-tools run . tracker-report --format markdown` calculates review due dates from `last_verified`, highlights overdue and due-soon entries, and can emit Markdown or JSON. The CI freshness gate fails records older than 180 days. The report does not fetch URLs or prove source truth; a reviewer must actually recheck the cited source before changing a review date.
 
 
 ### `sentry-event-ingestion`

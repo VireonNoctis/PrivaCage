@@ -8,7 +8,7 @@ PrivaCage is not an anonymity product and does not claim that an ordinary app ca
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The tracker database validator and Python regression tests passed, and GitHub Actions successfully built the debug APK and ran DNS core tests, APK scanner tests, privacy-baseline checks, and bundled-catalog inspection for the SDK wildcard revision. The newer local DNS event-history and review-report additions are awaiting their own CI run. No emulator or physical-device validation has been completed.
+The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The former Python tracker/privacy scripts and unittest modules have been replaced by a standard-library Go CLI and Go regression suite. GitHub Actions runs the Go tracker, backup-policy, and Android privacy gates alongside the Android build checks. Backup/restore behavior across OEM device-transfer paths still requires real-device validation. No emulator or physical-device validation has been completed.
 
 | Area | Status | Honest scope |
 |---|---|---|
@@ -18,7 +18,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | Android VPN adapter | Early implementation; device validation pending | User-approved VPN service, preflight disclosure, process-aware lifecycle status, one-query protected-upstream DNS route diagnostics, Android-visible captive-portal/validation snapshots, virtual DNS endpoint, TUN loop, configured domain rules, and optional DNS-over-TLS with hostname verification and no plaintext fallback |
 | Tracker list in app | Initial integration | Canonical JSON is bundled and evidence is inspectable; users can explicitly import active domain indicators. Review/retired records are excluded from import; list remains non-comprehensive |
 | Encrypted profile transfer | Android + Rust format core | Passphrase-encrypted settings file using Argon2id + AES-256-GCM; Kotlin and Rust share v1/v2 schema support and decrypt a known-answer vector. No account or remote sync; DNS-over-TLS is optional |
-| E2EE sync protocol core | Rust protocol + Android client integration | Owner-signed roster snapshots publish to an authenticated relay with a bounded 128-revision history; Android pulls and verifies updates before inbox processing, records bounded local lifecycle events, stages peer key rotation behind owner approval, and requires explicit recovery/revocation steps. Owner-key rotation and relay-admin credential provisioning remain separate; no iOS/Windows client, background push, conflict resolution, or physical-device lifecycle validation yet |
+| E2EE sync protocol core | Rust protocol + Android client integration | Owner-signed roster snapshots publish to an authenticated relay with a bounded 128-revision history; Android pulls and verifies updates before inbox processing, records bounded local lifecycle events, stages peer-key rotation behind owner approval, and supports dual-signed owner-key transitions bound to the exact space/revision. The public handoff package is retained for re-copying and recovery/another rotation are gated until user acknowledgement. Replacement owner fingerprints still require independent confirmation; relay-admin credential provisioning remains separate. No iOS/Windows client, background push, conflict resolution, or physical-device lifecycle validation yet |
 | Opaque sync relay | Rust + SQLite loopback service | Legacy per-space capability migration plus admin-managed per-device tokens, validated public cards, signed HTTP proof-of-possession, 120-second timestamp window, durable nonce replay rejection, selective credential revocation, bounded opaque storage, 7-day retention, duplicate-ID rejection, and bounded cursor pagination. Remote use requires a TLS reverse proxy |
 | Multi-format metadata inspector | Rust core + Android JNI + selected-file UI | Local inspection and separate cleaned copies for JPEG, PNG, and WebP; bounded streaming parsers, PNG CRC checks, malformed-file rejection, output re-parse before save, no image recompression or upload. Color profiles and unknown extension chunks can retain metadata; pixel content is not anonymized |
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
@@ -46,7 +46,8 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `docs/security-boundaries.md` — explicit implemented/not-implemented claims and required verification.
 - `docs/research-notes/privacy-concerns.md` — sourced privacy concerns and platform constraints.
 - `docs/research-notes/tracker-signature-review.md` — evidence and caveats for the initial tracker entries.
-- `docs/research-notes/privacy-feature-research-2026-10-23.md` — current sourced privacy feature ideas, feasibility, limits, and integration points.
+- `docs/research-notes/privacy-feature-research-2026-10-23.md` — sourced privacy feature ideas, feasibility, limits, and integration points.
+- `docs/research-notes/go-tooling-and-android-backup-audit-2026-10-25.md` — Go tooling migration findings, Android backup/restore limits, and concrete remediation plans.
 - `CONTRIBUTING.md` — evidence and review requirements.
 - `android-app/` — early Android app, VPN service adapter, local rule configuration, bundled tracker-catalog reader, offline APK audit, Rust-powered JPEG/PNG/WebP metadata inspection and scrubbing, and Android build workflow.
 - `shared/rust/pcage-metadata/` — platform-neutral Rust metadata inspection/scrubbing core and local CLI for JPEG, PNG, and WebP.
@@ -55,8 +56,12 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `android-core/src/main/kotlin/org/privacage/audit/PermissionRiskClassifier.kt` — conservative classification of known manifest permission declarations; unknown permissions stay unclassified.
 - `android-core/` — Kotlin/JVM DNS policy evaluator, IPv4 UDP DNS packet codec, packet processor, validated UDP forwarder with upstream TCP fallback, certificate-verified DNS-over-TLS transport, packet-to-packet engine, password-encrypted profile envelope, tests, and Gradle configuration.
 - `docs/encrypted-profile-format.md` — stable binary format and security properties for encrypted profile exports.
+- `docs/audit-checkpoint-format.md` — signed audit checkpoint v1 wire format, hash-chain rules, limits, and trust boundary.
+- `shared/rust/pcage-audit/` — offline Rust CLI/library to verify signed Android audit checkpoints without network access.
+- `shared/audit/test-vectors/checkpoint-v1.json` — fixed, test-only signed interoperability vector (no private key included).
 - `shared/rust/pcage-crypto/` — Rust implementation of the bounded PCAGE01 envelope plus a strict typed profile parser/serializer.
-- `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, key rotation, and recovery bundles.
+- `shared/rust/tracker-intelligence/` — Rust tracker catalog and schema-v2 intelligence tooling; release manifests use Ed25519-signed metadata, a sequential predecessor-linked release history, expiry checks, a signed current pointer, and optional externally persisted rollback floors. This is a local release store, not a remote catalog updater or full TUF client; see its README for the key-management and rollback boundary.
+- `shared/rust/pcage-sync/` — Rust end-to-end sync protocol primitives for device identity cards, signed recipient-encrypted messages, replay protection, dual-signed peer/owner key rotation, and recovery bundles.
 - Android sync peer management maintains a local denylist and removes pending profiles when a trusted fingerprint is revoked. This is device-local trust revocation; shared relay capability rotation is a separate administrator action and invalidates all devices using that capability.
 - `shared/rust/pcage-sync-relay/` — SQLite-backed loopback HTTP relay that stores opaque sync packets and never decrypts them.
 - `shared/rust/pcage-sync-jni/` — native bridge used by Android to call the Rust identity, packet-sealing, packet-opening, and recovery APIs.
@@ -65,19 +70,18 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/crypto/test-vectors/` — shared known-answer fixture decrypted by Kotlin/JVM and Rust tests.
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
-- `shared/scripts/validate-signatures.py` — standard-library tracker schema and evidence-structure validator.
-- `shared/scripts/tracker-review-report.py` — local evidence freshness report with due-soon/overdue status; does not fetch or certify source truth.
-- `shared/scripts/validate-android-backup.py` — static check for the declared Android backup policy; not an OEM transfer test.
-- `tests/test_validate_signatures.py` and `tests/test_android_backup_policy.py` — regression tests for signature evidence and backup configuration.
+- `shared/go/pcage-tools/` — standard-library Go CLI for tracker schema/freshness validation, tracker review reporting, Android backup declaration checks, and the Android sensitive-permission/known-telemetry dependency baseline. Its tests replace the Python regression suite; the backup check remains static and is not an OEM transfer test.
 
 ## Build and test
 
-Requires Python 3.11 or newer for the tracker database validator/tests:
+Requires Go 1.27 or newer for the repository privacy tools and regression tests:
 
-    python shared/scripts/validate-signatures.py --max-age-days 180
-    python shared/scripts/tracker-review-report.py --format markdown
-    python shared/scripts/validate-android-backup.py
-    python -m unittest discover -s tests -v
+    cd shared/go/pcage-tools
+    go test ./...
+    go run . validate-tracker --max-age-days 180
+    go run . tracker-report --format markdown
+    go run . validate-android-backup
+    go run . validate-android-privacy
 
 The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
 
@@ -102,12 +106,32 @@ The Rust encrypted-profile and metadata implementations require Rust 1.85 or new
     cargo test --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-metadata-jni/Cargo.toml --all-targets -- -D warnings
 
+The portable audit checkpoint verifier requires Rust 1.85 or newer. It rejects unsupported fields, oversized inputs, false redaction claims, chain mismatches, invalid P-256 signatures, and inconsistent counts; a valid signature does not establish the signer’s identity.
+
+    cargo fmt --manifest-path shared/rust/pcage-audit/Cargo.toml --all -- --check
+    cargo test --manifest-path shared/rust/pcage-audit/Cargo.toml
+    cargo clippy --manifest-path shared/rust/pcage-audit/Cargo.toml --all-targets -- -D warnings
+    cargo run --manifest-path shared/rust/pcage-audit/Cargo.toml -- path/to/checkpoint.json
+
 The E2EE sync protocol core and Android JNI bridge require Rust 1.85 or newer:
 
     cargo test --manifest-path shared/rust/pcage-sync/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-sync/Cargo.toml --all-targets -- -D warnings
     cargo test --manifest-path shared/rust/pcage-sync-jni/Cargo.toml
     cargo clippy --manifest-path shared/rust/pcage-sync-jni/Cargo.toml --all-targets -- -D warnings
+
+The tracker-intelligence release tooling uses Rust 1.85 or newer. It validates legacy catalog schema v1 and intelligence bundle schema v2, and supports locally signed release snapshots. Keep the 32-byte Ed25519 signing seed outside the repository and shell history; pin the public key out of band.
+
+    cargo test --manifest-path shared/rust/tracker-intelligence/Cargo.toml
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- publish path/to/catalog.json ./release-store release-2026-10-25 2026-10-25 "$PCAGE_ED25519_SEED_HEX"
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- verify-current ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX" "$PCAGE_MINIMUM_RELEASE_SEQUENCE" "$PCAGE_MINIMUM_STATE_REVISION"
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- history ./release-store "$PCAGE_TRUSTED_PUBLIC_KEY_HEX"
+
+An intentional local rollback requires the signing seed, signs a new current pointer, and preserves the release-chain head:
+
+    cargo run --manifest-path shared/rust/tracker-intelligence/Cargo.toml -- rollback ./release-store release-2026-10-23 "$PCAGE_ED25519_SEED_HEX"
+
+The minimum sequence and pointer revision must be persisted by the caller outside the release store to detect signed pointer replay. No remote updater, release-signing-key rotation, or full TUF client is implemented.
 
 The opaque relay service requires Rust 1.85 or newer:
 

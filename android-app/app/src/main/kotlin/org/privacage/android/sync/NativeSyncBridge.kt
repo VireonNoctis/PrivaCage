@@ -29,6 +29,22 @@ internal class NativeSyncBridge {
         rotationJson: String,
         nowUnix: Long
     ): String
+    external fun nativeRotateOwnerKey(
+        localBundleBase64: String,
+        localPassphrase: String,
+        nextLocalPassphrase: String,
+        spaceId: String,
+        previousRosterRevision: Long,
+        issuedAtUnix: Long
+    ): String
+    external fun nativeVerifyOwnerKeyRotation(
+        previousOwnerCardJson: String,
+        rotationJson: String,
+        expectedSpaceId: String,
+        expectedPreviousRevision: Long,
+        expectedNextOwnerFingerprint: String,
+        nowUnix: Long
+    ): String
     external fun nativeCreateDeviceRoster(
         localBundleBase64: String,
         localPassphrase: String,

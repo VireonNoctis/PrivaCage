@@ -168,7 +168,7 @@ Implementation shape:
 - Add emulator/OEM test steps for cloud restore and device-to-device migration before claiming backup exclusion is comprehensive.
 - Keep backup checks as evidence of configuration, not a guarantee about every device's vendor-specific transfer behavior.
 
-Suggested integration: a manifest policy check in the existing Python validation workflow and a manual device-test checklist. No extra permissions or data collection are needed.
+Suggested integration: a manifest policy check in the Go validation workflow and a manual device-test checklist. No extra permissions or data collection are needed.
 
 ### 13. Signed tracker-catalog releases and anti-rollback — required before remote catalog updates
 
