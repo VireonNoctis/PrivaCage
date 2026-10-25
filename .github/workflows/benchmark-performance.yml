@@ -1,0 +1,87 @@
+name: Compare PrivaCage performance
+
+on:
+  pull_request:
+    paths:
+      - "android-app/**"
+      - "android-core/**"
+      - "shared/rust/tracker-intelligence/**"
+      - ".github/scripts/prepare-performance-baseline.sh"
+      - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/compare-performance.py"
+      - ".github/workflows/benchmark-performance.yml"
+      - "docs/performance/**"
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: "Commit to benchmark as the pre-change baseline"
+        required: false
+        default: "7649a85dede79c0decf33426655dc246f9c18cc6"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Baseline vs candidate on the same runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PERFORMANCE_BASELINE_SHA: ${{ github.event.inputs.baseline_sha || '7649a85dede79c0decf33426655dc246f9c18cc6' }}
+      PERFORMANCE_BASELINE_DIR: ${{ runner.temp }}/privacage-performance-baseline
+      PERFORMANCE_RESULTS_DIR: ${{ runner.temp }}/privacage-performance-results
+      CARGO_TARGET_DIR: ${{ runner.temp }}/privacage-cargo-target
+    steps:
+      - name: Check out candidate with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android benchmark emulator packages
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+
+      - name: Prepare exact pre-optimization baseline
+        run: bash .github/scripts/prepare-performance-baseline.sh
+
+      - name: Run A/B benchmarks
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/run-performance-comparison.sh
+
+      - name: Upload raw measurements and comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacage-performance-comparison
+          path: ${{ runner.temp }}/privacage-performance-results/
+          if-no-files-found: warn
+          retention-days: 30
