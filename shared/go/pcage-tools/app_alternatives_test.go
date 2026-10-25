@@ -10,7 +10,7 @@ import (
 func appAlternativeFixture() appAlternativeCatalog {
 	return appAlternativeCatalog{
 		SchemaVersion: 1,
-		UpdatedAt: "2026-10-25",
+		UpdatedAt: "2026-01-01",
 		Alternatives: []appAlternativeRecord{{
 			ID: "gmail-proton-mail",
 			Replaces: "Gmail",
