@@ -2,13 +2,13 @@
 
 **Understand what your device exposes. Block what you can. Know what you cannot.**
 
-PrivaCage is an open-source, local-first privacy auditing project for Android, iOS, and Windows. Its goal is to help people understand app permissions, identify known tracking components, inspect observable network activity, apply enforceable privacy rules, and keep an evidence-backed local audit trail.
+PrivaCage is an open-source, local-first privacy auditing project. Android is the primary product implementation; the Svelte and Rust web workspace provides evidence-backed tracker intelligence and audit-oriented views but is not currently paired to a device. The first Windows milestone is a read-only local configuration auditor. An iOS companion remains planned and constrained by Apple's sandbox and entitlement model.
 
-PrivaCage is not an anonymity product and does not claim that an ordinary app can observe or disable every operating-system or manufacturer activity. Platform boundaries are part of the product, not fine print.
+PrivaCage is not an anonymity product. It does not claim that an ordinary app can observe or disable every operating-system, desktop-app, manufacturer, or firmware activity. Platform boundaries are part of the product, not fine print.
 
 ## Project status
 
-The repository contains the evidence-first tracker intelligence foundation, a Kotlin/JVM DNS core, and an initial Android `VpnService` adapter. The Android app bundles the canonical tracker database, shows each record's evidence, and allows explicit import of active domain indicators into local rules. The former Python tracker/privacy scripts and unittest modules have been replaced by a standard-library Go CLI and Go regression suite. GitHub Actions runs the Go tracker, backup-policy, and Android privacy gates alongside the Android build checks. Backup/restore behavior across OEM device-transfer paths still requires real-device validation. No emulator or physical-device validation has been completed.
+The repository includes an Android DNS policy core and an early user-approved VPN adapter, evidence-backed tracker intelligence, local APK analysis and metadata scrubbing, encrypted profile export, optional local DNS-history export with signed audit checkpoints, a Rust portable checkpoint verifier, Rust sync protocol/relay components, and a Svelte 5 + TypeScript web console backed by Rust/Axum. The new Windows auditor reads selected firewall and machine-policy settings without modifying them or inspecting live network traffic. These are distinct maturity levels: Android VPN routing and backup behavior still need representative device validation; web device-pairing and event ingestion are not connected; Windows enforcement is not implemented.
 
 | Area | Status | Honest scope |
 |---|---|---|
@@ -24,6 +24,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 | APK static audit | Initial implementation | User-selected APKs are parsed locally for declared permissions, exported components, version/target SDK, and SHA-256; bounded DEX string scans check catalog domain/SDK literals, including supported terminal package wildcards (`.*` and `.**`). These are possible indicators, not proof of runtime use or malicious behavior |
 | Android permission auditing | Local device snapshot + launcher-visible app audit | Reads exposed location-services, Wi-Fi radio, Private DNS mode, active-default-network VPN state, PrivaCage's own declared permissions, and requested/granted dangerous permissions for launcher-visible apps. It does not inventory every system/OEM service or prove live collection; it never uploads the inventory |
 | Platform privacy controls | Official settings links | Opens Android ad privacy settings where supported, Google Account Data & Privacy, and Samsung Customization Service privacy information. Users must review and change settings themselves; opening a page is not an opt-out |
+| Windows read-only baseline auditor | Initial implementation | Reports Domain/Private/Public firewall profile state, the machine diagnostic-data policy value, and machine App Privacy policy values for location, camera, and microphone. Does not modify settings, monitor traffic, infer effective user/app policy, or enforce firewall rules. |
 | iOS companion | Planned, restricted | Must respect sandbox and NetworkExtension entitlement limits |
 | Windows network controls | Planned | Explicit firewall rules require appropriate privileges |
 | Legal request assistant | Planned | Drafts and tracks requests; cannot verify deletion from company systems |
@@ -75,6 +76,7 @@ The repository contains the evidence-first tracker intelligence foundation, a Ko
 - `shared/tracker-db/schema.md` — tracker database contract.
 - `shared/tracker-db/signatures.json` — canonical small, evidence-backed starter dataset bundled by the Android app; not comprehensive.
 - `shared/go/pcage-tools/` — standard-library Go CLI for tracker schema/freshness validation, tracker review reporting, Android backup declaration checks, and the Android sensitive-permission/known-telemetry dependency baseline. Its tests replace the Python regression suite; the backup check remains static and is not an OEM transfer test.
+- `windows/pcage-audit/` — read-only Go auditor for Windows Firewall profile configuration and selected machine-level diagnostic-data / App Privacy policy values. Includes strict PowerShell JSON parsing, conservative unknown/not-configured states, tests, and a dedicated Windows CI smoke run.
 
 ## Build and test
 
@@ -86,6 +88,19 @@ Requires Go 1.27 or newer for the repository privacy tools and regression tests:
     go run . tracker-report --format markdown
     go run . validate-android-backup
     go run . validate-android-privacy
+
+### Windows privacy baseline auditor
+
+The Windows collector must run on Windows 10/11 with Windows PowerShell and the NetSecurity module. Unit tests and cross-compilation can run on other platforms; the actual machine audit is Windows-only and read-only.
+
+From the repository root, in a separate terminal:
+
+    cd windows/pcage-audit
+    go test ./...
+    go run . --format text
+    go run . --format json > windows-baseline.json
+
+The JSON export contains policy observations and limitations, not device network events. Missing machine policy is reported as `not_configured`; failed or unrecognized reads are `unknown`. Neither status is treated as proof that a setting is safe or unsafe.
 
 The Android app requires JDK 17, Android SDK platform 36, Gradle 8.14 or compatible, and Android NDK 27.2.12479018. Build the Rust JNI libraries before Gradle (GitHub Actions does this automatically):
 
@@ -148,10 +163,16 @@ The tracker validator checks structure and URL syntax and can enforce an evidenc
 
 - Android: a user-approved `VpnService` can route traffic through a local tunnel and enforce supported network rules. The bundled tracker catalog is advisory and opt-in; imported domain rules do not attribute queries to a specific app. The editor includes an offline hostname-rule preview and aggregate session counters. Optional local DNS event history is disabled by default and can retain hostnames; socket-owner lookup is best-effort and may identify Android's resolver rather than the initiating app. An explicit diagnostic sends one fixed `example.com` A query via the configured protected upstream, samples Android-visible non-VPN network validation/captive-portal state, and compares the snapshot around the test; it stores neither raw DNS packets nor query names. This does not prove every app uses the expected path, and Wi-Fi/mobile handover and captive-portal behavior still require device validation. A local device snapshot reports exposed location, Wi-Fi, Private DNS, and active-network VPN settings plus PrivaCage's own declared permissions, without reading SSIDs or uploading the snapshot. A separate permission audit checks dangerous permissions declared by launcher-visible apps and reports current grant flags locally; Android package visibility means this is not a complete inventory of system/OEM services. This adapter accepts client-facing IPv4 UDP DNS only. It retries a truncated upstream UDP response over a protected TCP socket, but it does not accept DNS-over-TCP connections from apps, filter IPv6 DNS, DoH/DoT/DoQ, inspect HTTPS payloads, or cover every system service or OEM/baseband path. Only one ordinary VPN service can be active at a time.
 - iOS: sandboxing prevents one ordinary app from inspecting another app's executable or intercepting its system calls. Network filtering depends on supported NetworkExtension APIs, entitlements, distribution model, and OS policy.
-- Windows: firewall rules can block specified traffic when the user has the required privileges. A firewall-rule manager is not unrestricted packet inspection or complete attribution of every system connection.
+- Windows: the first local auditor reads firewall profiles from the active policy store and selected machine-level registry policies for Windows diagnostic data, location, camera, and microphone. It does not write registry values, create/modify firewall rules, inspect traffic, or report app-level permission grants. A future firewall-rule manager would require explicit user intent, suitable privileges, and verification of the OS-reported result.
 - Wi-Fi and connection privacy: a Wi-Fi operator can usually observe connected-device/network metadata, timing, traffic volume, and destination IPs. HTTPS protects application content in transit; encrypted DNS can hide DNS questions from the local network when correctly configured, while the resolver still sees them. A VPN hides tunneled destinations from the local Wi-Fi operator but shifts visibility and trust to the VPN provider; it does not prove every connection is tunneled.
 - Static APK manifest audit: PrivaCage can inspect a user-selected APK's declared permissions and exported components locally without installing it. A declared permission, exported component, SDK string, or domain is evidence of capability/surface, not proof of runtime behavior or data collection.
 - Legal requests: a sent request is not proof of deletion.
+
+## Windows baseline audit — what the report means
+
+The Windows report is a point-in-time configuration snapshot. Firewall settings describe policy defaults, not observed connections. A machine-level policy value does not necessarily equal the effective setting after user policy, MDM, Windows edition, per-app preferences, and OS version are considered. The audit intentionally reports the precise scope it queried and does not apply a “privacy score” or silently alter configuration.
+
+The command makes no network requests and does not upload the report. If you redirect JSON to a file, choose the destination deliberately; another application may back up or sync that folder. Review the full tool-specific limits in `windows/pcage-audit/README.md`.
 
 ## Security reporting
 
