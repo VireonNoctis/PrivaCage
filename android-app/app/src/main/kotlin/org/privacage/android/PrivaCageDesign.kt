@@ -45,7 +45,9 @@ internal object PrivaCageDesign {
         "DNS PRIVACY",
         "DNS ROUTE DIAGNOSTICS",
         "PRIVACY AUDIT EXPORT",
-        "ENCRYPTED DEVICE SYNC"
+        "ENCRYPTED DEVICE SYNC",
+        "INSTALL QUEUE",
+        "ALTERNATIVE CATALOG"
     )
 
     private val primaryActionLabels = setOf(
@@ -329,6 +331,8 @@ internal object PrivaCageDesign {
         "DNS ROUTE DIAGNOSTICS" -> "ROUTE"
         "PRIVACY AUDIT EXPORT" -> "AUDIT"
         "ENCRYPTED DEVICE SYNC" -> "SYNC"
+        "INSTALL QUEUE" -> "QUEUE"
+        "ALTERNATIVE CATALOG" -> "CATALOG"
         else -> heading
     }
 
