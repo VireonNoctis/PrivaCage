@@ -10,6 +10,7 @@ class AppAlternativeCatalogTest {
     fun parsesTrustedCatalogEntryAndSource() {
         val entries = AppAlternativeCatalog.parseJson(document())
         assertEquals(1, entries.size)
+        assertEquals("ch.protonmail.android", entries.single().packageName)
         assertEquals("Gmail", entries.single().replaces)
         assertEquals("Proton Mail", entries.single().name)
         assertEquals("play", entries.single().sources.single().id)
@@ -34,6 +35,11 @@ class AppAlternativeCatalogTest {
     @Test
     fun rejectsNonCanonicalCalendarDates() {
         assertFails(document().replace("2026-10-25", "2026-1-25"), "canonical YYYY-MM-DD")
+    }
+
+    @Test
+    fun rejectsInvalidExpectedPackageNames() {
+        assertFails(entry().replace("ch.protonmail.android", "ch/protonmail/android"), "valid dotted Android package name")
     }
 
     @Test
@@ -82,6 +88,7 @@ class AppAlternativeCatalogTest {
 
     private fun entry(): String = """{
       "id": "gmail-proton-mail",
+      "package_name": "ch.protonmail.android",
       "replaces": "Gmail",
       "category": "Email",
       "name": "Proton Mail",
