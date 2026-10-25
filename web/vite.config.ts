@@ -11,10 +11,5 @@ export default defineConfig({
         changeOrigin: false
       }
     }
-  },
-  test: {
-    environment: 'jsdom',
-    clearMocks: true,
-    restoreMocks: true
   }
 });
