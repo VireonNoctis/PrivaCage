@@ -35,8 +35,8 @@ func TestBuildReportUsesStableProfileOrderAndConservativeStatuses(t *testing.T) 
 	if report.GeneratedAt.Location() != time.UTC {
 		t.Fatalf("generated time should be normalized to UTC: %s", report.GeneratedAt.Location())
 	}
-	if report.Summary.Total != 7 {
-		t.Fatalf("want 7 checks, got %d", report.Summary.Total)
+	if report.Summary.Total != 9 {
+		t.Fatalf("want 9 checks, got %d", report.Summary.Total)
 	}
 	if got := []string{report.Checks[0].ID, report.Checks[1].ID, report.Checks[2].ID}; strings.Join(got, ",") != "firewall.domain,firewall.private,firewall.public" {
 		t.Fatalf("firewall checks are not deterministic: %v", got)
@@ -50,8 +50,62 @@ func TestBuildReportUsesStableProfileOrderAndConservativeStatuses(t *testing.T) 
 	if report.Checks[2].Status != statusOK {
 		t.Fatalf("profile with enabled firewall and blocked defaults should be ok, got %+v", report.Checks[2])
 	}
-	if report.Summary.OK != 2 || report.Summary.Review != 5 || report.Summary.Unknown != 0 || report.Summary.NotConfigured != 0 {
+	if report.Summary.OK != 2 || report.Summary.Review != 5 || report.Summary.Unknown != 1 || report.Summary.NotConfigured != 1 {
 		t.Fatalf("summary counts do not match findings: %+v", report.Summary)
+	}
+}
+
+
+func TestDNSResolverInventoryAndProxyAuditDoNotOverclaimPrivacy(t *testing.T) {
+	snapshot := fixtureSnapshot()
+	snapshot.DNSServers = []dnsServerConfig{
+		{InterfaceAlias: "Wi-Fi", AddressFamily: "IPv4", ServerAddresses: []string{"192.168.1.1"}},
+		{InterfaceAlias: "Work VPN", AddressFamily: "IPv6", ServerAddresses: []string{"fd00::1"}},
+	}
+	snapshot.UserProxy = userProxySnapshot{
+		ProxyEnableConfigured: true,
+		ProxyEnabled: boolPointer(true),
+		ProxyServerConfigured: true,
+		AutoConfigURLConfigured: true,
+	}
+
+	report := buildReport(snapshot, time.Now())
+	dns := report.Checks[7]
+	if dns.ID != "network.dns_resolvers" || dns.Status != statusUnknown {
+		t.Fatalf("DNS inventory must remain informational/unknown: %+v", dns)
+	}
+	if !strings.Contains(dns.Observed, "192.168.1.1") || !strings.Contains(dns.Observed, "fd00::1") {
+		t.Fatalf("DNS resolver addresses missing from local report: %q", dns.Observed)
+	}
+	if !strings.Contains(strings.ToLower(dns.Meaning), "encrypted dns") {
+		t.Fatalf("DNS check must state that it cannot infer encrypted DNS: %q", dns.Meaning)
+	}
+
+	proxy := report.Checks[8]
+	if proxy.ID != "network.wininet_proxy" || proxy.Status != statusReview {
+		t.Fatalf("enabled proxy should be a review item, not a privacy verdict: %+v", proxy)
+	}
+	if !strings.Contains(proxy.Observed, "manual server setting present=true") ||
+		!strings.Contains(proxy.Observed, "automatic configuration URL present=true") {
+		t.Fatalf("proxy configuration-presence flags missing: %q", proxy.Observed)
+	}
+	if strings.Contains(proxy.Observed, "proxy.example") || strings.Contains(proxy.Observed, "http://") {
+		t.Fatalf("proxy host or PAC URL must not be emitted: %q", proxy.Observed)
+	}
+	if !strings.Contains(strings.ToLower(proxy.Meaning), "does not validate the proxy operator") {
+		t.Fatalf("proxy check must preserve the trust limitation: %q", proxy.Meaning)
+	}
+}
+
+func TestDNSReadErrorIsUnknownAndDoesNotClaimNoResolver(t *testing.T) {
+	snapshot := fixtureSnapshot()
+	snapshot.DNSReadError = true
+	finding := dnsResolverCheck(snapshot)
+	if finding.Status != statusUnknown || !strings.Contains(finding.Observed, "unavailable") {
+		t.Fatalf("resolver read error should stay unknown: %+v", finding)
+	}
+	if strings.Contains(strings.ToLower(finding.Meaning), "no dns") {
+		t.Fatalf("resolver read error must not be interpreted as no resolver: %+v", finding)
 	}
 }
 
