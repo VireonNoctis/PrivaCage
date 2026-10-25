@@ -9,22 +9,24 @@ import (
 func TestEditionGatesForMachinePolicyAndSecurityDiagnostics(t *testing.T) {
 	tests := []struct {
 		edition  string
+		build    int
 		machine  bool
 		security bool
 	}{
-		{"Core", false, false},
-		{"Professional", true, false},
-		{"Enterprise", true, true},
-		{"Education", true, true},
-		{"IoTEnterprise", true, true},
-		{"ServerStandard", true, true},
+		{"Core", 22631, false, false},
+		{"Professional", 22631, true, false},
+		{"Enterprise", 22631, true, true},
+		{"Education", 22631, true, true},
+		{"IoTEnterprise", 22631, true, false},
+		{"ServerStandard", 14393, true, true},
+		{"ServerStandard", 20348, true, false},
 	}
 	for _, test := range tests {
 		if got := supportsMachinePolicy(test.edition); got != test.machine {
 			t.Errorf("supportsMachinePolicy(%q)=%t, want %t", test.edition, got, test.machine)
 		}
-		if got := supportsSecurityOnlyTelemetry(test.edition); got != test.security {
-			t.Errorf("supportsSecurityOnlyTelemetry(%q)=%t, want %t", test.edition, got, test.security)
+		if got := supportsSecurityOnlyTelemetry(test.edition, test.build); got != test.security {
+			t.Errorf("supportsSecurityOnlyTelemetry(%q, %d)=%t, want %t", test.edition, test.build, got, test.security)
 		}
 	}
 }
@@ -38,7 +40,7 @@ func TestBalancedPlanUsesEditionAppropriateDiagnosticSetting(t *testing.T) {
 	if plan.SchemaVersion != 1 || plan.Profile != "balanced" || plan.BlockOutboundByDefault || plan.IsolateOutbound {
 		t.Fatalf("unexpected balanced plan metadata: %+v", plan)
 	}
-	var telemetry, activity, upload, tailored, limitLogs bool
+	var telemetry, activity, upload, tailored, limitLogs, clipboardSync, deviceName bool
 	for _, change := range plan.Changes {
 		switch change.Name {
 		case "AllowTelemetry":
@@ -54,9 +56,13 @@ func TestBalancedPlanUsesEditionAppropriateDiagnosticSetting(t *testing.T) {
 			tailored = change.Value == 1 && change.Hive == "Users"
 		case "LimitDiagnosticLogCollection":
 			limitLogs = change.Value == 1
+		case "AllowCrossDeviceClipboard":
+			clipboardSync = change.Value == 0
+		case "AllowDeviceNameInDiagnosticData":
+			deviceName = change.Value == 0
 		}
 	}
-	if !telemetry || !activity || !upload || !tailored || !limitLogs {
+	if !telemetry || !activity || !upload || !tailored || !limitLogs || !clipboardSync || !deviceName {
 		t.Fatalf("balanced plan missing documented controls: %+v", plan.Changes)
 	}
 	enterprise, err := buildHardeningPlan("balanced", windowsMetadata{EditionID: "Enterprise", BuildNumber: 22631}, false, false)
@@ -98,6 +104,9 @@ func TestStrictPlanAddsWindowsAppPrivacyDenials(t *testing.T) {
 				continue
 			}
 			found = true
+			if name == "AllowClipboardHistory" && change.Value != 0 {
+				t.Errorf("AllowClipboardHistory should be 0, got %d", change.Value)
+			}
 			if name == "Disabled" && change.Value != 1 {
 				t.Errorf("Windows Error Reporting Disabled should equal 1, got %d", change.Value)
 			}
