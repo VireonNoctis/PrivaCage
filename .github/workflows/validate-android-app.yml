@@ -102,3 +102,73 @@ jobs:
           unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
           unzip -p android-app/app/build/outputs/apk/debug/app-debug.apk assets/signatures.json > "$RUNNER_TEMP/bundled-signatures.json"
           go -C shared/go/pcage-tools run . validate-tracker --file "$RUNNER_TEMP/bundled-signatures.json"
+
+  performance-comparison:
+    name: Baseline vs candidate performance measurements
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PERFORMANCE_BASELINE_SHA: 7649a85dede79c0decf33426655dc246f9c18cc6
+      PERFORMANCE_BASELINE_DIR: \${{ runner.temp }}/privacage-performance-baseline
+      PERFORMANCE_RESULTS_DIR: \${{ runner.temp }}/privacage-performance-results
+      CARGO_TARGET_DIR: \${{ runner.temp }}/privacage-cargo-target
+    steps:
+      - name: Check out PR head with full history
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install Android and emulator packages
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install cargo-ndk and emulator Rust target
+        run: |
+          cargo install cargo-ndk --version 3.5.4 --locked
+          rustup target add x86_64-linux-android
+
+      - name: Prepare the pre-optimization worktree
+        run: bash .github/scripts/prepare-performance-baseline.sh
+
+      - name: Run baseline/candidate benchmarks
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/run-performance-comparison.sh
+
+      - name: Upload benchmark data and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: privacage-performance-comparison
+          path: \${{ runner.temp }}/privacage-performance-results/
+          if-no-files-found: warn
+          retention-days: 30
