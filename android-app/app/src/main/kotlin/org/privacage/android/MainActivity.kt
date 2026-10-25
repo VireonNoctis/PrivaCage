@@ -780,15 +780,13 @@ class MainActivity : Activity() {
         refreshDnsStats()
         setContentView(ScrollView(this).apply { addView(root) })
         Thread({
-            val loadedCatalog: List<TrackerSignature>?
-            val loadError: String?
-            try {
-                loadedCatalog = TrackerSignatureCatalog.load(this@MainActivity)
-                loadError = null
+            val loadResult: Pair<List<TrackerSignature>?, String?> = try {
+                TrackerSignatureCatalog.load(this@MainActivity) to null
             } catch (exception: Exception) {
-                loadedCatalog = null
-                loadError = exception.message ?: exception.javaClass.simpleName
+                null to (exception.message ?: exception.javaClass.simpleName)
             }
+            val loadedCatalog = loadResult.first
+            val loadError = loadResult.second
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 trackerCatalogLoading = false
