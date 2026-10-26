@@ -187,6 +187,13 @@ describe('local signed audit checkpoint verifier', () => {
     expect(report.signerPublicKeySha256).toBe('11086649cd3e5d1892200a4200b165bbea5c9f9b47ca83792d4f9a1ef0dc8921');
   });
 
+  it('rejects the shared vector after the same payload mutation tested by Android and Rust', async () => {
+    const modifiedCheckpoint = sharedCheckpointVector.replaceAll('[REDACTED]', 'private.example');
+
+    await expect(verifyAuditCheckpoint(modifiedCheckpoint, cryptoProvider))
+      .rejects.toThrow('Embedded payload SHA-256 does not match the signed digest.');
+  });
+
   it('verifies a valid Android-format P-256 checkpoint and event chain', async () => {
     const checkpoint = await createCheckpoint();
 
