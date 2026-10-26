@@ -104,16 +104,14 @@ internal object AppAlternativeCatalog {
         requireExactKeys(root, topLevelKeys, "catalogue")
         val schemaVersion = root.opt("schema_version")
         if (schemaVersion !is Int || schemaVersion != SUPPORTED_SCHEMA_VERSION) {
-            throw IOException("catalogue.schema_version must be the exact integer value " + SUPPORTED_SCHEMA_VERSION)
+            throw IOException("catalogue schema version must be the exact integer value " + SUPPORTED_SCHEMA_VERSION)
         }
         val updatedAt = requiredString(root, "updated_at", "catalogue")
+        if (!updatedAt.matches(Regex("""^\d{4}-\d{2}-\d{2}$"""))) {
+            throw IOException("catalogue.updated_at must use canonical YYYY-MM-DD format")
+        }
         try {
-            val parsedDate = LocalDate.parse(updatedAt)
-            if (parsedDate.toString() != updatedAt) {
-                throw IOException("catalogue.updated_at must use canonical YYYY-MM-DD format")
-            }
-        } catch (exception: IOException) {
-            throw exception
+            LocalDate.parse(updatedAt)
         } catch (exception: Exception) {
             throw IOException("catalogue.updated_at must be an ISO date (YYYY-MM-DD)", exception)
         }
