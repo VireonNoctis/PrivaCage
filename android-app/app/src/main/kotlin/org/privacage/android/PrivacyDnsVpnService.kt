@@ -170,7 +170,14 @@ class PrivacyDnsVpnService : VpnService() {
                 when (result) {
                     is DnsTunnelResult.Response -> {
                         if (result.domain.isNotBlank()) {
-                            LocalDnsEventHistory.record(this, packet, result.domain, result.action.name)
+                            when (LocalDnsEventHistory.record(this, packet, result.domain, result.action.name)) {
+                                LocalDnsEventHistory.RecordResult.HISTORY_UNREADABLE -> Log.w(
+                                    TAG,
+                                    "Local DNS history is unreadable; saved data was preserved and this event was not recorded. Review or clear history from the DNS history view."
+                                )
+                                LocalDnsEventHistory.RecordResult.DISABLED,
+                                LocalDnsEventHistory.RecordResult.RECORDED -> Unit
+                            }
                         }
                         output.write(result.packet)
                         output.flush()
