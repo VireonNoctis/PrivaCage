@@ -60,8 +60,8 @@ class LocalAuditCheckpointSignerTest {
     @Test
     fun rejectsDuplicateKeysInsideTheEmbeddedPayloadBeforeDigestEvaluation() {
         val source = sharedCheckpoint()
-        val payloadPrefix = """\"schema_version\":1,\"source\":"""
-        val duplicatePrefix = """\"schema_version\":1,\"schema_version\":1,\"source\":"""
+        val payloadPrefix = "\\\"schema_version\\\":1,\\\"source\\\":"
+        val duplicatePrefix = "\\\"schema_version\\\":1,\\\"schema_version\\\":1,\\\"source\\\":"
         val duplicatePayloadKey = source.replace(payloadPrefix, duplicatePrefix)
 
         assertTrue("The test mutation must change the shared payload.", duplicatePayloadKey != source)
