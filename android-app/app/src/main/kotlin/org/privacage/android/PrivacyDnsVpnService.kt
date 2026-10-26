@@ -37,6 +37,7 @@ class PrivacyDnsVpnService : VpnService() {
     @Volatile private var tunnel: ParcelFileDescriptor? = null
     @Volatile private var diagnosticForwarder: DnsUpstreamTransport? = null
     private val diagnosticRunning = AtomicBoolean(false)
+    private val dnsHistoryWarningReported = AtomicBoolean(false)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RUN_DIAGNOSTIC) {
@@ -171,12 +172,16 @@ class PrivacyDnsVpnService : VpnService() {
                     is DnsTunnelResult.Response -> {
                         if (result.domain.isNotBlank()) {
                             when (LocalDnsEventHistory.record(this, packet, result.domain, result.action.name)) {
-                                LocalDnsEventHistory.RecordResult.HISTORY_UNREADABLE -> Log.w(
-                                    TAG,
-                                    "Local DNS history is unreadable; saved data was preserved and this event was not recorded. Review or clear history from the DNS history view."
-                                )
-                                LocalDnsEventHistory.RecordResult.DISABLED,
-                                LocalDnsEventHistory.RecordResult.RECORDED -> Unit
+                                LocalDnsEventHistory.RecordResult.HISTORY_UNREADABLE -> {
+                                    if (dnsHistoryWarningReported.compareAndSet(false, true)) {
+                                        Log.w(
+                                            TAG,
+                                            "Local DNS history is unreadable; saved data was preserved and new events are not being recorded. Review or clear history from the DNS history view."
+                                        )
+                                    }
+                                }
+                                LocalDnsEventHistory.RecordResult.DISABLED -> Unit
+                                LocalDnsEventHistory.RecordResult.RECORDED -> dnsHistoryWarningReported.set(false)
                             }
                         }
                         output.write(result.packet)
