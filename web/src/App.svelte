@@ -55,7 +55,7 @@
   let auditError = $state('');
   let auditBusy = $state(false);
   let trustedFingerprint = $state('');
-  let auditFileInput: HTMLInputElement | undefined;
+  let auditFileInput = $state<HTMLInputElement | undefined>(undefined);
   let firstLoad = true;
   let requestController: AbortController | null = null;
 
