@@ -64,6 +64,24 @@ https://developer.android.com/reference/android/app/AppOpsManager
 
 Framework API reference for app-operation inspection and management. Specific operations remain privilege- and API-dependent; the existence of an API does not grant an ordinary third-party app authority to modify arbitrary apps.
 
+<a id="s09b"></a>
+### S09b — Android Developers: Android Keystore system
+https://developer.android.com/privacy-and-security/keystore
+
+Documents key-material protection, non-exportable Keystore keys, restrictions on permitted cryptographic operations, and available authentication controls. Hardware-backed protection varies by device and implementation; do not describe every generated key as hardware-backed.
+
+<a id="s09c"></a>
+### S09c — Android Developers: `SharedPreferences.Editor` API
+https://developer.android.com/reference/android/content/SharedPreferences.Editor
+
+Documents atomic editor updates, synchronous `commit()` and its persistence result, and asynchronous `apply()` behavior. Relevant to preserving DNS history while migrating the old plaintext preference.
+
+<a id="s09d"></a>
+### S09d — Android Developers: Save simple data with SharedPreferences
+https://developer.android.com/training/data-storage/shared-preferences
+
+Android's guidance warns about blocking, durability, and consistency trade-offs in SharedPreferences and recommends considering DataStore or Room for new storage needs. PrivaCage retains its existing small preferences store here; this migration is not a general recommendation to start new persistence on SharedPreferences.
+
 ## Apple platform
 
 <a id="s10"></a>
