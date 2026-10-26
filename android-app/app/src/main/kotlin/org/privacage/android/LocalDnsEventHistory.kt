@@ -1,6 +1,7 @@
 package org.privacage.android
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Process
@@ -11,7 +12,9 @@ import org.json.JSONObject
 import org.privacage.audit.AuditExportEvent
 import java.io.IOException
 import java.net.InetSocketAddress
+import java.time.Duration
 import java.time.Instant
+import java.time.format.DateTimeParseException
 
 /**
  * Optional, bounded, on-device DNS event history.
@@ -22,6 +25,10 @@ import java.time.Instant
 internal object LocalDnsEventHistory {
     const val KEY_ENABLED = "dns_event_history_enabled"
     const val KEY_EVENTS = "dns_event_history_json"
+    const val KEY_RETENTION_DAYS = "dns_event_history_retention_days"
+    const val DEFAULT_RETENTION_DAYS = 7
+    val RETENTION_OPTIONS_DAYS = listOf(1, 7, 30)
+
     private const val MAX_EVENTS = 100
     private const val MAX_DOMAIN_LENGTH = 253
     private const val MAX_STORED_HISTORY_CHARS = 256 * 1024
@@ -50,13 +57,80 @@ internal object LocalDnsEventHistory {
         return events
     }
 
+    internal fun normalizeRetentionDays(candidate: Int): Int =
+        candidate.takeIf { it in RETENTION_OPTIONS_DAYS } ?: DEFAULT_RETENTION_DAYS
+
+    internal fun retentionLabel(days: Int): String = when (normalizeRetentionDays(days)) {
+        1 -> "24 hours"
+        else -> "${normalizeRetentionDays(days)} days"
+    }
+
+    /**
+     * Remove expired records without changing the input. If any timestamp is invalid, reject the
+     * whole pruning operation so a partial cleanup cannot silently destroy evidence.
+     */
+    internal fun pruneExpiredEvents(serialized: String?, now: Instant, retentionDays: Int): JSONArray? {
+        val events = parseStoredEvents(serialized) ?: return null
+        val cutoff = now.minus(Duration.ofDays(normalizeRetentionDays(retentionDays).toLong()))
+        val retained = JSONArray()
+        for (index in 0 until events.length()) {
+            val event = events.optJSONObject(index) ?: return null
+            val timestamp = event.opt("timestamp") as? String ?: return null
+            val recordedAt = try {
+                Instant.parse(timestamp)
+            } catch (_: DateTimeParseException) {
+                return null
+            }
+            if (!recordedAt.isBefore(cutoff)) retained.put(event)
+        }
+        return retained
+    }
+
+    fun retentionDays(context: Context): Int {
+        val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
+        val stored = try {
+            prefs.getInt(KEY_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+        } catch (_: ClassCastException) {
+            DEFAULT_RETENTION_DAYS
+        }
+        return normalizeRetentionDays(stored)
+    }
+
+    /**
+     * Prune on app use rather than running a background service solely to delete local history.
+     * Returns false when saved history is invalid; in that case the original value is untouched.
+     */
+    fun pruneExpired(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
+        return synchronized(this) { readAndPruneEvents(prefs, Instant.now()) != null }
+    }
+
+    private fun readAndPruneEvents(prefs: SharedPreferences, now: Instant): JSONArray? {
+        val serialized = try {
+            prefs.getString(KEY_EVENTS, "[]")
+        } catch (_: ClassCastException) {
+            return null
+        }
+        val original = parseStoredEvents(serialized) ?: return null
+        val retained = pruneExpiredEvents(serialized, now, try {
+            prefs.getInt(KEY_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
+        } catch (_: ClassCastException) {
+            DEFAULT_RETENTION_DAYS
+        }) ?: return null
+
+        if (retained.length() < original.length()) {
+            prefs.edit().putString(KEY_EVENTS, retained.toString()).apply()
+        }
+        return retained
+    }
+
     fun record(context: Context, packet: ByteArray, domain: String, action: String): RecordResult {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return RecordResult.DISABLED
         val normalizedDomain = domain.take(MAX_DOMAIN_LENGTH).lowercase()
         val attribution = resolveSocketOwner(context, packet)
         return synchronized(this) {
-            val current = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+            val current = readAndPruneEvents(prefs, Instant.now())
                 ?: return RecordResult.HISTORY_UNREADABLE
             val next = JSONArray()
             val start = maxOf(0, current.length() - (MAX_EVENTS - 1))
@@ -75,10 +149,10 @@ internal object LocalDnsEventHistory {
 
     fun read(context: Context, limit: Int = 30, catalog: List<TrackerSignature>? = null): List<String> {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+        val events = synchronized(this) { readAndPruneEvents(prefs, Instant.now()) }
             ?: return listOf(
-                "History is unreadable, oversized, or contains malformed records. Saved data was preserved; " +
-                    "clear it only to start a fresh local history."
+                "History is unreadable, oversized, or contains malformed records or timestamps. " +
+                    "Saved data was preserved; clear it only to start a fresh local history."
             )
         val result = mutableListOf<String>()
         val start = maxOf(0, events.length() - limit.coerceIn(1, MAX_EVENTS))
@@ -93,10 +167,10 @@ internal object LocalDnsEventHistory {
 
     fun readForExport(context: Context): List<AuditExportEvent> {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+        val events = synchronized(this) { readAndPruneEvents(prefs, Instant.now()) }
             ?: throw IOException(
-                "Stored DNS history is unreadable, oversized, or contains malformed records; export cancelled. " +
-                    "Existing saved data was preserved."
+                "Stored DNS history is unreadable, oversized, or contains malformed records or timestamps; " +
+                    "export cancelled. Existing saved data was preserved."
             )
         val result = ArrayList<AuditExportEvent>(events.length())
         for (index in 0 until events.length()) {
@@ -113,8 +187,10 @@ internal object LocalDnsEventHistory {
     }
 
     fun clear(context: Context) {
-        context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-            .edit().remove(KEY_EVENTS).apply()
+        val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
+        synchronized(this) {
+            prefs.edit().remove(KEY_EVENTS).apply()
+        }
     }
 
     private fun resolveSocketOwner(context: Context, packet: ByteArray): String {

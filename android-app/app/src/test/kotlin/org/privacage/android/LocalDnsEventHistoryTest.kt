@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Test
+import java.time.Duration
+import java.time.Instant
 
 class LocalDnsEventHistoryTest {
     @Test
@@ -29,6 +31,67 @@ class LocalDnsEventHistoryTest {
 
         assertNull(LocalDnsEventHistory.parseStoredEvents(oversized))
     }
+
+    @Test
+    fun retentionRemovesExpiredEventsAndKeepsTheExactCutoffBoundary() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val expired = event(now.minus(Duration.ofDays(8)).toString(), "expired.example")
+        val atCutoff = event(now.minus(Duration.ofDays(7)).toString(), "cutoff.example")
+        val recent = event(now.minus(Duration.ofDays(1)).toString(), "recent.example")
+
+        val retained = LocalDnsEventHistory.pruneExpiredEvents(events(expired, atCutoff, recent), now, 7)
+
+        assertNotNull(retained)
+        assertEquals(2, retained?.length())
+        assertEquals("cutoff.example", retained?.optJSONObject(0)?.optString("domain"))
+        assertEquals("recent.example", retained?.optJSONObject(1)?.optString("domain"))
+    }
+
+    @Test
+    fun retentionCanBeConfiguredForTwentyFourHours() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val yesterday = event(now.minus(Duration.ofHours(23)).toString(), "yesterday.example")
+        val older = event(now.minus(Duration.ofHours(25)).toString(), "older.example")
+
+        val retained = LocalDnsEventHistory.pruneExpiredEvents(events(yesterday, older), now, 1)
+
+        assertNotNull(retained)
+        assertEquals(1, retained?.length())
+        assertEquals("yesterday.example", retained?.optJSONObject(0)?.optString("domain"))
+    }
+
+    @Test
+    fun invalidStoredTimestampAbortsTheEntirePruneWithoutDroppingOtherRecords() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val expired = event(now.minus(Duration.ofDays(9)).toString(), "expired.example")
+        val invalid = event("not-an-instant", "invalid-time.example")
+        val stored = events(expired, invalid)
+
+        assertNull(LocalDnsEventHistory.pruneExpiredEvents(stored, now, 1))
+        assertEquals(2, LocalDnsEventHistory.parseStoredEvents(stored)?.length())
+    }
+
+    @Test
+    fun invalidRetentionValueFallsBackToTheSafeSevenDayDefault() {
+        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(0))
+        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(365))
+    }
+
+    @Test
+    fun futureDatedEventIsRetainedRatherThanSilentlyDiscarded() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val future = event(now.plus(Duration.ofDays(1)).toString(), "future.example")
+
+        val retained = LocalDnsEventHistory.pruneExpiredEvents(events(future), now, 7)
+
+        assertEquals(1, retained?.length())
+        assertEquals("future.example", retained?.optJSONObject(0)?.optString("domain"))
+    }
+
+    private fun event(timestamp: String, domain: String = "example.org"): String =
+        """{"timestamp":"$timestamp","domain":"$domain","action":"ALLOW","socket_owner":"Unknown"}"""
+
+    private fun events(vararg records: String): String = records.joinToString(",", "[", "]")
 
     @Test
     fun validStoredHistoryCanBeReadWithoutChangingItsRecordCount() {

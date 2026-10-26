@@ -15,7 +15,7 @@ The project should treat data minimization as a core security control. NIST's Pr
 |---|---|---|---|
 | Network flow metadata | Local encrypted/permission-protected database where feasible | Short rolling retention, user-configurable within safe bounds | Never sync by default; export only after preview |
 | Raw packets/payloads | Do not store | None | Prohibited by default |
-| DNS hostname history | Local only | Short rolling retention; optional user clearing | Export requires clear warning |
+| DNS hostname history | Local only | Android: 7-day default, configurable to 24 hours or 30 days; at most 100 events; pruned on next app use | Export requires clear warning |
 | App inventory/scan results | Local | Until user clears or replaces result | Do not transmit to fetch a label unless user opts in |
 | APK file | Temporary workspace | Delete after scan by default | Never upload as a default side effect |
 | Permission/consent history | Local | User-controlled; explain any append-only/tamper-evident behavior | Optional export |
@@ -23,7 +23,7 @@ The project should treat data minimization as a core security control. NIST's Pr
 | Crash diagnostics | Local minimal diagnostic state | Bounded | Opt-in export with redaction |
 | Community tracker DB | Public, versioned data | Versioned history | No user traffic needed to update it |
 
-Exact retention periods should be selected during implementation and validated against performance, storage and incident response needs. “Stored locally” is not enough: a shared device, malware, cloud backup or exported file can change the exposure model. State where the OS backs up the database and exclude sensitive logs from backups when the platform and threat model support doing so.
+For Android DNS hostname history, the policy is implemented: 7-day default with 24-hour, 7-day, and 30-day choices; at most 100 events; and pruning on app launch, recording, history refresh, or export. There is deliberately no background worker whose only purpose is deleting history, so expired rows are removed the next time the app is used. If any stored timestamp is malformed, the whole prune operation stops and preserves the saved list rather than partially deleting evidence. Other data categories still need their own explicit periods. “Stored locally” is not enough: a shared device, malware, cloud backup or exported file can change the exposure model. State where the OS backs up the database and exclude sensitive logs from backups when the platform and threat model support doing so.
 
 ## 3. Data minimization in event design
 

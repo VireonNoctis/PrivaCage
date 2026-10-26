@@ -100,6 +100,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val dnsHistoryMaintenanceSucceeded = LocalDnsEventHistory.pruneExpired(this)
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
         var trackerCatalogLoading = true
@@ -501,14 +502,59 @@ class MainActivity : Activity() {
         val dnsEventHistoryText = TextView(this).apply {
             textSize = 12f
             setPadding(0, dp(8), 0, dp(8))
-            text = "DNS event history is disabled. Enable it above to record hostnames."
+            text = when {
+                !dnsHistoryMaintenanceSucceeded ->
+                    "Saved DNS history could not be validated and was preserved. Refresh to inspect it, or clear it explicitly."
+                prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false) ->
+                    "Local DNS event history is enabled. Refresh to inspect recent records."
+                else -> "DNS event history is disabled. Enable it above to record hostnames."
+            }
         }
         root.addView(dnsEventHistoryText, matchWidth())
         root.addView(TextView(this).apply {
-            text = "Refresh compares recorded hostnames locally with the bundled domain-indicator catalogue. Matches are leads, not proof of personal-data collection; no match is not a safety verdict."
+            text = "History stays on this device, is capped at 100 events, and expires entries older than the selected retention when PrivaCage opens or accesses history. No background task runs solely for cleanup. Catalogue matches are leads, not proof of personal-data collection; no match is not a safety verdict."
             textSize = 12f
             setPadding(0, 0, 0, dp(6))
         }, matchWidth())
+
+        val dnsRetentionButton = Button(this).apply {
+            text = "Change DNS history retention (${LocalDnsEventHistory.retentionLabel(LocalDnsEventHistory.retentionDays(this@MainActivity))})"
+        }
+        dnsRetentionButton.setOnClickListener {
+            val options = LocalDnsEventHistory.RETENTION_OPTIONS_DAYS
+            val labels = options.map(LocalDnsEventHistory::retentionLabel).toTypedArray()
+            val selectedIndex = options.indexOf(LocalDnsEventHistory.retentionDays(this@MainActivity)).coerceAtLeast(0)
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("DNS history retention")
+                .setMessage(
+                    "Choose how long hostnames may be retained. Expired events are pruned when PrivaCage opens, " +
+                        "records an event, refreshes history, or exports it. No background process runs solely " +
+                        "for cleanup. If a stored timestamp is invalid, the complete history is preserved and " +
+                        "automatic cleanup stops until you review or clear it."
+                )
+                .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
+                    val days = options[which]
+                    prefs.edit().putInt(LocalDnsEventHistory.KEY_RETENTION_DAYS, days).apply()
+                    dnsRetentionButton.text = "Change DNS history retention (${LocalDnsEventHistory.retentionLabel(days)})"
+                    val historyValid = LocalDnsEventHistory.pruneExpired(this@MainActivity)
+                    dnsEventHistoryText.text = when {
+                        !historyValid ->
+                            "Retention updated, but saved DNS history is unreadable or has an invalid timestamp. Existing data was preserved; clear it only if you intend to discard it."
+                        prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false) ->
+                            LocalDnsEventHistory.read(
+                                this@MainActivity,
+                                catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null
+                            ).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
+                        else ->
+                            "Retention updated to ${LocalDnsEventHistory.retentionLabel(days)}. Recording is disabled; saved entries are not displayed while recording is off."
+                    }
+                    dialog.dismiss()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        root.addView(dnsRetentionButton, matchWidth())
+
         root.addView(Button(this).apply {
             text = "Refresh local DNS event history"
             setOnClickListener {
