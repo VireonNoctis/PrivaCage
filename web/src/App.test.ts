@@ -178,10 +178,11 @@ describe('PrivaCage web workspace', () => {
     expect(screen.getByText('EVENT CHAIN')).toBeInTheDocument();
     expect(verifyAuditCheckpoint).toHaveBeenCalledWith('valid checkpoint json');
 
+    expect(screen.getByText(/The embedded key alone does not establish who signed this file/i)).toBeInTheDocument();
     const fingerprint = screen.getByLabelText('Expected signer fingerprint (optional)');
     await fireEvent.input(fingerprint, { target: { value: 'a'.repeat(64) } });
     expect(screen.getByText(/Fingerprint matches the supplied value/i)).toBeInTheDocument();
-    expect(screen.getByText(/The embedded key alone does not establish who signed this file/i)).toBeInTheDocument();
+    expect(screen.getByText(/This establishes trust only if that expected value came from a trusted separate channel/i)).toBeInTheDocument();
   });
 
   it('surfaces checkpoint verification errors without displaying a valid result', async () => {
