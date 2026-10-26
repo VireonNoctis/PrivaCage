@@ -47,8 +47,18 @@ Build the static browser app with npm run build. Serve web/dist using a static w
 - **Overview:** live API reachability and real catalog summary, category distribution, workspace modules, and clear device-connection boundary.
 - **Tracker intelligence:** searchable/filterable evidence-linked catalog backed by the Rust API, with local JSON export and domain-copy actions.
 - **Activity log:** intentional empty state until a device event source is connected; no invented or sample events.
-- **Audit trail:** boundary-aware state until a device report is imported through a supported workflow.
+- **Audit trail:** locally verifies Android signed audit checkpoint JSON (signature, exact payload digest, schema, redaction claims, counters, and every event hash-chain link) without uploading the file.
 - **Platform boundaries:** accurate distinction between web catalog availability and platform-local controls.
 - **Settings:** motion preference, connection status, catalog version, and privacy posture.
 
 The dashboard's catalog counts describe source-backed database entries, not detected devices, live tracking, or blocked traffic. The Android adapter remains device-local and is not automatically connected to this web workspace.
+
+### Local audit checkpoint verification
+
+The audit screen accepts the Android export format `privacage-audit-checkpoint` schema v1 as a JSON file up to 2 MiB. Verification is performed entirely in the browser with Web Crypto: it validates the embedded P-256 signature, the SHA-256 digest over the exact UTF-8 payload string, strict JSON fields (including duplicate-key rejection), privacy-redaction claims, record accounting, and each SHA-256 event-chain link. The supported payload is capped at 100 records and 1 MiB.
+
+A successful result proves consistency with the public key embedded in that file; it does not identify a person, authenticate the key independently, prove a trusted timestamp, or demonstrate that the source recorded every event. The optional fingerprint field compares the embedded key's SHA-256 fingerprint to a value supplied through a separate trusted channel. The browser never displays event hostnames in the verification summary and does not modify the source file.
+
+The audit view can also compare two checkpoints entirely in the browser. Both files must independently verify and use the same signer-key fingerprint, date range, time zone, selected categories, and redaction settings. The comparison reports identical record-hash sequences, prefix/extension relationships, or divergence using hashes only; it does not display event hostnames or owner labels. It does not establish identity, trusted time, or event completeness.
+
+The verifier, schema checks, and checkpoint-comparison relationships are covered by `npm test`; the regular frontend validation workflow also runs `npm run check` and `npm run build`.

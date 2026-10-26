@@ -2623,7 +2623,6 @@ class MainActivity : Activity() {
                     ?: throw IOException("The selected checkpoint could not be opened.")
                 bytes = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
                 message = LocalAuditCheckpointSigner.verify(
-                    this,
                     String(bytes ?: throw IOException("Checkpoint bytes are missing."), StandardCharsets.UTF_8)
                 ).render()
             } catch (exception: Exception) {
