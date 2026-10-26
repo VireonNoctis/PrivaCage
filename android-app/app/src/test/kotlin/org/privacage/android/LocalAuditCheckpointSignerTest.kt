@@ -1,8 +1,10 @@
 package org.privacage.android
 
 import java.io.File
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,4 +43,31 @@ class LocalAuditCheckpointSignerTest {
         assertFalse(result.payloadHashValid)
         assertFalse(result.chainValid)
     }
+
+    @Test
+    fun rejectsDuplicateCheckpointKeysIncludingEscapedEquivalentKeys() {
+        val source = sharedCheckpoint()
+        val duplicateKey = source.replace(
+            "\"format\": \"privacage-audit-checkpoint\",",
+            "\"format\": \"privacage-audit-checkpoint\",\n  \"fo\\u0072mat\": \"privacage-audit-checkpoint\","
+        )
+
+        assertThrows(IOException::class.java) {
+            LocalAuditCheckpointSigner.verify(duplicateKey)
+        }
+    }
+
+    @Test
+    fun rejectsDuplicateKeysInsideTheEmbeddedPayloadBeforeDigestEvaluation() {
+        val source = sharedCheckpoint()
+        val payloadPrefix = """\"schema_version\":1,\"source\":"""
+        val duplicatePrefix = """\"schema_version\":1,\"schema_version\":1,\"source\":"""
+        val duplicatePayloadKey = source.replace(payloadPrefix, duplicatePrefix)
+
+        assertTrue("The test mutation must change the shared payload.", duplicatePayloadKey != source)
+        assertThrows(IOException::class.java) {
+            LocalAuditCheckpointSigner.verify(duplicatePayloadKey)
+        }
+    }
+
 }
