@@ -122,15 +122,18 @@ jobs:
     timeout-minutes: 90
     env:
       PERFORMANCE_BASELINE_SHA: 7649a85dede79c0decf33426655dc246f9c18cc6
-      PERFORMANCE_BASELINE_DIR: ${{ runner.temp }}/privacage-performance-baseline
-      PERFORMANCE_RESULTS_DIR: ${{ runner.temp }}/privacage-performance-results
-      CARGO_TARGET_DIR: ${{ runner.temp }}/privacage-cargo-target
     steps:
       - name: Check out PR head with full history
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Configure isolated performance directories
+        run: |
+          echo "PERFORMANCE_BASELINE_DIR=$RUNNER_TEMP/privacage-performance-baseline" >> "$GITHUB_ENV"
+          echo "PERFORMANCE_RESULTS_DIR=$RUNNER_TEMP/privacage-performance-results" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/privacage-cargo-target" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v4
