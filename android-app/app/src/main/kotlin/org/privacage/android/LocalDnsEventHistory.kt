@@ -31,7 +31,7 @@ internal object LocalDnsEventHistory {
 
     private const val MAX_EVENTS = 100
     private const val MAX_DOMAIN_LENGTH = 253
-    private const val MAX_STORED_HISTORY_CHARS = 256 * 1024
+    private const val MAX_STORED_HISTORY_BYTES = 256 * 1024
 
     enum class RecordResult {
         DISABLED,
@@ -45,7 +45,8 @@ internal object LocalDnsEventHistory {
      */
     internal fun parseStoredEvents(serialized: String?): JSONArray? {
         if (serialized == null) return JSONArray()
-        if (serialized.length > MAX_STORED_HISTORY_CHARS) return null
+        if (serialized.length > MAX_STORED_HISTORY_BYTES) return null
+        if (serialized.toByteArray(Charsets.UTF_8).size > MAX_STORED_HISTORY_BYTES) return null
         val events = try {
             JSONArray(serialized)
         } catch (_: JSONException) {

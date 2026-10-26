@@ -2,6 +2,7 @@ package org.privacage.android
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import java.time.Duration
@@ -92,6 +93,15 @@ class LocalDnsEventHistoryTest {
         """{"timestamp":"$timestamp","domain":"$domain","action":"ALLOW","socket_owner":"Unknown"}"""
 
     private fun events(vararg records: String): String = records.joinToString(",", "[", "]")
+
+    @Test
+    fun oversizedUtf8HistoryIsRejectedEvenBelowTheCharacterLimit() {
+        val oversized = "[\"" + "é".repeat(140_000) + "\"]"
+
+        assertTrue(oversized.length < 256 * 1024)
+        assertTrue(oversized.toByteArray(Charsets.UTF_8).size > 256 * 1024)
+        assertNull(LocalDnsEventHistory.parseStoredEvents(oversized))
+    }
 
     @Test
     fun validStoredHistoryCanBeReadWithoutChangingItsRecordCount() {

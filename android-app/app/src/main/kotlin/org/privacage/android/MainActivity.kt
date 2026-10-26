@@ -488,7 +488,7 @@ class MainActivity : Activity() {
         root.addView(dnsDiagnosticText, matchWidth())
 
         root.addView(CheckBox(this).apply {
-            text = "Enable local DNS event history (saves queried hostnames on this device)"
+            text = "Enable local DNS event history (saves queried hostnames and best-effort socket-owner labels on this device)"
             isChecked = prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)
             setOnCheckedChangeListener { _, checked ->
                 prefs.edit().putBoolean(LocalDnsEventHistory.KEY_ENABLED, checked).apply()
