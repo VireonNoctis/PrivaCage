@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { verifyAuditCheckpoint } from './audit-checkpoint';
+
+const sharedCheckpointVector = readFileSync(
+  new URL('../../../shared/audit/test-vectors/checkpoint-v1.json', import.meta.url),
+  'utf8'
+);
 
 const cryptoProvider = webcrypto as unknown as Crypto;
 const encoder = new TextEncoder();
@@ -169,6 +175,18 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
 }
 
 describe('local signed audit checkpoint verifier', () => {
+  it('verifies the shared checkpoint vector also consumed by the Rust verifier', async () => {
+    const report = await verifyAuditCheckpoint(sharedCheckpointVector, cryptoProvider);
+
+    expect(report.signatureValid).toBe(true);
+    expect(report.payloadHashValid).toBe(true);
+    expect(report.chainValid).toBe(true);
+    expect(report.createdAt).toBe('2026-10-24T10:01:00Z');
+    expect(report.eventCount).toBe(1);
+    expect(report.chainHeadSha256).toBe('ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb');
+    expect(report.signerPublicKeySha256).toBe('11086649cd3e5d1892200a4200b165bbea5c9f9b47ca83792d4f9a1ef0dc8921');
+  });
+
   it('verifies a valid Android-format P-256 checkpoint and event chain', async () => {
     const checkpoint = await createCheckpoint();
 
