@@ -14,6 +14,12 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.all {
+            it.systemProperty("privacage.repo-root", rootProject.projectDir.parentFile.absolutePath)
+        }
+    }
+
     defaultConfig {
         applicationId = "org.privacage.android"
         minSdk = 26
