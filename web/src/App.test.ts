@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.svelte';
 import { fetchCapabilities, fetchCatalogSummary, fetchHealth, fetchTrackerCatalog } from './lib/api';
+import { verifyAuditCheckpoint } from './lib/audit-checkpoint';
 import type { CatalogSummary, HealthResponse, TrackerCatalog } from './lib/types';
 
 vi.mock('./lib/api', () => ({
@@ -11,6 +12,10 @@ vi.mock('./lib/api', () => ({
   fetchCatalogSummary: vi.fn(),
   fetchHealth: vi.fn(),
   fetchTrackerCatalog: vi.fn()
+}));
+
+vi.mock('./lib/audit-checkpoint', () => ({
+  verifyAuditCheckpoint: vi.fn()
 }));
 
 const health: HealthResponse = {
@@ -82,6 +87,7 @@ beforeEach(() => {
       dispatchEvent: vi.fn()
     }))
   });
+  vi.mocked(verifyAuditCheckpoint).mockReset();
   vi.mocked(fetchHealth).mockResolvedValue(health);
   vi.mocked(fetchCatalogSummary).mockResolvedValue(summary);
   vi.mocked(fetchTrackerCatalog).mockResolvedValue(catalog);
@@ -132,5 +138,72 @@ describe('PrivaCage web workspace', () => {
       expect(screen.getByText('Microsoft Clarity collection endpoint')).toBeInTheDocument();
       expect(screen.queryByText('Google Analytics collection endpoint')).not.toBeInTheDocument();
     });
+  });
+
+
+  it('verifies an explicitly selected checkpoint locally and offers an independent fingerprint comparison', async () => {
+    vi.mocked(verifyAuditCheckpoint).mockResolvedValue({
+      createdAt: '2026-10-26T12:00:00Z',
+      signerPublicKeySha256: 'a'.repeat(64),
+      eventCount: 1,
+      chainHeadSha256: 'b'.repeat(64),
+      payloadSha256: 'c'.repeat(64),
+      generatedAt: '2026-10-26T12:00:00Z',
+      filterTimezone: 'UTC',
+      startDate: '2026-10-25',
+      endDate: '2026-10-25',
+      selectedCategories: ['BLOCKED'],
+      redactions: { queriedHostnames: true, socketOwnerLabels: true },
+      signatureValid: true,
+      payloadHashValid: true,
+      chainValid: true
+    });
+
+    render(App);
+    await screen.findByRole('heading', { name: /Privacy, made visible/i });
+    await fireEvent.click(screen.getByRole('link', { name: 'Local audit evidence' }));
+    await screen.findByRole('heading', { name: /Evidence with/i });
+
+    const input = screen.getByLabelText('Choose signed audit checkpoint JSON file');
+    const file = new File(['valid checkpoint json'], 'audit-checkpoint.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue('valid checkpoint json')
+    });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    await fireEvent.change(input);
+
+    expect(await screen.findByRole('heading', { name: 'Checkpoint verified locally' })).toBeInTheDocument();
+    expect(screen.getByText('PAYLOAD DIGEST')).toBeInTheDocument();
+    expect(screen.getByText('EVENT CHAIN')).toBeInTheDocument();
+    expect(verifyAuditCheckpoint).toHaveBeenCalledWith('valid checkpoint json');
+
+    const fingerprint = screen.getByLabelText('Expected signer fingerprint (optional)');
+    await fireEvent.input(fingerprint, { target: { value: 'a'.repeat(64) } });
+    expect(screen.getByText(/Fingerprint matches the supplied value/i)).toBeInTheDocument();
+    expect(screen.getByText(/The embedded key alone does not establish who signed this file/i)).toBeInTheDocument();
+  });
+
+  it('surfaces checkpoint verification errors without displaying a valid result', async () => {
+    vi.mocked(verifyAuditCheckpoint).mockRejectedValue(
+      new Error('Checkpoint signature does not validate against its embedded P-256 public key.')
+    );
+
+    render(App);
+    await screen.findByRole('heading', { name: /Privacy, made visible/i });
+    await fireEvent.click(screen.getByRole('link', { name: 'Local audit evidence' }));
+    await screen.findByRole('heading', { name: /Evidence with/i });
+
+    const input = screen.getByLabelText('Choose signed audit checkpoint JSON file');
+    const file = new File(['bad checkpoint'], 'invalid.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue('bad checkpoint')
+    });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    await fireEvent.change(input);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Verification failed');
+    expect(screen.queryByRole('heading', { name: 'Checkpoint verified locally' })).not.toBeInTheDocument();
   });
 });
