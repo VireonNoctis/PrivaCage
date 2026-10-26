@@ -49,7 +49,7 @@ internal data class DnsHistoryDomainClassification(
                 appendLine()
             }
             if (matches.size > maxMatches) {
-                appendLine("Additional catalogue matches omitted from this view: ").append(matches.size - maxMatches)
+                append("Additional catalogue matches omitted from this view: ").append(matches.size - maxMatches).appendLine()
             }
             append("A domain match does not identify the initiating app or prove what data was sent.")
         }
