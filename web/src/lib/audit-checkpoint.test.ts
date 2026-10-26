@@ -28,7 +28,9 @@ function asArrayBuffer(value: Uint8Array): ArrayBuffer {
 }
 
 function base64(bytes: Uint8Array | ArrayBuffer): string {
-  const value = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
+  const value: Uint8Array = ArrayBuffer.isView(bytes)
+    ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    : new Uint8Array(bytes as ArrayBuffer);
   let binary = '';
   for (const byte of value) binary += String.fromCharCode(byte);
   return btoa(binary);
