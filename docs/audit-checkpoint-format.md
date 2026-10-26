@@ -10,7 +10,7 @@ A valid file proves only that the embedded public key signed the stated payload 
 
 ## Envelope fields
 
-The JSON object has exactly these fields; unknown and duplicate fields are rejected by the portable verifier.
+The JSON object has exactly these fields; unknown fields and duplicate object keys are rejected by the Android, Rust, and Web verifiers. Android checks raw JSON before passing it to `JSONObject`, including duplicate keys whose escape sequences decode to the same key.
 
 | Field | Type | Requirement |
 |---|---|---|
