@@ -3,7 +3,7 @@ package org.privacage.android
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
+import java.util.Base64
 import org.json.JSONObject
 import org.privacage.audit.AuditChainRecord
 import org.privacage.audit.AuditIntegrityChain
@@ -110,12 +110,12 @@ internal object LocalAuditCheckpointSigner {
                 .put("schema_version", AuditIntegrityChain.CHECKPOINT_SCHEMA_VERSION)
                 .put("signature_algorithm", AuditIntegrityChain.CHECKPOINT_SIGNATURE_ALGORITHM)
                 .put("created_at", createdAtText)
-                .put("signer_public_key_x509_base64", Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP))
+                .put("signer_public_key_x509_base64", Base64.getEncoder().encodeToString(keyPair.public.encoded))
                 .put("signer_public_key_sha256", publicKeySha256)
                 .put("payload_sha256", payloadSha256)
                 .put("chain_head_sha256", chainHeadSha256)
                 .put("event_count", eventCount)
-                .put("signature_base64", Base64.encodeToString(signatureBytes, Base64.NO_WRAP))
+                .put("signature_base64", Base64.getEncoder().encodeToString(signatureBytes))
                 .put("payload_json", payloadJson)
             val checkpointJson = envelope.toString(2) + "\n"
             val checkpointBytes = checkpointJson.toByteArray(StandardCharsets.UTF_8)
@@ -139,7 +139,7 @@ internal object LocalAuditCheckpointSigner {
         }
     }
 
-    fun verify(context: Context, checkpointJson: String): AuditCheckpointVerification {
+    fun verify(checkpointJson: String): AuditCheckpointVerification {
         if (checkpointJson.length > MAX_CHECKPOINT_BYTES) {
             throw IOException("The selected checkpoint exceeds the 2 MiB size limit.")
         }
@@ -187,7 +187,7 @@ internal object LocalAuditCheckpointSigner {
         if (publicKeyBase64.length > 512) throw IOException("The checkpoint public key exceeds the size limit.")
         if (signatureBase64.length > 256) throw IOException("The checkpoint signature exceeds the size limit.")
         val publicKeyBytes = try {
-            Base64.decode(publicKeyBase64, Base64.NO_WRAP)
+            Base64.getDecoder().decode(publicKeyBase64)
         } catch (exception: Exception) {
             throw IOException("The checkpoint public key is not valid Base64.", exception)
         }
