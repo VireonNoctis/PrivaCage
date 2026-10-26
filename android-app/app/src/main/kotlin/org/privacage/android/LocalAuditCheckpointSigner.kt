@@ -67,7 +67,7 @@ internal object LocalAuditCheckpointSigner {
     private const val MAX_PAYLOAD_BYTES = 1024 * 1024
     private const val MAX_EVENT_COUNT = 100
     private const val MAX_JSON_NESTING = 64
-    private val JSON_NUMBER = Regex("""-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?""")
+    private val JSON_NUMBER = Regex("""-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?""")
 
     private val envelopeKeys = setOf(
         "format", "schema_version", "signature_algorithm", "created_at",
@@ -543,11 +543,11 @@ internal object LocalAuditCheckpointSigner {
                         if (cursor >= source.length) malformed()
                         when (val escaped = source[cursor++]) {
                             '"', '\\', '/' -> decoded.append(escaped)
-                            'b' -> decoded.append('\\b')
-                            'f' -> decoded.append('\\u000c')
-                            'n' -> decoded.append('\\n')
-                            'r' -> decoded.append('\\r')
-                            't' -> decoded.append('\\t')
+                            'b' -> decoded.append('\b')
+                            'f' -> decoded.append('\u000c')
+                            'n' -> decoded.append('\n')
+                            'r' -> decoded.append('\r')
+                            't' -> decoded.append('\t')
                             'u' -> {
                                 if (cursor + 4 > source.length) malformed()
                                 val hex = source.substring(cursor, cursor + 4)
@@ -569,7 +569,7 @@ internal object LocalAuditCheckpointSigner {
             val start = cursor
             while (cursor < source.length &&
                 source[cursor] !in charArrayOf(',', ']', '}') &&
-                source[cursor] !in charArrayOf(' ', '\\n', '\\r', '\\t')
+                source[cursor] !in charArrayOf(' ', '\n', '\r', '\t')
             ) {
                 cursor += 1
             }
@@ -583,7 +583,7 @@ internal object LocalAuditCheckpointSigner {
         }
 
         private fun skipWhitespace() {
-            while (cursor < source.length && source[cursor] in charArrayOf(' ', '\\n', '\\r', '\\t')) {
+            while (cursor < source.length && source[cursor] in charArrayOf(' ', '\n', '\r', '\t')) {
                 cursor += 1
             }
         }
