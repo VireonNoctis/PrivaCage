@@ -488,7 +488,7 @@ internal object LocalAuditCheckpointSigner {
         }
 
         private fun parseValue(depth: Int) {
-            if (depth > MAX_JSON_NESTING) throw IOException("JSON nesting exceeds the supported limit.")
+            if (depth > LocalAuditCheckpointSigner.MAX_JSON_NESTING) throw IOException("JSON nesting exceeds the supported limit.")
             skipWhitespace()
             if (cursor >= source.length) malformed()
             when (source[cursor]) {
@@ -581,7 +581,7 @@ internal object LocalAuditCheckpointSigner {
             if (cursor == start) malformed()
             val token = source.substring(start, cursor)
             if (token != "true" && token != "false" && token != "null" &&
-                !JSON_NUMBER.matches(token)
+                !LocalAuditCheckpointSigner.JSON_NUMBER.matches(token)
             ) {
                 malformed()
             }
