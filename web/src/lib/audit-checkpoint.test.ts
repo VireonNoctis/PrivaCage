@@ -21,6 +21,12 @@ function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function asArrayBuffer(value: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
+}
+
 function base64(bytes: Uint8Array | ArrayBuffer): string {
   const value = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
   let binary = '';
@@ -29,14 +35,16 @@ function base64(bytes: Uint8Array | ArrayBuffer): string {
 }
 
 async function sha256(value: Uint8Array): Promise<string> {
-  return hex(new Uint8Array(await cryptoProvider.subtle.digest('SHA-256', value)));
+  return hex(new Uint8Array(await cryptoProvider.subtle.digest('SHA-256', asArrayBuffer(value))));
 }
 
 function encodeDerInteger(input: Uint8Array): Uint8Array {
   let firstNonZero = 0;
   while (firstNonZero < input.length - 1 && input[firstNonZero] === 0) firstNonZero += 1;
-  let value = input.slice(firstNonZero);
-  if ((value[0] & 0x80) !== 0) value = concatBytes(new Uint8Array([0]), value);
+  const strippedValue = input.slice(firstNonZero);
+  const value: Uint8Array = (strippedValue[0] & 0x80) !== 0
+    ? concatBytes(new Uint8Array([0]), strippedValue)
+    : strippedValue;
   return concatBytes(new Uint8Array([0x02, value.length]), value);
 }
 
@@ -139,7 +147,7 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
   const rawSignature = new Uint8Array(await cryptoProvider.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     keyPair.privateKey,
-    signingBytes(createdAt, payloadSha256, recordHash, 1, signerFingerprint)
+    asArrayBuffer(signingBytes(createdAt, payloadSha256, recordHash, 1, signerFingerprint))
   ));
   const signatureDer = rawEcdsaToDer(rawSignature);
 
