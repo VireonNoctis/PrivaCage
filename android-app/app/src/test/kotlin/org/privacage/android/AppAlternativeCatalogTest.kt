@@ -39,7 +39,7 @@ class AppAlternativeCatalogTest {
 
     @Test
     fun rejectsInvalidExpectedPackageNames() {
-        assertFails(entry().replace("ch.protonmail.android", "ch/protonmail/android"), "valid dotted Android package name")
+        assertFails(document().replace("ch.protonmail.android", "ch/protonmail/android"), "valid dotted Android package name")
     }
 
     @Test
