@@ -21,6 +21,13 @@ function hex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function base64(bytes: Uint8Array | ArrayBuffer): string {
+  const value = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
+  let binary = '';
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 async function sha256(value: Uint8Array): Promise<string> {
   return hex(new Uint8Array(await cryptoProvider.subtle.digest('SHA-256', value)));
 }
@@ -141,12 +148,12 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
     schema_version: 1,
     signature_algorithm: 'SHA256withECDSA',
     created_at: createdAt,
-    signer_public_key_x509_base64: Buffer.from(publicKey).toString('base64'),
+    signer_public_key_x509_base64: base64(publicKey),
     signer_public_key_sha256: signerFingerprint,
     payload_sha256: payloadSha256,
     chain_head_sha256: recordHash,
     event_count: 1,
-    signature_base64: Buffer.from(signatureDer).toString('base64'),
+    signature_base64: base64(signatureDer),
     payload_json: payloadJson
   });
 }
