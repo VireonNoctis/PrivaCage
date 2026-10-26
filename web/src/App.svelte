@@ -595,7 +595,7 @@
             <span class="audit-feature-glyph">◈</span>
             <h2>Signed checkpoints</h2>
             <p>Checks the embedded P-256 signature, payload digest, strict schema and every event hash-chain link.</p>
-            <span class="status-label status-label--available">Local verification available</span>
+            <span class="status-label status-label--active">Local verification available</span>
           </article>
         </section>
         <section class="audit-import-panel">
@@ -635,7 +635,7 @@
                 <h2 id="audit-report-title">Checkpoint verified locally</h2>
                 <p>{auditFileName}</p>
               </div>
-              <span class="status-label status-label--available">All checks passed</span>
+              <span class="status-label status-label--active">All checks passed</span>
             </div>
             <div class="audit-report-grid">
               <article class="audit-report-stat">
