@@ -567,10 +567,15 @@ internal object LocalAuditCheckpointSigner {
 
         private fun parsePrimitive() {
             val start = cursor
-            while (cursor < source.length &&
-                source[cursor] !in charArrayOf(',', ']', '}') &&
-                source[cursor] !in charArrayOf(' ', '\n', '\r', '\t')
-            ) {
+            while (cursor < source.length) {
+                val character = source[cursor]
+                if (
+                    character == ',' || character == ']' || character == '}' ||
+                    character == ' ' || character == '\n' ||
+                    character == '\r' || character == '\t'
+                ) {
+                    break
+                }
                 cursor += 1
             }
             if (cursor == start) malformed()
@@ -583,11 +588,13 @@ internal object LocalAuditCheckpointSigner {
         }
 
         private fun skipWhitespace() {
-            while (cursor < source.length && source[cursor] in charArrayOf(' ', '\n', '\r', '\t')) {
-                cursor += 1
+            while (cursor < source.length) {
+                when (source[cursor]) {
+                    ' ', '\n', '\r', '\t' -> cursor += 1
+                    else -> return
+                }
             }
         }
-
         private fun expect(expected: Char) {
             if (!take(expected)) malformed()
         }
