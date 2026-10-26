@@ -21,7 +21,8 @@ This library is deliberately not a claim that every described capability is alre
 12. [Roadmap](12-roadmap.md) — ranked implementation plan and explicit blockers.
 13. [Verification plan](13-verification-plan.md) — tests, evidence requirements, acceptance criteria, and adversarial review.
 14. [Assumption audit](14-assumption-audit.md) — high-impact claims in the initial idea that need rewording or gating.
-15. [Sources](SOURCES.md) — annotated source register with stable links.
+15. [Android local-history encryption](15-android-local-history-encryption.md) — encrypted DNS-history storage, migration behavior, failure cases, and the device-validation checklist.
+16. [Sources](SOURCES.md) — annotated source register with stable links.
 
 ## Evidence labels
 
