@@ -15,7 +15,7 @@ The Rust API exposes:
 - `GET /api/v1/summary` — derives record/status/category counts from that catalogue.
 - `GET /api/v1/capabilities` — identifies which web workspace surfaces are available, platform-local, or not connected.
 
-Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history and audit files remain device-local; web pairing, event ingestion, and audit-file verification are not connected in this initial web implementation.
+Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history remains device-local. The web client does not pair with devices or ingest live events, but it can locally verify and compare signed checkpoint files that the user explicitly selects; those files are processed in the browser and are not uploaded by the verifier.
 
 The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
