@@ -789,3 +789,162 @@ export async function verifyAuditCheckpoint(
     chainValid: true
   };
 }
+
+
+export type AuditCheckpointRelationship =
+  | 'same-chain'
+  | 'first-is-prefix'
+  | 'second-is-prefix'
+  | 'diverged';
+
+export interface AuditCheckpointComparisonReport {
+  first: Pick<AuditCheckpointReport, 'createdAt' | 'eventCount' | 'payloadSha256' | 'chainHeadSha256'>;
+  second: Pick<AuditCheckpointReport, 'createdAt' | 'eventCount' | 'payloadSha256' | 'chainHeadSha256'>;
+  relationship: AuditCheckpointRelationship;
+  sharedPrefixEvents: number;
+  firstEventsAfterSharedPrefix: number;
+  secondEventsAfterSharedPrefix: number;
+}
+
+async function verifiedEventHashes(
+  checkpointText: string,
+  report: AuditCheckpointReport
+): Promise<string[]> {
+  // This is called only after verifyAuditCheckpoint has accepted the exact file.
+  // Reuse the verifier's strict parser rather than JSON.parse's duplicate-key behavior.
+  const envelope = objectWithKeys(
+    parseStrictJson(checkpointText, 'Checkpoint'),
+    [
+      'format',
+      'schema_version',
+      'signature_algorithm',
+      'created_at',
+      'signer_public_key_x509_base64',
+      'signer_public_key_sha256',
+      'payload_sha256',
+      'chain_head_sha256',
+      'event_count',
+      'signature_base64',
+      'payload_json'
+    ],
+    'Checkpoint'
+  );
+  const payloadJson = stringField(envelope, 'payload_json', 'Checkpoint', MAX_PAYLOAD_BYTES);
+  const payload = objectWithKeys(
+    parseStrictJson(payloadJson, 'Embedded audit payload'),
+    [
+      'schema_version',
+      'source',
+      'generated_at',
+      'filter_timezone',
+      'date_range',
+      'selected_categories',
+      'integrity',
+      'redactions',
+      'records_read',
+      'records_skipped_invalid',
+      'records_excluded_by_filters',
+      'event_count',
+      'events'
+    ],
+    'Audit payload'
+  );
+
+  if (!Array.isArray(payload.events) || payload.events.length !== report.eventCount) {
+    fail('Verified checkpoint event list changed while preparing the comparison.');
+  }
+
+  return payload.events.map((value, index) => {
+    const event = objectWithKeys(
+      value,
+      [
+        'timestamp',
+        'local_date',
+        'category',
+        'queried_hostname',
+        'socket_owner_label',
+        'previous_record_sha256',
+        'record_sha256'
+      ],
+      'Audit event ' + (index + 1)
+    );
+    const digest = stringField(event, 'record_sha256', 'Audit event', 64);
+    assertDigest(digest, 'Audit event record SHA-256');
+    return digest;
+  });
+}
+
+/**
+ * Compare two independently verified checkpoints without exposing event details.
+ * Chain continuity is only compared when the signer key and export scope match.
+ */
+export async function compareAuditCheckpoints(
+  firstText: string,
+  secondText: string,
+  cryptoProvider: Crypto = globalThis.crypto
+): Promise<AuditCheckpointComparisonReport> {
+  const [first, second] = await Promise.all([
+    verifyAuditCheckpoint(firstText, cryptoProvider),
+    verifyAuditCheckpoint(secondText, cryptoProvider)
+  ]);
+
+  if (first.signerPublicKeySha256 !== second.signerPublicKeySha256) {
+    fail('These checkpoints use different signer public keys. Chain continuity cannot be compared across them.');
+  }
+
+  const sameScope =
+    first.filterTimezone === second.filterTimezone &&
+    first.startDate === second.startDate &&
+    first.endDate === second.endDate &&
+    JSON.stringify(first.selectedCategories) === JSON.stringify(second.selectedCategories) &&
+    first.redactions.queriedHostnames === second.redactions.queriedHostnames &&
+    first.redactions.socketOwnerLabels === second.redactions.socketOwnerLabels;
+
+  if (!sameScope) {
+    fail('These checkpoints use different filter periods, time zones, categories, or redaction settings. Select matching export scopes.');
+  }
+
+  const [firstHashes, secondHashes] = await Promise.all([
+    verifiedEventHashes(firstText, first),
+    verifiedEventHashes(secondText, second)
+  ]);
+
+  let sharedPrefixEvents = 0;
+  while (
+    sharedPrefixEvents < firstHashes.length &&
+    sharedPrefixEvents < secondHashes.length &&
+    firstHashes[sharedPrefixEvents] === secondHashes[sharedPrefixEvents]
+  ) {
+    sharedPrefixEvents += 1;
+  }
+
+  let relationship: AuditCheckpointRelationship;
+  if (sharedPrefixEvents === firstHashes.length && sharedPrefixEvents === secondHashes.length) {
+    relationship = 'same-chain';
+  } else if (sharedPrefixEvents === firstHashes.length) {
+    relationship = 'first-is-prefix';
+  } else if (sharedPrefixEvents === secondHashes.length) {
+    relationship = 'second-is-prefix';
+  } else {
+    relationship = 'diverged';
+  }
+
+  return {
+    first: {
+      createdAt: first.createdAt,
+      eventCount: first.eventCount,
+      payloadSha256: first.payloadSha256,
+      chainHeadSha256: first.chainHeadSha256
+    },
+    second: {
+      createdAt: second.createdAt,
+      eventCount: second.eventCount,
+      payloadSha256: second.payloadSha256,
+      chainHeadSha256: second.chainHeadSha256
+    },
+    relationship,
+    sharedPrefixEvents,
+    firstEventsAfterSharedPrefix: firstHashes.length - sharedPrefixEvents,
+    secondEventsAfterSharedPrefix: secondHashes.length - sharedPrefixEvents
+  };
+}
