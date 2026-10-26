@@ -1,6 +1,6 @@
 # 15 — Android Local DNS History Encryption
 
-**Status:** Implemented in the Android codebase. The Android privacy-suite unit tests passed on 26 October 2026; the full Android app/JNI build and emulator performance workflow was still running when this note was written. Physical-device Keystore lifecycle testing remains outstanding.
+**Status:** Implemented in the Android codebase. On commit `ee4e7c617da4745016d8ec94ddef5bfe47c71170`, the Android privacy-suite tests and shared-data validation passed, and the full Android app/DNS workflow passed both Rust JNI builds, debug APK packaging, DNS core tests, app unit tests, Go privacy baseline validation, and inspection of the bundled tracker and app-alternative catalogs. See [privacy-suite CI](https://github.com/VireonNoctis/PrivaCage/actions/runs/40308297192) and [full Android build CI](https://github.com/VireonNoctis/PrivaCage/actions/runs/40308297064). The emulator performance comparison was still running when this note was updated. Physical-device Keystore lifecycle testing remains outstanding.
 
 ## Purpose and threat boundary
 
