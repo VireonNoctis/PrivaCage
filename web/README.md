@@ -59,4 +59,6 @@ The audit screen accepts the Android export format `privacage-audit-checkpoint` 
 
 A successful result proves consistency with the public key embedded in that file; it does not identify a person, authenticate the key independently, prove a trusted timestamp, or demonstrate that the source recorded every event. The optional fingerprint field compares the embedded key's SHA-256 fingerprint to a value supplied through a separate trusted channel. The browser never displays event hostnames in the verification summary and does not modify the source file.
 
-The verifier and its schema checks are covered by `npm test`; the regular frontend validation workflow also runs `npm run check` and `npm run build`.
+The audit view can also compare two checkpoints entirely in the browser. Both files must independently verify and use the same signer-key fingerprint, date range, time zone, selected categories, and redaction settings. The comparison reports identical record-hash sequences, prefix/extension relationships, or divergence using hashes only; it does not display event hostnames or owner labels. It does not establish identity, trusted time, or event completeness.
+
+The verifier, schema checks, and checkpoint-comparison relationships are covered by `npm test`; the regular frontend validation workflow also runs `npm run check` and `npm run build`.
