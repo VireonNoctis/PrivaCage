@@ -628,6 +628,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_the_same_payload_mutation_as_android_and_web() {
+        let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1.json")
+            .replace("[REDACTED]", "private.example");
+        let error = verify_checkpoint_json(&checkpoint)
+            .expect_err("modified shared payload must fail verification");
+        assert!(error.to_string().contains("payload SHA-256"));
+    }
+
+    #[test]
     fn accepts_a_valid_signed_checkpoint() {
         let result = verify_checkpoint_json(&valid_checkpoint()).expect("checkpoint must verify");
         assert_eq!(result.event_count, 1);
