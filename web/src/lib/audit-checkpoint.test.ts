@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { verifyAuditCheckpoint } from './audit-checkpoint';
 
 const sharedCheckpointVector = readFileSync(
-  new URL('../../../shared/audit/test-vectors/checkpoint-v1.json', import.meta.url),
+  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1.json'),
   'utf8'
 );
 
