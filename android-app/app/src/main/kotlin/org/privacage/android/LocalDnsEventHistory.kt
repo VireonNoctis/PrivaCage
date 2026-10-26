@@ -24,6 +24,7 @@ internal object LocalDnsEventHistory {
     const val KEY_EVENTS = "dns_event_history_json"
     private const val MAX_EVENTS = 100
     private const val MAX_DOMAIN_LENGTH = 253
+    private const val MAX_STORED_HISTORY_CHARS = 256 * 1024
 
     enum class RecordResult {
         DISABLED,
@@ -37,6 +38,7 @@ internal object LocalDnsEventHistory {
      */
     internal fun parseStoredEvents(serialized: String?): JSONArray? {
         if (serialized == null) return JSONArray()
+        if (serialized.length > MAX_STORED_HISTORY_CHARS) return null
         val events = try {
             JSONArray(serialized)
         } catch (_: JSONException) {
@@ -75,7 +77,7 @@ internal object LocalDnsEventHistory {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
             ?: return listOf(
-                "History is unreadable or contains malformed records. Saved data was preserved; " +
+                "History is unreadable, oversized, or contains malformed records. Saved data was preserved; " +
                     "clear it only to start a fresh local history."
             )
         val result = mutableListOf<String>()
@@ -93,7 +95,7 @@ internal object LocalDnsEventHistory {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
             ?: throw IOException(
-                "Stored DNS history is unreadable or contains malformed records; export cancelled. " +
+                "Stored DNS history is unreadable, oversized, or contains malformed records; export cancelled. " +
                     "Existing saved data was preserved."
             )
         val result = ArrayList<AuditExportEvent>(events.length())
