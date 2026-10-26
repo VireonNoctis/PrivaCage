@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Process
 import android.system.OsConstants
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import org.privacage.audit.AuditExportEvent
 import java.io.IOException
@@ -24,17 +25,37 @@ internal object LocalDnsEventHistory {
     private const val MAX_EVENTS = 100
     private const val MAX_DOMAIN_LENGTH = 253
 
-    fun record(context: Context, packet: ByteArray, domain: String, action: String) {
+    enum class RecordResult {
+        DISABLED,
+        RECORDED,
+        HISTORY_UNREADABLE
+    }
+
+    /**
+     * Parse history without silently dropping malformed records. A null result means that saved
+     * evidence must be preserved for the user to inspect or explicitly clear.
+     */
+    internal fun parseStoredEvents(serialized: String?): JSONArray? {
+        if (serialized == null) return JSONArray()
+        val events = try {
+            JSONArray(serialized)
+        } catch (_: JSONException) {
+            return null
+        }
+        for (index in 0 until events.length()) {
+            if (events.optJSONObject(index) == null) return null
+        }
+        return events
+    }
+
+    fun record(context: Context, packet: ByteArray, domain: String, action: String): RecordResult {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_ENABLED, false)) return
+        if (!prefs.getBoolean(KEY_ENABLED, false)) return RecordResult.DISABLED
         val normalizedDomain = domain.take(MAX_DOMAIN_LENGTH).lowercase()
         val attribution = resolveSocketOwner(context, packet)
-        synchronized(this) {
-            val current = try {
-                JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
-            } catch (_: Exception) {
-                JSONArray()
-            }
+        return synchronized(this) {
+            val current = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+                ?: return RecordResult.HISTORY_UNREADABLE
             val next = JSONArray()
             val start = maxOf(0, current.length() - (MAX_EVENTS - 1))
             for (index in start until current.length()) {
@@ -46,16 +67,17 @@ internal object LocalDnsEventHistory {
                 .put("action", action)
                 .put("socket_owner", attribution))
             prefs.edit().putString(KEY_EVENTS, next.toString()).apply()
+            RecordResult.RECORDED
         }
     }
 
     fun read(context: Context, limit: Int = 30, catalog: List<TrackerSignature>? = null): List<String> {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        val events = try {
-            JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
-        } catch (_: Exception) {
-            return listOf("History is unreadable; clear it to start a fresh local history.")
-        }
+        val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+            ?: return listOf(
+                "History is unreadable or contains malformed records. Saved data was preserved; " +
+                    "clear it only to start a fresh local history."
+            )
         val result = mutableListOf<String>()
         val start = maxOf(0, events.length() - limit.coerceIn(1, MAX_EVENTS))
         for (index in events.length() - 1 downTo start) {
@@ -69,11 +91,11 @@ internal object LocalDnsEventHistory {
 
     fun readForExport(context: Context): List<AuditExportEvent> {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        val events = try {
-            JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
-        } catch (exception: Exception) {
-            throw IOException("Stored DNS history is unreadable; export cancelled instead of silently omitting events.", exception)
-        }
+        val events = parseStoredEvents(prefs.getString(KEY_EVENTS, "[]"))
+            ?: throw IOException(
+                "Stored DNS history is unreadable or contains malformed records; export cancelled. " +
+                    "Existing saved data was preserved."
+            )
         val result = ArrayList<AuditExportEvent>(events.length())
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index)
