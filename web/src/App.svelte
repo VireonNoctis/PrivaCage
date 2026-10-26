@@ -601,7 +601,7 @@
         <section class="audit-import-panel">
           <div class="section-kicker">IMPORT / 01</div>
           <h2>Verify a checkpoint</h2>
-          <p>Select a signed checkpoint JSON exported by PrivaCage. Maximum file size: 2 MiB. No account, API call or network upload is used.</p>
+          <p>Select a signed checkpoint JSON exported by PrivaCage. Maximum file size: 2 MiB. Verification itself makes no network requests and never uploads the selected file.</p>
           <input
             class="sr-only"
             type="file"
