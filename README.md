@@ -110,6 +110,8 @@ The catalogue contains 25 indicators across analytics, behavioral analytics, adv
 
 The in-app list bundles the canonical JSON. Users can inspect evidence and explicitly import active domain indicators into the DNS rule editor. Importing does not automatically save or turn them on. Review and retired entries are not bulk-imported.
 
+The optional local DNS event-history view also compares recorded query hostnames against the bundled domain indicators. Matching is case-insensitive and label-boundary-aware (a suffix such as `tracker.example.attacker.invalid` does not match `tracker.example`). It shows catalogue status, confidence, review date and an evidence URL where available. This is an informational correlation only: it does not change DNS rules, prove which app initiated the query, or reveal payload contents. “No match” is not a privacy/safety verdict. If the catalogue failed to load, the UI reports the lookup as unavailable instead of reporting a clean result.
+
 Validate the schema and review-freshness report with:
 
 ```sh
