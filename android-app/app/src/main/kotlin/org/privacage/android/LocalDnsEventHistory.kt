@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Process
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.system.OsConstants
 import org.json.JSONArray
 import org.json.JSONException
@@ -12,9 +14,12 @@ import org.json.JSONObject
 import org.privacage.audit.AuditExportEvent
 import java.io.IOException
 import java.net.InetSocketAddress
+import java.security.KeyStore
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
 /**
  * Optional, bounded, on-device DNS event history.
@@ -24,8 +29,12 @@ import java.time.format.DateTimeParseException
  */
 internal object LocalDnsEventHistory {
     const val KEY_ENABLED = "dns_event_history_enabled"
+    // Legacy plaintext key: read only during the one-time encrypted migration.
     const val KEY_EVENTS = "dns_event_history_json"
     const val KEY_RETENTION_DAYS = "dns_event_history_retention_days"
+    private const val KEY_EVENTS_ENCRYPTED = "dns_event_history_encrypted_v1"
+    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+    private const val HISTORY_KEY_ALIAS = "org.privacage.android.dns-history.aes-gcm.v1"
     const val DEFAULT_RETENTION_DAYS = 7
     val RETENTION_OPTIONS_DAYS = listOf(1, 7, 30)
 
@@ -106,21 +115,118 @@ internal object LocalDnsEventHistory {
         return synchronized(this) { readAndPruneEvents(prefs, Instant.now()) != null }
     }
 
+    private fun readStoredHistory(prefs: SharedPreferences): String {
+        if (prefs.contains(KEY_EVENTS_ENCRYPTED)) {
+            val envelope = try {
+                prefs.getString(KEY_EVENTS_ENCRYPTED, null)
+            } catch (exception: ClassCastException) {
+                throw IOException("Encrypted DNS history has an invalid stored type; saved data was preserved.", exception)
+            } ?: throw IOException("Encrypted DNS history is missing its envelope; saved data was preserved.")
+
+            val key = loadExistingHistoryKey()
+                ?: throw IOException(
+                    "The Android Keystore key for DNS history is missing. Encrypted data was preserved; " +
+                        "PrivaCage will not replace the key or fall back to a plaintext copy."
+                )
+            val cleartext = LocalDnsHistoryCipher.decrypt(envelope, key)
+            if (prefs.contains(KEY_EVENTS) && !prefs.edit().remove(KEY_EVENTS).commit()) {
+                throw IOException(
+                    "Encrypted DNS history was authenticated, but the legacy plaintext copy could not be removed. " +
+                        "Both copies were preserved; refresh to retry the migration."
+                )
+            }
+            return cleartext
+        }
+
+        val legacyPlaintext = try {
+            prefs.getString(KEY_EVENTS, null)
+        } catch (exception: ClassCastException) {
+            throw IOException("Legacy DNS history has an invalid stored type; saved data was preserved.", exception)
+        } ?: return "[]"
+
+        val key = getOrCreateHistoryKey(prefs)
+        val envelope = LocalDnsHistoryCipher.encrypt(legacyPlaintext, key)
+        if (!prefs.edit().putString(KEY_EVENTS_ENCRYPTED, envelope).commit()) {
+            throw IOException(
+                "Could not confirm durable storage of encrypted DNS history. The previous history was preserved."
+            )
+        }
+        if (!prefs.edit().remove(KEY_EVENTS).commit()) {
+            throw IOException(
+                "The encrypted DNS history was saved, but removal of the old plaintext value could not be confirmed. " +
+                    "Existing data was preserved; refresh to retry the migration."
+            )
+        }
+        return legacyPlaintext
+    }
+
+    private fun loadExistingHistoryKey(): SecretKey? = try {
+        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            .getKey(HISTORY_KEY_ALIAS, null) as? SecretKey
+    } catch (exception: Exception) {
+        throw IOException("Android Keystore could not load the DNS-history key; saved data was preserved.", exception)
+    }
+
+    private fun getOrCreateHistoryKey(prefs: SharedPreferences): SecretKey {
+        val existing = loadExistingHistoryKey()
+        if (existing != null) return existing
+        if (prefs.contains(KEY_EVENTS_ENCRYPTED)) {
+            throw IOException(
+                "The key for existing encrypted DNS history is unavailable. The stored ciphertext was preserved."
+            )
+        }
+
+        return try {
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            generator.init(
+                KeyGenParameterSpec.Builder(
+                    HISTORY_KEY_ALIAS,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setKeySize(256)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build()
+            )
+            generator.generateKey()
+        } catch (exception: Exception) {
+            throw IOException("Android Keystore could not create a DNS-history key; stored data was preserved.", exception)
+        }
+    }
+
+    private fun writeStoredHistory(prefs: SharedPreferences, serialized: String) {
+        val key = getOrCreateHistoryKey(prefs)
+        val envelope = LocalDnsHistoryCipher.encrypt(serialized, key)
+        if (!prefs.edit()
+                .putString(KEY_EVENTS_ENCRYPTED, envelope)
+                .remove(KEY_EVENTS)
+                .commit()
+        ) {
+            throw IOException("Could not confirm durable storage of encrypted DNS history; existing data was preserved.")
+        }
+    }
+
     private fun readAndPruneEvents(prefs: SharedPreferences, now: Instant): JSONArray? {
         val serialized = try {
-            prefs.getString(KEY_EVENTS, "[]")
-        } catch (_: ClassCastException) {
+            readStoredHistory(prefs)
+        } catch (_: IOException) {
             return null
         }
         val original = parseStoredEvents(serialized) ?: return null
-        val retained = pruneExpiredEvents(serialized, now, try {
+        val days = try {
             prefs.getInt(KEY_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
         } catch (_: ClassCastException) {
             DEFAULT_RETENTION_DAYS
-        }) ?: return null
+        }
+        val retained = pruneExpiredEvents(serialized, now, days) ?: return null
 
         if (retained.length() < original.length()) {
-            prefs.edit().putString(KEY_EVENTS, retained.toString()).apply()
+            try {
+                writeStoredHistory(prefs, retained.toString())
+            } catch (_: IOException) {
+                return null
+            }
         }
         return retained
     }
@@ -143,7 +249,11 @@ internal object LocalDnsEventHistory {
                 .put("domain", normalizedDomain)
                 .put("action", action)
                 .put("socket_owner", attribution))
-            prefs.edit().putString(KEY_EVENTS, next.toString()).apply()
+            try {
+                writeStoredHistory(prefs, next.toString())
+            } catch (_: IOException) {
+                return RecordResult.HISTORY_UNREADABLE
+            }
             RecordResult.RECORDED
         }
     }
@@ -187,10 +297,13 @@ internal object LocalDnsEventHistory {
         return result
     }
 
-    fun clear(context: Context) {
+    fun clear(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
-        synchronized(this) {
-            prefs.edit().remove(KEY_EVENTS).apply()
+        return synchronized(this) {
+            prefs.edit()
+                .remove(KEY_EVENTS_ENCRYPTED)
+                .remove(KEY_EVENTS)
+                .commit()
         }
     }
 

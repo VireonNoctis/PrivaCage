@@ -100,7 +100,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
-        val dnsHistoryMaintenanceSucceeded = LocalDnsEventHistory.pruneExpired(this)
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
         var trackerCatalogLoading = true
@@ -502,13 +501,7 @@ class MainActivity : Activity() {
         val dnsEventHistoryText = TextView(this).apply {
             textSize = 12f
             setPadding(0, dp(8), 0, dp(8))
-            text = when {
-                !dnsHistoryMaintenanceSucceeded ->
-                    "Saved DNS history could not be validated and was preserved. Refresh to inspect it, or clear it explicitly."
-                prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false) ->
-                    "Local DNS event history is enabled. Refresh to inspect recent records."
-                else -> "DNS event history is disabled. Enable it above to record hostnames."
-            }
+            text = "Checking local DNS history integrity..."
         }
         root.addView(dnsEventHistoryText, matchWidth())
         root.addView(TextView(this).apply {
@@ -529,26 +522,33 @@ class MainActivity : Activity() {
                 .setMessage(
                     "Choose how long hostnames may be retained. Expired events are pruned when PrivaCage opens, " +
                         "records an event, refreshes history, or exports it. No background process runs solely " +
-                        "for cleanup. If a stored timestamp is invalid, the complete history is preserved and " +
-                        "automatic cleanup stops until you review or clear it."
+                        "for cleanup. If a timestamp is invalid or the Keystore key is unavailable, history " +
+                        "is preserved and automatic cleanup stops until you review or clear it."
                 )
                 .setSingleChoiceItems(labels, selectedIndex) { dialog, which ->
                     val days = options[which]
                     prefs.edit().putInt(LocalDnsEventHistory.KEY_RETENTION_DAYS, days).apply()
-                    dnsRetentionButton.text = "Change DNS history retention (${LocalDnsEventHistory.retentionLabel(days)})"
-                    val historyValid = LocalDnsEventHistory.pruneExpired(this@MainActivity)
-                    dnsEventHistoryText.text = when {
-                        !historyValid ->
-                            "Retention updated, but saved DNS history is unreadable or has an invalid timestamp. Existing data was preserved; clear it only if you intend to discard it."
-                        prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false) ->
-                            LocalDnsEventHistory.read(
-                                this@MainActivity,
-                                catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null
-                            ).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
-                        else ->
-                            "Retention updated to ${LocalDnsEventHistory.retentionLabel(days)}. Recording is disabled; saved entries are not displayed while recording is off."
-                    }
+                    dnsRetentionButton.text = "Change DNS history retention (" + LocalDnsEventHistory.retentionLabel(days) + ")"
+                    dnsEventHistoryText.text = "Applying retention and validating encrypted history..."
+                    val historyEnabled = prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)
+                    val catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null
                     dialog.dismiss()
+                    Thread({
+                        val historyValid = LocalDnsEventHistory.pruneExpired(this@MainActivity)
+                        val historyText = when {
+                            !historyValid ->
+                                "Retention updated, but encrypted DNS history could not be validated or decrypted. Existing data was preserved; clear it only if you intend to discard it."
+                            historyEnabled ->
+                                LocalDnsEventHistory.read(this@MainActivity, catalog = catalog)
+                                    .joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
+                            else ->
+                                "Retention updated to " + LocalDnsEventHistory.retentionLabel(days) +
+                                    ". Recording is disabled; saved entries are not displayed while recording is off."
+                        }
+                        runOnUiThread {
+                            if (!isFinishing && !isDestroyed) dnsEventHistoryText.text = historyText
+                        }
+                    }, "PrivaCage-DNS-history-retention").start()
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
@@ -558,11 +558,24 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Refresh local DNS event history"
             setOnClickListener {
-                dnsEventHistoryText.text = if (prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)) {
-                    LocalDnsEventHistory.read(this@MainActivity, catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
-                } else {
-                    "DNS event history is disabled. Existing entries are not displayed while recording is off."
-                }
+                val historyEnabled = prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)
+                val catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null
+                dnsEventHistoryText.text = "Validating encrypted DNS history..."
+                Thread({
+                    val historyValid = LocalDnsEventHistory.pruneExpired(this@MainActivity)
+                    val historyText = when {
+                        !historyValid ->
+                            "DNS history is unreadable, cannot be decrypted, or contains invalid records. Saved data was preserved; clear it only if you intend to discard it."
+                        !historyEnabled ->
+                            "DNS event history is disabled. Existing entries are not displayed while recording is off."
+                        else ->
+                            LocalDnsEventHistory.read(this@MainActivity, catalog = catalog)
+                                .joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
+                    }
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) dnsEventHistoryText.text = historyText
+                    }
+                }, "PrivaCage-DNS-history-refresh").start()
             }
         }, matchWidth())
         root.addView(Button(this).apply {
@@ -573,8 +586,19 @@ class MainActivity : Activity() {
                     .setMessage("This permanently clears the locally stored DNS event list. Aggregate counters are separate.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Clear history") { _, _ ->
-                        LocalDnsEventHistory.clear(this@MainActivity)
-                        dnsEventHistoryText.text = "Local DNS event history cleared."
+                        dnsEventHistoryText.text = "Clearing local DNS history..."
+                        Thread({
+                            val cleared = LocalDnsEventHistory.clear(this@MainActivity)
+                            runOnUiThread {
+                                if (!isFinishing && !isDestroyed) {
+                                    dnsEventHistoryText.text = if (cleared) {
+                                        "Local DNS event history cleared."
+                                    } else {
+                                        "Could not confirm deletion of local DNS history. Existing data may remain; try again."
+                                    }
+                                }
+                            }
+                        }, "PrivaCage-DNS-history-clear").start()
                     }
                     .show()
             }
@@ -876,6 +900,20 @@ class MainActivity : Activity() {
         PrivaCageDesign.apply(this, root, contentScroll, statusText)
         contentScroll.addView(root)
         setContentView(contentScroll)
+        Thread({
+            val historyAvailable = LocalDnsEventHistory.pruneExpired(this@MainActivity)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (dnsEventHistoryText.text.toString() != "Checking local DNS history integrity...") return@runOnUiThread
+                dnsEventHistoryText.text = when {
+                    !historyAvailable ->
+                        "DNS history is unreadable, cannot be decrypted, or has invalid records. Saved data was preserved; clear it only if you intend to discard it."
+                    prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false) ->
+                        "Local DNS event history is enabled. Refresh to inspect recent records."
+                    else -> "DNS event history is disabled. Enable it above to record hostnames."
+                }
+            }
+        }, "PrivaCage-DNS-history-maintenance").start()
         Thread({
             val loadResult: Pair<List<TrackerSignature>?, String?> = try {
                 TrackerSignatureCatalog.load(this@MainActivity) to null
@@ -2399,67 +2437,92 @@ class MainActivity : Activity() {
         ).show()
     }
 
-    private fun prepareLocalAuditExport(): AuditExportResult? {
+    private fun prepareLocalAuditExport(onPrepared: (AuditExportResult?) -> Unit) {
         val categories = buildSet {
             if (auditExportBlockedCheck.isChecked) add("BLOCKED")
             if (auditExportForwardedCheck.isChecked) add("FORWARDED")
         }
-        return try {
-            LocalAuditExporter.prepare(
-                events = LocalDnsEventHistory.readForExport(this),
-                request = AuditExportRequest(
-                    startDate = auditExportStartDate,
-                    endDate = auditExportEndDate,
-                    categories = categories,
-                    includeHostnames = auditExportHostnamesCheck.isChecked,
-                    includeSocketOwnerLabels = auditExportSocketOwnerCheck.isChecked
-                )
-            )
-        } catch (exception: Exception) {
-            statusText.text = "Could not prepare audit export: " + (exception.message ?: exception.javaClass.simpleName)
-            null
-        }
+        val request = AuditExportRequest(
+            startDate = auditExportStartDate,
+            endDate = auditExportEndDate,
+            categories = categories,
+            includeHostnames = auditExportHostnamesCheck.isChecked,
+            includeSocketOwnerLabels = auditExportSocketOwnerCheck.isChecked
+        )
+        statusText.text = "Preparing the audit export from encrypted local history..."
+        Thread({
+            val result: Pair<AuditExportResult?, String?> = try {
+                LocalAuditExporter.prepare(
+                    events = LocalDnsEventHistory.readForExport(this@MainActivity),
+                    request = request
+                ) to null
+            } catch (exception: Exception) {
+                null to (exception.message ?: exception.javaClass.simpleName)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (result.first == null) {
+                    statusText.text = "Could not prepare audit export: " + result.second
+                }
+                onPrepared(result.first)
+            }
+        }, "PrivaCage-audit-export-prepare").start()
     }
 
     private fun previewLocalAuditExport() {
-        val prepared = prepareLocalAuditExport() ?: return
-        pendingAuditExport?.fill(0)
-        pendingAuditExport = prepared.json.toByteArray(StandardCharsets.UTF_8)
-        pendingAuditExportFileName = "privacage-audit-" + LocalDate.now() + ".json"
-        pendingAuditExportIsSignedCheckpoint = false
-        showAuditExportPreview("Review audit export", prepared.previewText)
-    }
-
-    private fun previewSignedAuditCheckpoint() {
-        val prepared = prepareLocalAuditExport() ?: return
-        try {
-            val checkpoint = LocalAuditCheckpointSigner.sign(
-                context = this,
-                payloadJson = prepared.json,
-                chainHeadSha256 = prepared.chainHeadSha256,
-                eventCount = prepared.eventCount
-            )
+        prepareLocalAuditExport { prepared ->
+            if (prepared == null) return@prepareLocalAuditExport
             pendingAuditExport?.fill(0)
-            pendingAuditExport = checkpoint.json.toByteArray(StandardCharsets.UTF_8)
-            pendingAuditExportFileName = "privacage-audit-checkpoint-" + LocalDate.now() + ".json"
-            pendingAuditExportIsSignedCheckpoint = true
-            val message = prepared.previewText +
-                "\n\nSIGNED CHECKPOINT\n" +
-                "Signature: ECDSA with SHA-256\n" +
-                "Signer public-key SHA-256: " + checkpoint.publicKeySha256 + "\n" +
-                "Payload SHA-256: " + checkpoint.payloadSha256 + "\n" +
-                "Chain head SHA-256: " + prepared.chainHeadSha256 + "\n\n" +
-                "The private key is kept in Android Keystore and is not included in the file. Hardware-backed storage is not guaranteed. This file is not encrypted, the creation time is from the device clock, and the embedded public key does not identify a person. Keep a copy of the fingerprint through a separate trusted channel if you need to recognize this signer later."
-            showAuditExportPreview("Review signed audit checkpoint", message)
-        } catch (exception: Exception) {
-            pendingAuditExport?.fill(0)
-            pendingAuditExport = null
-            pendingAuditExportFileName = null
+            pendingAuditExport = prepared.json.toByteArray(StandardCharsets.UTF_8)
+            pendingAuditExportFileName = "privacage-audit-" + LocalDate.now() + ".json"
             pendingAuditExportIsSignedCheckpoint = false
-            statusText.text = "Could not sign audit checkpoint: " + (exception.message ?: exception.javaClass.simpleName)
+            showAuditExportPreview("Review audit export", prepared.previewText)
         }
     }
 
+    private fun previewSignedAuditCheckpoint() {
+        prepareLocalAuditExport { prepared ->
+            if (prepared == null) return@prepareLocalAuditExport
+            statusText.text = "Signing the audit checkpoint with Android Keystore..."
+            Thread({
+                val result: Pair<SignedAuditCheckpoint?, String?> = try {
+                    LocalAuditCheckpointSigner.sign(
+                        context = this@MainActivity,
+                        payloadJson = prepared.json,
+                        chainHeadSha256 = prepared.chainHeadSha256,
+                        eventCount = prepared.eventCount
+                    ) to null
+                } catch (exception: Exception) {
+                    null to (exception.message ?: exception.javaClass.simpleName)
+                }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    val checkpoint = result.first
+                    if (checkpoint == null) {
+                        pendingAuditExport?.fill(0)
+                        pendingAuditExport = null
+                        pendingAuditExportFileName = null
+                        pendingAuditExportIsSignedCheckpoint = false
+                        statusText.text = "Could not sign audit checkpoint: " + result.second
+                        return@runOnUiThread
+                    }
+
+                    pendingAuditExport?.fill(0)
+                    pendingAuditExport = checkpoint.json.toByteArray(StandardCharsets.UTF_8)
+                    pendingAuditExportFileName = "privacage-audit-checkpoint-" + LocalDate.now() + ".json"
+                    pendingAuditExportIsSignedCheckpoint = true
+                    val message = prepared.previewText +
+                        "\n\nSIGNED CHECKPOINT\n" +
+                        "Signature: ECDSA with SHA-256\n" +
+                        "Signer public-key SHA-256: " + checkpoint.publicKeySha256 + "\n" +
+                        "Payload SHA-256: " + checkpoint.payloadSha256 + "\n" +
+                        "Chain head SHA-256: " + prepared.chainHeadSha256 + "\n\n" +
+                        "The private key is kept in Android Keystore and is not included in the file. Hardware-backed storage is not guaranteed. This file is not encrypted, the creation time is from the device clock, and the embedded public key does not identify a person. Keep a copy of the fingerprint through a separate trusted channel if you need to recognize this signer later."
+                    showAuditExportPreview("Review signed audit checkpoint", message)
+                }
+            }, "PrivaCage-audit-checkpoint-sign").start()
+        }
+    }
     private fun showAuditExportPreview(title: String, message: String) {
         AlertDialog.Builder(this)
             .setTitle(title)

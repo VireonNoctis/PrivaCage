@@ -15,7 +15,7 @@ The project should treat data minimization as a core security control. NIST's Pr
 |---|---|---|---|
 | Network flow metadata | Local encrypted/permission-protected database where feasible | Short rolling retention, user-configurable within safe bounds | Never sync by default; export only after preview |
 | Raw packets/payloads | Do not store | None | Prohibited by default |
-| DNS hostname history | Local only | Android: 7-day default, configurable to 24 hours or 30 days; at most 100 events; pruned on next app use | Export requires clear warning |
+| DNS hostname history | Local only | Android: AES-GCM encrypted at rest with a Keystore-held key; 7-day default, configurable to 24 hours or 30 days; at most 100 events and 256 KiB plaintext; pruned on next app use | Export requires clear warning |
 | App inventory/scan results | Local | Until user clears or replaces result | Do not transmit to fetch a label unless user opts in |
 | APK file | Temporary workspace | Delete after scan by default | Never upload as a default side effect |
 | Permission/consent history | Local | User-controlled; explain any append-only/tamper-evident behavior | Optional export |
@@ -23,7 +23,7 @@ The project should treat data minimization as a core security control. NIST's Pr
 | Crash diagnostics | Local minimal diagnostic state | Bounded | Opt-in export with redaction |
 | Community tracker DB | Public, versioned data | Versioned history | No user traffic needed to update it |
 
-For Android DNS hostname history, the policy is implemented: 7-day default with 24-hour, 7-day, and 30-day choices; at most 100 events and a 256 KiB serialized UTF-8 cap; and pruning on app launch, recording, history refresh, or export. There is deliberately no background worker whose only purpose is deleting history, so expired rows are removed the next time the app is used. If any stored timestamp is malformed, the whole prune operation stops and preserves the saved list rather than partially deleting evidence. Other data categories still need their own explicit periods. “Stored locally” is not enough: a shared device, malware, cloud backup or exported file can change the exposure model. State where the OS backs up the database and exclude sensitive logs from backups when the platform and threat model support doing so.
+For Android DNS hostname history, the policy is implemented: records are wrapped with AES-GCM using a key held by Android Keystore; the 7-day default can be changed to 24 hours or 30 days; the history is limited to 100 events and 256 KiB serialized UTF-8 plaintext; and expiry is pruned on app launch, recording, history refresh, or export. Legacy plaintext preferences are migrated by committing the encrypted copy before removing the old key. A missing key or failed authentication preserves encrypted data and stops reads/writes rather than silently generating a replacement. The Keystore/device-lifecycle path still needs physical-device verification.
 
 ## 3. Data minimization in event design
 
