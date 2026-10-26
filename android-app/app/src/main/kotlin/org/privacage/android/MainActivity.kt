@@ -504,11 +504,16 @@ class MainActivity : Activity() {
             text = "DNS event history is disabled. Enable it above to record hostnames."
         }
         root.addView(dnsEventHistoryText, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "Refresh compares recorded hostnames locally with the bundled domain-indicator catalogue. Matches are leads, not proof of personal-data collection; no match is not a safety verdict."
+            textSize = 12f
+            setPadding(0, 0, 0, dp(6))
+        }, matchWidth())
         root.addView(Button(this).apply {
             text = "Refresh local DNS event history"
             setOnClickListener {
                 dnsEventHistoryText.text = if (prefs.getBoolean(LocalDnsEventHistory.KEY_ENABLED, false)) {
-                    LocalDnsEventHistory.read(this@MainActivity).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
+                    LocalDnsEventHistory.read(this@MainActivity, catalog = if (trackerCatalogLoadComplete && trackerCatalogLoadFailure == null) apkTrackerCatalog else null).joinToString("\n\n").ifBlank { "No DNS events recorded yet." }
                 } else {
                     "DNS event history is disabled. Existing entries are not displayed while recording is off."
                 }

@@ -49,7 +49,7 @@ internal object LocalDnsEventHistory {
         }
     }
 
-    fun read(context: Context, limit: Int = 30): List<String> {
+    fun read(context: Context, limit: Int = 30, catalog: List<TrackerSignature>? = null): List<String> {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         val events = try {
             JSONArray(prefs.getString(KEY_EVENTS, "[]").orEmpty())
@@ -60,7 +60,9 @@ internal object LocalDnsEventHistory {
         val start = maxOf(0, events.length() - limit.coerceIn(1, MAX_EVENTS))
         for (index in events.length() - 1 downTo start) {
             val event = events.optJSONObject(index) ?: continue
-            result += "${event.optString("timestamp")}  [${event.optString("action")}] ${event.optString("domain")}\nSocket owner: ${event.optString("socket_owner", "Unknown")}"
+            val hostname = event.optString("domain")
+            val classification = DnsHistoryDomainClassifier.classify(hostname, catalog)
+            result += "${event.optString("timestamp")}  [${event.optString("action")}] $hostname\nSocket owner: ${event.optString("socket_owner", "Unknown")}\n${classification.summary()}"
         }
         return result
     }

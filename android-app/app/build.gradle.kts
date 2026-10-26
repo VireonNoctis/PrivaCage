@@ -46,4 +46,6 @@ dependencies {
     implementation("com.android.tools.build:apksig:8.10.1")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
+    // Use a real JSON implementation in local JVM tests; android.jar JSON methods are stubs.
+    testImplementation("org.json:json:20260719")
 }
