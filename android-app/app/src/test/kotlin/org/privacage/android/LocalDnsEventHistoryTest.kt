@@ -24,6 +24,13 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
+    fun oversizedStoredHistoryIsRejectedBeforeJsonParsing() {
+        val oversized = "[" + " ".repeat(256 * 1024) + "]"
+
+        assertNull(LocalDnsEventHistory.parseStoredEvents(oversized))
+    }
+
+    @Test
     fun validStoredHistoryCanBeReadWithoutChangingItsRecordCount() {
         val stored = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":"ALLOW","socket_owner":"Unknown"}]"""
 
