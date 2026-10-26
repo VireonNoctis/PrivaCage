@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "shared/rust/pcage-audit/**"
+      - "shared/audit/**"
       - ".github/workflows/validate-audit-verifier.yml"
   pull_request:
     paths:
       - "shared/rust/pcage-audit/**"
+      - "shared/audit/**"
       - ".github/workflows/validate-audit-verifier.yml"
   workflow_dispatch:
 
