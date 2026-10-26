@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { verifyAuditCheckpoint } from './audit-checkpoint';
+import { compareAuditCheckpoints, verifyAuditCheckpoint } from './audit-checkpoint';
 
 const sharedCheckpointVector = readFileSync(
   resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1.json'),
@@ -84,45 +84,62 @@ function signingBytes(
   );
 }
 
-async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Promise<string> {
-  const keyPair = await cryptoProvider.subtle.generateKey(
+async function createTestKeyPair(): Promise<CryptoKeyPair> {
+  return await cryptoProvider.subtle.generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
     true,
     ['sign', 'verify']
   ) as CryptoKeyPair;
+}
+
+async function createCheckpoint(options: {
+  breakEventHash?: boolean;
+  keyPair?: CryptoKeyPair;
+  eventTimestamps?: string[];
+} = {}): Promise<string> {
+  const keyPair = options.keyPair ?? await createTestKeyPair();
   const publicKey = await cryptoProvider.subtle.exportKey('spki', keyPair.publicKey);
   const signerFingerprint = await sha256(new Uint8Array(publicKey));
   const createdAt = '2026-10-26T12:00:00Z';
-  const timestamp = '2026-10-25T12:00:00Z';
+  const timestamps = options.eventTimestamps ?? ['2026-10-25T12:00:00Z'];
+  const events: Array<Record<string, string>> = [];
+  let previousHash = zeroHash;
 
-  const eventForHash = {
-    timestamp,
-    local_date: '2026-10-25',
-    category: 'BLOCKED',
-    queried_hostname: '[REDACTED]',
-    socket_owner_label: '[REDACTED]'
-  };
+  for (let index = 0; index < timestamps.length; index += 1) {
+    const eventForHash = {
+      timestamp: timestamps[index],
+      local_date: '2026-10-25',
+      category: 'BLOCKED',
+      queried_hostname: '[REDACTED]',
+      socket_owner_label: '[REDACTED]'
+    };
+    const recordMaterial = concatBytes(
+      encoder.encode('PrivaCage-Audit-Record-v1\n' + previousHash + '\n'),
+      ...[
+        eventForHash.timestamp,
+        eventForHash.local_date,
+        eventForHash.category,
+        eventForHash.queried_hostname,
+        eventForHash.socket_owner_label
+      ].flatMap((field) => {
+        const bytes = encoder.encode(field);
+        return [encoder.encode(String(bytes.length) + ':'), bytes, encoder.encode('\n')];
+      })
+    );
+    const recordHash = await sha256(recordMaterial);
+    events.push({
+      ...eventForHash,
+      timestamp: options.breakEventHash && index === 0
+        ? '2026-10-25T12:00:01Z'
+        : eventForHash.timestamp,
+      previous_record_sha256: previousHash,
+      record_sha256: recordHash
+    });
+    previousHash = recordHash;
+  }
 
-  const recordMaterial = concatBytes(
-    encoder.encode('PrivaCage-Audit-Record-v1\n' + zeroHash + '\n'),
-    ...[
-      eventForHash.timestamp,
-      eventForHash.local_date,
-      eventForHash.category,
-      eventForHash.queried_hostname,
-      eventForHash.socket_owner_label
-    ].flatMap((field) => {
-      const bytes = encoder.encode(field);
-      return [encoder.encode(String(bytes.length) + ':'), bytes, encoder.encode('\n')];
-    })
-  );
-  const recordHash = await sha256(recordMaterial);
-  const chainEvent = {
-    ...eventForHash,
-    timestamp: options.breakEventHash ? '2026-10-25T12:00:01Z' : timestamp,
-    previous_record_sha256: zeroHash,
-    record_sha256: recordHash
-  };
+  const eventCount = events.length;
+  const chainHead = previousHash;
 
   // Preserve this exact JSON string: its UTF-8 bytes are what Android signs.
   const payloadJson = JSON.stringify({
@@ -135,8 +152,8 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
     integrity: {
       algorithm: 'sha256-chain-v1',
       genesis_sha256: zeroHash,
-      chain_head_sha256: recordHash,
-      record_count: 1
+      chain_head_sha256: chainHead,
+      record_count: eventCount
     },
     redactions: {
       queried_hostnames: true,
@@ -145,18 +162,18 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
       internal_file_paths: true,
       packet_payloads: true
     },
-    records_read: 1,
+    records_read: eventCount,
     records_skipped_invalid: 0,
     records_excluded_by_filters: 0,
-    event_count: 1,
-    events: [chainEvent]
+    event_count: eventCount,
+    events
   });
 
   const payloadSha256 = await sha256(encoder.encode(payloadJson));
   const rawSignature = new Uint8Array(await cryptoProvider.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     keyPair.privateKey,
-    asArrayBuffer(signingBytes(createdAt, payloadSha256, recordHash, 1, signerFingerprint))
+    asArrayBuffer(signingBytes(createdAt, payloadSha256, chainHead, eventCount, signerFingerprint))
   ));
   const signatureDer = rawEcdsaToDer(rawSignature);
 
@@ -168,8 +185,8 @@ async function createCheckpoint(options: { breakEventHash?: boolean } = {}): Pro
     signer_public_key_x509_base64: base64(publicKey),
     signer_public_key_sha256: signerFingerprint,
     payload_sha256: payloadSha256,
-    chain_head_sha256: recordHash,
-    event_count: 1,
+    chain_head_sha256: chainHead,
+    event_count: eventCount,
     signature_base64: base64(signatureDer),
     payload_json: payloadJson
   });
@@ -238,4 +255,62 @@ describe('local signed audit checkpoint verifier', () => {
     await expect(verifyAuditCheckpoint(' '.repeat(2 * 1024 * 1024 + 1), cryptoProvider))
       .rejects.toThrow('Checkpoint exceeds the 2 MiB input limit.');
   });
+
+  it('compares identical verified checkpoints without showing event details', async () => {
+    const comparison = await compareAuditCheckpoints(
+      sharedCheckpointVector,
+      sharedCheckpointVector,
+      cryptoProvider
+    );
+
+    expect(comparison.relationship).toBe('same-chain');
+    expect(comparison.sharedPrefixEvents).toBe(1);
+    expect(comparison.firstEventsAfterSharedPrefix).toBe(0);
+    expect(comparison.secondEventsAfterSharedPrefix).toBe(0);
+  });
+
+  it('recognizes append-only chain extensions and divergent histories for the same signer', async () => {
+    const keyPair = await createTestKeyPair();
+    const firstTimestamp = '2026-10-25T12:00:00Z';
+    const secondTimestamp = '2026-10-25T12:00:01Z';
+    const alternateTimestamp = '2026-10-25T12:00:02Z';
+    const first = await createCheckpoint({
+      keyPair,
+      eventTimestamps: [firstTimestamp]
+    });
+    const extended = await createCheckpoint({
+      keyPair,
+      eventTimestamps: [firstTimestamp, secondTimestamp]
+    });
+    const alternate = await createCheckpoint({
+      keyPair,
+      eventTimestamps: [firstTimestamp, alternateTimestamp]
+    });
+
+    const extension = await compareAuditCheckpoints(first, extended, cryptoProvider);
+    expect(extension.relationship).toBe('first-is-prefix');
+    expect(extension.sharedPrefixEvents).toBe(1);
+    expect(extension.firstEventsAfterSharedPrefix).toBe(0);
+    expect(extension.secondEventsAfterSharedPrefix).toBe(1);
+
+    const reverseExtension = await compareAuditCheckpoints(extended, first, cryptoProvider);
+    expect(reverseExtension.relationship).toBe('second-is-prefix');
+
+    const divergence = await compareAuditCheckpoints(extended, alternate, cryptoProvider);
+    expect(divergence.relationship).toBe('diverged');
+    expect(divergence.sharedPrefixEvents).toBe(1);
+    expect(divergence.firstEventsAfterSharedPrefix).toBe(1);
+    expect(divergence.secondEventsAfterSharedPrefix).toBe(1);
+  });
+
+  it('refuses to infer chain continuity across different signer keys', async () => {
+    const independentCheckpoint = await createCheckpoint();
+
+    await expect(compareAuditCheckpoints(
+      sharedCheckpointVector,
+      independentCheckpoint,
+      cryptoProvider
+    )).rejects.toThrow('different signer public keys');
+  });
+
 });
