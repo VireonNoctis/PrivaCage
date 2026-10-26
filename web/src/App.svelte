@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import RollingNumber from './lib/RollingNumber.svelte';
+  import { verifyAuditCheckpoint, type AuditCheckpointReport } from './lib/audit-checkpoint';
   import {
     fetchCapabilities,
     fetchCatalogSummary,
@@ -49,10 +50,23 @@
   let statusFilter = $state('all');
   let activeEntryId = $state<string | null>(null);
   let reducedMotion = $state(false);
+  let auditReport = $state<AuditCheckpointReport | null>(null);
+  let auditFileName = $state('');
+  let auditError = $state('');
+  let auditBusy = $state(false);
+  let trustedFingerprint = $state('');
+  let auditFileInput: HTMLInputElement | undefined;
   let firstLoad = true;
   let requestController: AbortController | null = null;
 
   let currentViewName = $derived(viewNames[activeView]);
+
+  let trustedFingerprintStatus = $derived.by(() => {
+    if (!auditReport || !trustedFingerprint.trim()) return 'not-checked';
+    const normalized = trustedFingerprint.trim().replace(/[:\s]/g, '').toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalized)) return 'invalid';
+    return normalized === auditReport.signerPublicKeySha256 ? 'match' : 'mismatch';
+  });
   let categories = $derived(
     Array.from(new Set((catalog?.entries ?? []).map((entry) => entry.category))).sort()
   );
@@ -145,6 +159,35 @@
       notice = 'The source-backed tracker catalogue was exported locally.';
     } catch {
       notice = 'The browser could not create the catalogue export.';
+    }
+  }
+
+  async function importAuditCheckpoint(event: Event): Promise<void> {
+    const input = event.currentTarget;
+    if (!(input instanceof HTMLInputElement)) return;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    auditBusy = true;
+    auditError = '';
+    auditReport = null;
+    auditFileName = file.name;
+    trustedFingerprint = '';
+
+    try {
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('Checkpoint exceeds the 2 MiB input limit.');
+      }
+      const checkpointText = await file.text();
+      auditReport = await verifyAuditCheckpoint(checkpointText);
+      notice = 'Checkpoint verified locally in this browser. No file data was uploaded.';
+    } catch (error) {
+      auditReport = null;
+      auditError = error instanceof Error ? error.message : 'Could not verify this audit checkpoint.';
+      notice = '';
+    } finally {
+      auditBusy = false;
+      input.value = '';
     }
   }
 
@@ -537,19 +580,132 @@
         <section class="page-intro">
           <div class="eyebrow"><span class="eyebrow-line"></span> INTEGRITY / 03</div>
           <h1>Evidence with<br /><span>provenance.</span></h1>
-          <p>Audit results should be verifiable, local where possible, and explicit about the limits of their claims.</p>
+          <p>Verify a signed Android audit checkpoint offline. The selected file is processed in this browser and is never uploaded by this verifier.</p>
         </section>
         <section class="audit-overview-grid">
-          <article class="audit-feature-card"><div class="section-kicker">01 / LOCAL HISTORY</div><span class="audit-feature-glyph">⌁</span><h2>Device audit history</h2><p>The Android app maintains its optional DNS history locally. This web workspace cannot read that private storage automatically.</p><span class="status-label status-label--review">No report imported</span></article>
-          <article class="audit-feature-card"><div class="section-kicker">02 / INTEGRITY</div><span class="audit-feature-glyph">◈</span><h2>Signed checkpoints</h2><p>Portable verification exists in the Rust project, but this web screen does not yet call the verifier or import a checkpoint.</p><span class="status-label status-label--review">Web verification not wired</span></article>
+          <article class="audit-feature-card">
+            <div class="section-kicker">01 / LOCAL HISTORY</div>
+            <span class="audit-feature-glyph">⌁</span>
+            <h2>Device audit history</h2>
+            <p>Android's optional DNS history stays in app-private storage until you explicitly export a checkpoint.</p>
+            <span class="status-label status-label--review">Device remains unlinked</span>
+          </article>
+          <article class="audit-feature-card">
+            <div class="section-kicker">02 / INTEGRITY</div>
+            <span class="audit-feature-glyph">◈</span>
+            <h2>Signed checkpoints</h2>
+            <p>Checks the embedded P-256 signature, payload digest, strict schema and every event hash-chain link.</p>
+            <span class="status-label status-label--available">Local verification available</span>
+          </article>
         </section>
-        <section class="empty-state empty-state--compact">
-          <span class="empty-glyph" aria-hidden="true">⌁</span>
-          <h2>No audit artifact loaded</h2>
-          <p>No file has been uploaded or verified in this browser session. There is no report to summarise, and no successful verification is implied.</p>
-          <button class="button button--outline" type="button" disabled title="Web audit import is not connected yet">Import audit report <span aria-hidden="true">↗</span></button>
+        <section class="audit-import-panel">
+          <div class="section-kicker">IMPORT / 01</div>
+          <h2>Verify a checkpoint</h2>
+          <p>Select a signed checkpoint JSON exported by PrivaCage. Maximum file size: 2 MiB. No account, API call or network upload is used.</p>
+          <input
+            class="sr-only"
+            type="file"
+            accept=".json,application/json"
+            aria-label="Choose signed audit checkpoint JSON file"
+            bind:this={auditFileInput}
+            onchange={importAuditCheckpoint}
+          />
+          <div class="audit-import-actions">
+            <button
+              class="button button--light"
+              type="button"
+              onclick={() => auditFileInput?.click()}
+              disabled={auditBusy}
+            >{auditBusy ? 'Verifying locally …' : 'Choose checkpoint JSON'} <span aria-hidden="true">↗</span></button>
+            <span class="audit-import-note">PCAGE AUDIT CHECKPOINT / SCHEMA V1</span>
+          </div>
+          {#if auditError}
+            <div class="audit-error" role="alert">
+              <strong>Verification failed</strong>
+              <p>{auditError}</p>
+              <span>No successful verification is implied. The source file was not modified.</span>
+            </div>
+          {/if}
         </section>
-        <section class="info-row"><span class="info-symbol">i</span><p>A cryptographic hash chain can help detect edits to the records it covers. It cannot prove that the source recorded every event, that the device clock was correct, or that a displayed key belongs to a particular person.</p></section>
+        {#if auditReport}
+          <section class="audit-report" aria-labelledby="audit-report-title">
+            <div class="audit-report-heading">
+              <div>
+                <div class="section-kicker">VERIFICATION RESULT / LOCAL ONLY</div>
+                <h2 id="audit-report-title">Checkpoint verified locally</h2>
+                <p>{auditFileName}</p>
+              </div>
+              <span class="status-label status-label--available">All checks passed</span>
+            </div>
+            <div class="audit-report-grid">
+              <article class="audit-report-stat">
+                <span>SIGNATURE</span>
+                <strong>VALID</strong>
+                <small>For the embedded P-256 public key</small>
+              </article>
+              <article class="audit-report-stat">
+                <span>PAYLOAD DIGEST</span>
+                <strong>MATCH</strong>
+                <small>Exact payload UTF-8 bytes</small>
+              </article>
+              <article class="audit-report-stat">
+                <span>EVENT CHAIN</span>
+                <strong>VALID</strong>
+                <small>{auditReport.eventCount} event{auditReport.eventCount === 1 ? '' : 's'} checked</small>
+              </article>
+            </div>
+            <div class="audit-report-details">
+              <div><span>CHECKPOINT CREATED (DEVICE CLOCK)</span><strong>{auditReport.createdAt}</strong></div>
+              <div><span>PAYLOAD GENERATED</span><strong>{auditReport.generatedAt}</strong></div>
+              <div><span>FILTER PERIOD</span><strong>{auditReport.startDate} — {auditReport.endDate}</strong></div>
+              <div><span>FILTER TIME ZONE</span><strong>{auditReport.filterTimezone}</strong></div>
+              <div><span>SELECTED CATEGORIES</span><strong>{auditReport.selectedCategories.join(', ')}</strong></div>
+              <div><span>HOSTNAMES</span><strong>{auditReport.redactions.queriedHostnames ? 'REDACTED' : 'INCLUDED IN FILE'}</strong></div>
+              <div><span>SOCKET OWNER LABELS</span><strong>{auditReport.redactions.socketOwnerLabels ? 'REDACTED' : 'INCLUDED IN FILE'}</strong></div>
+            </div>
+            <div class="audit-report-hash">
+              <span>PUBLIC-KEY SHA-256 FINGERPRINT</span>
+              <code>{auditReport.signerPublicKeySha256}</code>
+            </div>
+            <div class="audit-report-hash">
+              <span>PAYLOAD SHA-256</span>
+              <code>{auditReport.payloadSha256}</code>
+            </div>
+            <div class="audit-report-hash">
+              <span>EVENT CHAIN HEAD SHA-256</span>
+              <code>{auditReport.chainHeadSha256}</code>
+            </div>
+            <div class="fingerprint-check">
+              <label for="trusted-fingerprint">Expected signer fingerprint (optional)</label>
+              <p>Paste a SHA-256 fingerprint obtained through a separate trusted channel. Colons and whitespace are accepted.</p>
+              <input
+                id="trusted-fingerprint"
+                type="text"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="64 hexadecimal characters"
+                bind:value={trustedFingerprint}
+              />
+              {#if trustedFingerprintStatus === 'not-checked'}
+                <p class="fingerprint-status">Signer identity has not been independently checked. The embedded key alone does not establish who signed this file.</p>
+              {:else if trustedFingerprintStatus === 'invalid'}
+                <p class="fingerprint-status">Enter a valid 64-character SHA-256 fingerprint.</p>
+              {:else if trustedFingerprintStatus === 'match'}
+                <p class="fingerprint-status">Fingerprint matches the supplied value. This establishes trust only if that expected value came from a trusted separate channel.</p>
+              {:else}
+                <p class="fingerprint-status">Fingerprint mismatch. The signer key differs from the expected fingerprint.</p>
+              {/if}
+            </div>
+          </section>
+        {:else if !auditError}
+          <section class="empty-state empty-state--compact">
+            <span class="empty-glyph" aria-hidden="true">⌁</span>
+            <h2>No audit artifact loaded</h2>
+            <p>Choose a checkpoint to validate its signature, payload and event chain. No local device history is read automatically and no report is fabricated.</p>
+          </section>
+        {/if}
+        <section class="info-row"><span class="info-symbol">i</span><p>A valid signature means the embedded key signed the checkpoint metadata. It does not establish a person's identity, prove the device clock was correct, or show that every event was recorded. Compare the fingerprint above through a trusted separate channel.</p></section>
 
       {:else if activeView === 'platforms'}
         <section class="page-intro">
