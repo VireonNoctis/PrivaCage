@@ -9,7 +9,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.audit.AuditExportEvent
 import java.io.IOException
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.time.Instant
 
@@ -96,21 +95,14 @@ internal object LocalDnsEventHistory {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             return "Unavailable on this Android version; initiating app unknown"
         }
-        if (packet.size < 28 || (packet[0].toInt() and 0x0f) < 5 || (packet[9].toInt() and 0xff) != OsConstants.IPPROTO_UDP) {
-            return "Unavailable for this packet; initiating app unknown"
-        }
-        val headerLength = (packet[0].toInt() and 0x0f) * 4
-        if (packet.size < headerLength + 8) return "Unavailable for malformed packet"
+        val tuple = DnsUdpSocketTupleParser.parse(packet)
+            ?: return "Unavailable for this IPv4/IPv6 UDP DNS packet; initiating app unknown"
         return try {
-            val localAddress = InetAddress.getByAddress(packet.copyOfRange(12, 16))
-            val remoteAddress = InetAddress.getByAddress(packet.copyOfRange(16, 20))
-            val localPort = unsignedShort(packet, headerLength)
-            val remotePort = unsignedShort(packet, headerLength + 2)
             val uid = context.getSystemService(ConnectivityManager::class.java)
                 .getConnectionOwnerUid(
                     OsConstants.IPPROTO_UDP,
-                    InetSocketAddress(localAddress, localPort),
-                    InetSocketAddress(remoteAddress, remotePort)
+                    InetSocketAddress(tuple.sourceAddress, tuple.sourcePort),
+                    InetSocketAddress(tuple.destinationAddress, tuple.destinationPort)
                 )
             if (uid < 0) return "No socket owner reported; initiating app unknown"
             if (uid == Process.SYSTEM_UID) return "Android system resolver (initiating app not identifiable)"
@@ -129,7 +121,4 @@ internal object LocalDnsEventHistory {
             "Socket-owner lookup unavailable; initiating app unknown"
         }
     }
-
-    private fun unsignedShort(bytes: ByteArray, offset: Int): Int =
-        ((bytes[offset].toInt() and 0xff) shl 8) or (bytes[offset + 1].toInt() and 0xff)
 }
