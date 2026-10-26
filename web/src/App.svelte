@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import RollingNumber from './lib/RollingNumber.svelte';
+  import AuditCheckpointComparison from './lib/AuditCheckpointComparison.svelte';
   import { verifyAuditCheckpoint, type AuditCheckpointReport } from './lib/audit-checkpoint';
   import {
     fetchCapabilities,
@@ -706,6 +707,7 @@
           </section>
         {/if}
         <section class="info-row"><span class="info-symbol">i</span><p>A valid signature means the embedded key signed the checkpoint metadata. It does not establish a person's identity, prove the device clock was correct, or show that every event was recorded. Compare the fingerprint above through a trusted separate channel.</p></section>
+        <AuditCheckpointComparison />
 
       {:else if activeView === 'platforms'}
         <section class="page-intro">
