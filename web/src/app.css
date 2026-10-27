@@ -1014,8 +1014,9 @@ select {
   line-height: 1em;
 }
 
-.rolling-number.reduced-motion .rolling-number__wheel {
-  transition: none;
+.rolling-number.reduced-motion .rolling-number__wheel,
+.rolling-number__wheel.instant {
+  transition: none !important;
   will-change: auto;
 }
 
