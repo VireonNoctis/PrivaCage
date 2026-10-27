@@ -24,6 +24,7 @@ internal object AppPermissionAudit {
     private const val PREFERENCES_NAME = "privacage_permission_audit"
     private const val KEY_BASELINE = "dangerous_permission_baseline_v1"
     private const val BASELINE_SCHEMA_VERSION = 1
+    private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
 
     fun clearBaseline(context: Context): Boolean =
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -246,6 +247,11 @@ internal object AppPermissionAudit {
     }
 
     internal fun decodeBaseline(text: String): PermissionGrantSnapshot {
+        if (text.length > MAX_BASELINE_BYTES ||
+            text.toByteArray(Charsets.UTF_8).size > MAX_BASELINE_BYTES
+        ) {
+            throw IOException("Permission baseline exceeds the 4 MiB safety limit")
+        }
         StrictJsonKeyScanner.validate(text, "Permission baseline")
         val root = try {
             JSONObject(text)
