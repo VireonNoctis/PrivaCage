@@ -42,10 +42,16 @@ internal object LocalRightsRequestStore {
     private const val KEY_RECORDS = "records_json"
     private const val MAX_RECORDS = 100
     private const val MAX_CONTROLLER_LENGTH = 256
+    private const val MAX_STORE_BYTES = 512 * 1024
 
     fun list(context: Context): List<StoredRightsRequest> {
         val raw = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getString(KEY_RECORDS, "[]") ?: "[]"
+        if (raw.length > MAX_STORE_BYTES ||
+            raw.toByteArray(Charsets.UTF_8).size > MAX_STORE_BYTES
+        ) {
+            throw IllegalStateException("The local rights-request tracker exceeds its 512 KiB safety limit; existing data was not overwritten.")
+        }
         val array = try {
             StrictJsonKeyScanner.validate(raw, "Local rights-request tracker")
             JSONArray(raw)
