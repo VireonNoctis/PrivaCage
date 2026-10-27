@@ -32,6 +32,34 @@ class LocalAuditCheckpointSignerTest {
         )
     }
 
+    private fun sharedVector(name: String): String {
+        val repositoryRoot = System.getProperty("privacage.repo-root")
+            ?: error("The test must receive the repository root from Gradle.")
+        return File(repositoryRoot, "shared/audit/test-vectors/$name").readText(Charsets.UTF_8)
+    }
+
+    @Test
+    fun verifiesSharedEmptyAndMultiEventVectors() {
+        val empty = LocalAuditCheckpointSigner.verify(sharedVector("checkpoint-v1-empty.json"))
+        assertTrue(empty.signatureValid)
+        assertTrue(empty.payloadHashValid)
+        assertTrue(empty.chainValid)
+        assertEquals(0, empty.eventCount)
+
+        val multi = LocalAuditCheckpointSigner.verify(sharedVector("checkpoint-v1-multi-event.json"))
+        assertTrue(multi.signatureValid)
+        assertTrue(multi.payloadHashValid)
+        assertTrue(multi.chainValid)
+        assertEquals(2, multi.eventCount)
+        assertEquals(
+            "04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf",
+            LocalAuditCheckpointSigner.compare(
+                sharedVector("checkpoint-v1-multi-event.json"),
+                sharedVector("checkpoint-v1-multi-event.json")
+            ).first.chainHeadSha256
+        )
+    }
+
     @Test
     fun detectsTheSamePayloadTamperingMutationAsTheOtherVerifiers() {
         val modifiedCheckpoint = sharedCheckpoint().replace("[REDACTED]", "private.example")
