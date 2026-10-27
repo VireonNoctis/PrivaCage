@@ -31,6 +31,20 @@ class AppPermissionAuditBaselineTest {
     }
 
     @Test
+    fun rejectsDuplicateBaselineKeysBeforeJSONObjectCanCollapseThem() {
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                """{"schema_version":1,"schema_version":1,"packages":{}}"""
+            )
+        }
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                "{\"schema_version\":1,\"packages\":{},\"packages\":{}}"
+            )
+        }
+    }
+
+    @Test
     fun rejectsUnknownTopLevelFieldsInsteadOfSilentlyIgnoringThem() {
         val exception = assertThrows(IOException::class.java) {
             AppPermissionAudit.decodeBaseline(
