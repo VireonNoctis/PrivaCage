@@ -16,12 +16,12 @@
 
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
-| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Inbound relay packets are byte-bounded and strict-parsed before JSONObject; cards/profiles, signed rosters and protected sync records are strict-parsed; unknown protected-record fields now fail closed; CI pending |
+| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Bounded duplicate-key scan on sync relay packet/page paths; exact JSON types now enforced for critical relay metadata; protected store rejects unknown fields; CI pending |
 | 122 | Sync record schema version inventory | Enumerate persisted record versions and explicitly migrate or reject unknown versions without discarding records. | Protected envelope and record versions now require an exact integer, not optInt coercion; unit tests added; broader optional-field inventory pending |
 | 123 | Atomic sync identity writes | Simulate failed temp writes, interrupted commits, malformed existing records, and KeyStore mismatch; previous record remains intact on failure. | Planned |
 | 124 | Trusted-peer roster consistency | Property-test sorted members, duplicate fingerprints, revoked tombstones, and owner-only signing through rotations. | Planned |
 | 125 | Replay ledger crash recovery | Test crashes between packet authentication, replay-ledger update, cursor update, and user approval; replay never becomes accepted. | Planned |
-| 126 | Relay cursor transaction semantics | Ensure rejected, untrusted, and malformed items advance only under documented policy and never skip a valid item silently. | Planned |
+| 126 | Relay cursor transaction semantics | Ensure rejected, untrusted, and malformed items advance only under documented policy and never skip a valid item silently. | Relay revision/cursor, message ID/payload, roster owner metadata, member-mode and revocation timestamps now require exact JSON types; coercion regression tests added; cursor transaction behavior still under review |
 | 127 | Owner rotation interruption matrix | Test each rotation/handoff restart point, old/new signer correspondence, rollback, and retry without losing the transition package. | Planned |
 | 128 | Recovery import anti-overwrite gate | Test malformed and oversized recovery bundles, active pending rotations, and failed KeyStore replacement; existing identity survives failure. | Planned |
 | 129 | Peer-card hostile input corpus | Fuzz lengths, key encodings, fingerprint casing, URL-like fields, unknown fields, and Unicode without auto-trusting any card. | Planned |
