@@ -235,10 +235,9 @@ internal class SyncRelayClient(
                     payload.fill(0)
                 }
                 try {
-                    StrictJsonKeyScanner.validate(packetJson, "Relayed encrypted sync packet")
-                    JSONObject(packetJson)
+                    SyncPacketJsonValidator.parse(packetJson)
                 } catch (exception: Exception) {
-                    throw IOException("Relay packet is not a JSON object.", exception)
+                    throw IOException("Relay packet is not a bounded, strict JSON object.", exception)
                 }
                 messages += RelayedMessage(messageCursor, messageId, packetJson)
             }
