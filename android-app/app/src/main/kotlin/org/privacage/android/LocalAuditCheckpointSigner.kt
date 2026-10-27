@@ -66,6 +66,8 @@ internal object LocalAuditCheckpointSigner {
     private const val MAX_CHECKPOINT_BYTES = 2 * 1024 * 1024
     private const val MAX_PAYLOAD_BYTES = 1024 * 1024
     private const val MAX_EVENT_COUNT = 100
+    private const val MAX_JSON_NESTING = 64
+    private val JSON_NUMBER = Regex("""-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?""")
 
     private val envelopeKeys = setOf(
         "format", "schema_version", "signature_algorithm", "created_at",
@@ -151,6 +153,7 @@ internal object LocalAuditCheckpointSigner {
         } finally {
             checkpointBytes.fill(0)
         }
+        rejectDuplicateJsonKeys(checkpointJson, "Checkpoint")
         val envelope = try {
             JSONObject(checkpointJson)
         } catch (exception: Exception) {
@@ -209,6 +212,7 @@ internal object LocalAuditCheckpointSigner {
         if (eventCount !in 0..MAX_EVENT_COUNT) {
             throw IOException("The checkpoint event count is outside the supported 0..100 range.")
         }
+        rejectDuplicateJsonKeys(payloadJson, "Embedded audit payload")
         val payloadBytes = payloadJson.toByteArray(StandardCharsets.UTF_8)
         val payloadHashValid = try {
             AuditIntegrityChain.sha256Hex(payloadBytes) == payloadSha256
@@ -457,6 +461,154 @@ internal object LocalAuditCheckpointSigner {
     private fun requiredBoolean(value: JSONObject, key: String): Boolean =
         value.opt(key) as? Boolean
             ?: throw IOException("Checkpoint field '$key' must be a JSON boolean.")
+
+    /**
+     * JSONObject accepts repeated keys and keeps one value. Check the original JSON text first
+     * so every verifier rejects ambiguous signed objects instead of parser-dependent inputs.
+     *
+     * The scan decodes escaped object-key characters before comparing them, so "format" and
+     * "fo\\u0072mat" are correctly treated as the same key. Nesting is bounded for hostile files.
+     */
+    private fun rejectDuplicateJsonKeys(source: String, label: String) {
+        try {
+            StrictJsonKeyScanner(source).scan()
+        } catch (exception: IOException) {
+            throw IOException("$label contains malformed JSON or duplicate object keys: ${exception.message}", exception)
+        }
+    }
+
+    private class StrictJsonKeyScanner(private val source: String) {
+        private var cursor = 0
+
+        fun scan() {
+            skipWhitespace()
+            parseValue(0)
+            skipWhitespace()
+            if (cursor != source.length) malformed()
+        }
+
+        private fun parseValue(depth: Int) {
+            if (depth > LocalAuditCheckpointSigner.MAX_JSON_NESTING) throw IOException("JSON nesting exceeds the supported limit.")
+            skipWhitespace()
+            if (cursor >= source.length) malformed()
+            when (source[cursor]) {
+                '{' -> parseObject(depth)
+                '[' -> parseArray(depth)
+                '"' -> parseString()
+                else -> parsePrimitive()
+            }
+        }
+
+        private fun parseObject(depth: Int) {
+            cursor += 1 // {
+            skipWhitespace()
+            if (take('}')) return
+            val keys = HashSet<String>()
+            while (true) {
+                skipWhitespace()
+                if (cursor >= source.length || source[cursor] != '"') malformed()
+                val key = parseString()
+                if (!keys.add(key)) throw IOException("Duplicate JSON object key '$key'.")
+                skipWhitespace()
+                expect(':')
+                parseValue(depth + 1)
+                skipWhitespace()
+                if (take(',')) continue
+                if (take('}')) return
+                malformed()
+            }
+        }
+
+        private fun parseArray(depth: Int) {
+            cursor += 1 // [
+            skipWhitespace()
+            if (take(']')) return
+            while (true) {
+                parseValue(depth + 1)
+                skipWhitespace()
+                if (take(',')) continue
+                if (take(']')) return
+                malformed()
+            }
+        }
+
+        private fun parseString(): String {
+            expect('"')
+            val decoded = StringBuilder()
+            while (cursor < source.length) {
+                val character = source[cursor++]
+                when {
+                    character == '"' -> return decoded.toString()
+                    character == '\\' -> {
+                        if (cursor >= source.length) malformed()
+                        when (val escaped = source[cursor++]) {
+                            '"', '\\', '/' -> decoded.append(escaped)
+                            'b' -> decoded.append('\b')
+                            'f' -> decoded.append('\u000c')
+                            'n' -> decoded.append('\n')
+                            'r' -> decoded.append('\r')
+                            't' -> decoded.append('\t')
+                            'u' -> {
+                                if (cursor + 4 > source.length) malformed()
+                                val hex = source.substring(cursor, cursor + 4)
+                                if (hex.any { it.digitToIntOrNull(16) == null }) malformed()
+                                decoded.append(hex.toInt(16).toChar())
+                                cursor += 4
+                            }
+                            else -> malformed()
+                        }
+                    }
+                    character.code < 0x20 -> malformed()
+                    else -> decoded.append(character)
+                }
+            }
+            malformed()
+        }
+
+        private fun parsePrimitive() {
+            val start = cursor
+            while (cursor < source.length) {
+                val character = source[cursor]
+                if (
+                    character == ',' || character == ']' || character == '}' ||
+                    character == ' ' || character == '\n' ||
+                    character == '\r' || character == '\t'
+                ) {
+                    break
+                }
+                cursor += 1
+            }
+            if (cursor == start) malformed()
+            val token = source.substring(start, cursor)
+            if (token != "true" && token != "false" && token != "null" &&
+                !LocalAuditCheckpointSigner.JSON_NUMBER.matches(token)
+            ) {
+                malformed()
+            }
+        }
+
+        private fun skipWhitespace() {
+            while (cursor < source.length) {
+                when (source[cursor]) {
+                    ' ', '\n', '\r', '\t' -> cursor += 1
+                    else -> return
+                }
+            }
+        }
+        private fun expect(expected: Char) {
+            if (!take(expected)) malformed()
+        }
+
+        private fun take(expected: Char): Boolean {
+            if (cursor < source.length && source[cursor] == expected) {
+                cursor += 1
+                return true
+            }
+            return false
+        }
+
+        private fun malformed(): Nothing = throw IOException("Malformed JSON.")
+    }
 
     private fun requireOnlyKeys(value: JSONObject, allowed: Set<String>, label: String) {
         val keys = value.keys()

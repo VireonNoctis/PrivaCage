@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "shared/audit/**"
       - "web-backend/**"
       - "shared/tracker-db/signatures.json"
       - ".github/workflows/web-validation.yml"
   pull_request:
     paths:
       - "web/**"
+      - "shared/audit/**"
       - "web-backend/**"
       - "shared/tracker-db/signatures.json"
       - ".github/workflows/web-validation.yml"

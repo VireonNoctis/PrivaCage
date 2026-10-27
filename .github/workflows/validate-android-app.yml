@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "android-app/**"
+      - "shared/audit/**"
       - "android-core/**"
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
@@ -23,6 +24,7 @@ on:
   pull_request:
     paths:
       - "android-app/**"
+      - "shared/audit/**"
       - "android-core/**"
       - "shared/rust/tracker-intelligence/**"
       - "shared/rust/pcage-sync-jni/**"
