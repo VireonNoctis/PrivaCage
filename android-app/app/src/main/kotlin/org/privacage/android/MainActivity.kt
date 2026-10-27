@@ -3592,7 +3592,7 @@ class MainActivity : Activity() {
         private const val REQUEST_AUDIT_CHECKPOINT_VERIFY = 4118
         private const val REQUEST_AUDIT_COMPARE_FIRST = 4121
         private const val REQUEST_AUDIT_COMPARE_SECOND = 4122
-        private const val MAX_AUDIT_CHECKPOINT_BYTES = 512 * 1024
+        private const val MAX_AUDIT_CHECKPOINT_BYTES = 2 * 1024 * 1024
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113
