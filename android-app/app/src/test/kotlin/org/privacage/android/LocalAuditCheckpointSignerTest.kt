@@ -2,6 +2,17 @@ package org.privacage.android
 
 import java.io.File
 import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.security.spec.ECGenParameterSpec
+import java.time.Instant
+import java.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
+import org.privacage.audit.AuditChainInput
+import org.privacage.audit.AuditIntegrityChain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -57,6 +68,95 @@ class LocalAuditCheckpointSignerTest {
         assertEquals(2, comparison.sharedPrefixEvents)
         assertEquals(0, comparison.firstEventsAfterSharedPrefix)
         assertEquals(0, comparison.secondEventsAfterSharedPrefix)
+    }
+
+
+    private fun checkpointWithEvents(
+        keyPair: KeyPair,
+        extraEventTimestamp: String? = null
+    ): String {
+        val inputs = mutableListOf(
+            AuditChainInput(
+                timestamp = "2026-10-24T10:00:00Z",
+                localDate = "2026-10-24",
+                category = "BLOCKED",
+                queriedHostname = "[REDACTED]",
+                socketOwnerLabel = "[REDACTED]"
+            )
+        )
+        if (extraEventTimestamp != null) {
+            inputs += AuditChainInput(
+                timestamp = extraEventTimestamp,
+                localDate = "2026-10-24",
+                category = "BLOCKED",
+                queriedHostname = "[REDACTED]",
+                socketOwnerLabel = "[REDACTED]"
+            )
+        }
+        val records = AuditIntegrityChain.create(inputs)
+        val head = records.lastOrNull()?.recordSha256 ?: AuditIntegrityChain.GENESIS_SHA256
+        val createdAt = "2026-10-24T11:00:00Z"
+        val payload = JSONObject()
+            .put("schema_version", 1)
+            .put("source", "optional_local_dns_event_history")
+            .put("generated_at", createdAt)
+            .put("filter_timezone", "UTC")
+            .put("date_range", JSONObject()
+                .put("start_inclusive", "2026-10-24")
+                .put("end_inclusive", "2026-10-24"))
+            .put("selected_categories", JSONArray().put("BLOCKED"))
+            .put("integrity", JSONObject()
+                .put("algorithm", AuditIntegrityChain.ALGORITHM)
+                .put("genesis_sha256", AuditIntegrityChain.GENESIS_SHA256)
+                .put("chain_head_sha256", head)
+                .put("record_count", records.size))
+            .put("redactions", JSONObject()
+                .put("queried_hostnames", true)
+                .put("socket_owner_labels", true)
+                .put("device_identifiers", true)
+                .put("internal_file_paths", true)
+                .put("packet_payloads", true))
+            .put("records_read", records.size)
+            .put("records_skipped_invalid", 0)
+            .put("records_excluded_by_filters", 0)
+            .put("event_count", records.size)
+            .put("events", JSONArray().apply {
+                records.forEach { record ->
+                    put(JSONObject()
+                        .put("timestamp", record.timestamp)
+                        .put("local_date", record.localDate)
+                        .put("category", record.category)
+                        .put("queried_hostname", record.queriedHostname)
+                        .put("socket_owner_label", record.socketOwnerLabel)
+                        .put("previous_record_sha256", record.previousRecordSha256)
+                        .put("record_sha256", record.recordSha256))
+                }
+            })
+        val payloadJson = payload.toString()
+        val payloadSha256 = AuditIntegrityChain.sha256Hex(payloadJson.toByteArray(StandardCharsets.UTF_8))
+        val publicKeyDer = keyPair.public.encoded
+        val publicKeySha256 = AuditIntegrityChain.sha256Hex(publicKeyDer)
+        val signingBytes = AuditIntegrityChain.checkpointSigningBytes(
+            createdAt, payloadSha256, head, records.size, publicKeySha256
+        )
+        val signature = Signature.getInstance(AuditIntegrityChain.CHECKPOINT_SIGNATURE_ALGORITHM).run {
+            initSign(keyPair.private)
+            update(signingBytes)
+            sign()
+        }
+        return JSONObject()
+            .put("format", AuditIntegrityChain.CHECKPOINT_FORMAT)
+            .put("schema_version", AuditIntegrityChain.CHECKPOINT_SCHEMA_VERSION)
+            .put("signature_algorithm", AuditIntegrityChain.CHECKPOINT_SIGNATURE_ALGORITHM)
+            .put("created_at", createdAt)
+            .put("signer_public_key_x509_base64", Base64.getEncoder().encodeToString(publicKeyDer))
+            .put("signer_public_key_sha256", publicKeySha256)
+            .put("payload_sha256", payloadSha256)
+            .put("chain_head_sha256", head)
+            .put("event_count", records.size)
+            .put("signature_base64", Base64.getEncoder().encodeToString(signature))
+            .put("payload_json", payloadJson)
+            .toString()
     }
 
     @Test
@@ -119,6 +219,32 @@ class LocalAuditCheckpointSignerTest {
         assertThrows(IOException::class.java) {
             LocalAuditCheckpointSigner.compare(checkpointA, checkpointB)
         }
+    }
+
+
+    @Test
+    fun comparesPrefixAndDivergentChainsForTheSameSignerAndScope() {
+        val keyPair = KeyPairGenerator.getInstance("EC").apply {
+            initialize(ECGenParameterSpec("secp256r1"))
+        }.generateKeyPair()
+        val first = checkpointWithEvents(keyPair)
+        val extended = checkpointWithEvents(keyPair, "2026-10-24T10:01:00Z")
+        val diverged = checkpointWithEvents(keyPair, "2026-10-24T10:02:00Z")
+
+        val prefix = LocalAuditCheckpointSigner.compare(first, extended)
+        assertEquals("first-is-prefix", prefix.relationship)
+        assertEquals(1, prefix.sharedPrefixEvents)
+        assertEquals(0, prefix.firstEventsAfterSharedPrefix)
+        assertEquals(1, prefix.secondEventsAfterSharedPrefix)
+
+        val reverse = LocalAuditCheckpointSigner.compare(extended, first)
+        assertEquals("second-is-prefix", reverse.relationship)
+
+        val divergence = LocalAuditCheckpointSigner.compare(extended, diverged)
+        assertEquals("diverged", divergence.relationship)
+        assertEquals(1, divergence.sharedPrefixEvents)
+        assertEquals(1, divergence.firstEventsAfterSharedPrefix)
+        assertEquals(1, divergence.secondEventsAfterSharedPrefix)
     }
 
 
