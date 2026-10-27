@@ -25,6 +25,7 @@ class JpegMetadataScrubberTest {
         try {
             input.writeBytes(inputBytes)
             val result = JpegMetadataScrubber.scrub(input, output)
+            assertContentEquals(inputBytes, input.readBytes())
             assertContentEquals(expected, output.readBytes())
             assertEquals(3, result.metadataSegmentsRemoved)
             assertEquals(1, result.app1SegmentsRemoved)
@@ -49,6 +50,7 @@ class JpegMetadataScrubberTest {
         try {
             input.writeBytes(inputBytes)
             val result = JpegMetadataScrubber.scrub(input, output)
+            assertContentEquals(inputBytes, input.readBytes())
             assertContentEquals(expected, output.readBytes())
             assertEquals(1, result.metadataSegmentsRemoved)
         } finally { input.delete(); output.delete() }
@@ -74,6 +76,40 @@ class JpegMetadataScrubberTest {
             input.writeBytes(bytes(0xFF, 0xD8, 0xFF, 0xD9))
             assertFailsWith<IOException> { JpegMetadataScrubber.scrub(input, output, maxBytes = 3) }
         } finally { input.delete(); output.delete() }
+    }
+
+    @Test
+    fun rejectsInputAndOutputAliasWithoutChangingOriginalBytes() {
+        val input = File.createTempFile("pcage-jpeg-same-", ".jpg")
+        val original = bytes(0xFF, 0xD8, 0xFF, 0xD9)
+        try {
+            input.writeBytes(original)
+            assertFailsWith<IllegalArgumentException> {
+                JpegMetadataScrubber.scrub(input, input)
+            }
+            assertContentEquals(original, input.readBytes())
+        } finally {
+            input.delete()
+        }
+    }
+
+    @Test
+    fun rejectsInvalidMarkerLengthsAndTruncatedEntropyScan() {
+        val input = File.createTempFile("pcage-jpeg-in-", ".jpg")
+        val output = File.createTempFile("pcage-jpeg-out-", ".jpg")
+        try {
+            val malformedInputs = listOf(
+                bytes(0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x01, 0xFF, 0xD9),
+                bytes(0xFF, 0xD8, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x11)
+            )
+            for (malformed in malformedInputs) {
+                input.writeBytes(malformed)
+                assertFailsWith<IOException> { JpegMetadataScrubber.scrub(input, output) }
+            }
+        } finally {
+            input.delete()
+            output.delete()
+        }
     }
 
     private fun segment(marker: Int, payload: ByteArray): ByteArray {
