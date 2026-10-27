@@ -4,10 +4,14 @@ import java.io.IOException
 
 internal object StrictJsonKeyScanner {
     private const val MAX_NESTING = 64
+    private const val MAX_JSON_CHARACTERS = 5 * 1024 * 1024
     private val JSON_NUMBER = Regex("""-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?""")
 
     @Throws(IOException::class)
     fun validate(source: String, label: String) {
+        if (source.length > MAX_JSON_CHARACTERS) {
+            throw IOException("$label exceeds the strict JSON character limit.")
+        }
         try {
             Scanner(source).scan()
         } catch (exception: IOException) {
