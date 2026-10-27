@@ -26,3 +26,12 @@ Do not add UI controls that purport to revoke another app's permissions, inspect
 6. Privacy disclosure and retention review for any user-imported reports.
 
 **Current blocker:** this repository has no `ios/` app project, the current environment cannot build/sign Xcode targets, and no Network Extension entitlement has been verified. Therefore this milestone records the supported design boundary and acceptance criteria only. It does not claim iOS runtime functionality.
+
+## Current Apple documentation checked
+
+- [Inspecting app activity data / App Privacy Report](https://developer.apple.com/documentation/Network/inspecting-app-activity-data): Apple describes the user-enabled report as a local, last-seven-days activity summary that users can export as NDJSON. An iOS companion should accept an explicitly shared report file rather than assume it can read the system report database directly.
+- [Network Extension framework](https://developer.apple.com/documentation/networkextension): available APIs differ by platform and provider type; certain capabilities have restrictions.
+- [Configuring network extensions](https://developer.apple.com/documentation/xcode/configuring-network-extensions/): the Xcode capability updates the entitlement configuration, and provider types carry distinct use cases/requirements.
+- [Network Extension provider deployment (TN3134)](https://developer.apple.com/documentation/technotes/tn3134-network-extension-provider-deployment): deployment depends on provider type, OS/platform, packaging and device configuration.
+
+These sources were checked on 27 October 2026. Re-check them when an actual Xcode target and signing/distribution path exist; this document is not an entitlement approval or compatibility guarantee.
