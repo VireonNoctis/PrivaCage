@@ -137,7 +137,7 @@ internal object AppPermissionAudit {
             val rawBaseline = preferences.getString(KEY_BASELINE, null)
             var baselineWarning: String? = null
             var preserveUnreadableBaseline = false
-            val previousSnapshot = if (rawBaseline.isNullOrBlank()) {
+            val previousSnapshot = if (rawBaseline == null) {
                 null
             } else {
                 try {
