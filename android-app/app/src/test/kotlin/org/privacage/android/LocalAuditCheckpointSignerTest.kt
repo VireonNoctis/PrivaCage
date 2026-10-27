@@ -51,13 +51,12 @@ class LocalAuditCheckpointSignerTest {
         assertTrue(multi.payloadHashValid)
         assertTrue(multi.chainValid)
         assertEquals(2, multi.eventCount)
-        assertEquals(
-            "04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf",
-            LocalAuditCheckpointSigner.compare(
-                sharedVector("checkpoint-v1-multi-event.json"),
-                sharedVector("checkpoint-v1-multi-event.json")
-            ).first.chainHeadSha256
-        )
+        val sameMulti = sharedVector("checkpoint-v1-multi-event.json")
+        val comparison = LocalAuditCheckpointSigner.compare(sameMulti, sameMulti)
+        assertEquals("same-chain", comparison.relationship)
+        assertEquals(2, comparison.sharedPrefixEvents)
+        assertEquals(0, comparison.firstEventsAfterSharedPrefix)
+        assertEquals(0, comparison.secondEventsAfterSharedPrefix)
     }
 
     @Test
