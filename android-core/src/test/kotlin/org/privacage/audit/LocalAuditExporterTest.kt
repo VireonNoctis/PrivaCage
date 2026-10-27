@@ -133,6 +133,56 @@ class LocalAuditExporterTest {
         }
     }
 
+    @Test
+    fun redactionMatrixNeverLeaksFieldsClaimedAsRedacted() {
+        val hostname = "private.example"
+        val owner = "private.package"
+        for (includeHostnames in listOf(false, true)) {
+            for (includeOwners in listOf(false, true)) {
+                val result = LocalAuditExporter.prepare(
+                    listOf(event(hostname, owner)),
+                    request(includeHostnames = includeHostnames, includeOwners = includeOwners),
+                    generatedAt
+                )
+                assertEquals(!includeHostnames, result.json.contains("\\"queried_hostnames\\": true"))
+                assertEquals(!includeOwners, result.json.contains("\\"socket_owner_labels\\": true"))
+                assertEquals(includeHostnames, result.json.contains(hostname))
+                assertEquals(includeOwners, result.json.contains(owner))
+                assertTrue(result.json.contains("\\"device_identifiers\\": true"))
+                assertTrue(result.json.contains("\\"internal_file_paths\\": true"))
+                assertTrue(result.json.contains("\\"packet_payloads\\": true"))
+                assertFalse(result.json.contains("private/device/path"))
+                assertFalse(result.json.contains("raw_packet_payload"))
+            }
+        }
+    }
+
+    @Test
+    fun noMatchingEventsProducesGenesisHeadAndAccurateExcludedCount() {
+        val result = LocalAuditExporter.prepare(
+            listOf(event("outside.example", timestamp = "2026-10-23T10:00:00Z")),
+            request(),
+            generatedAt
+        )
+
+        assertEquals(0, result.eventCount)
+        assertEquals(1, result.recordsExcludedByFilters)
+        assertEquals(AuditIntegrityChain.GENESIS_SHA256, result.chainHeadSha256)
+        assertTrue(result.json.contains("\\"event_count\\": 0"))
+        assertFalse(result.json.contains("outside.example"))
+    }
+
+    @Test
+    fun sameInputAndTimestampProduceByteIdenticalJson() {
+        val input = listOf(event("private.example"), event("another.example", action = "BLOCKED"))
+        val first = LocalAuditExporter.prepare(input, request(), generatedAt)
+        val second = LocalAuditExporter.prepare(input, request(), generatedAt)
+
+        assertEquals(first.json, second.json)
+        assertEquals(first.chainHeadSha256, second.chainHeadSha256)
+        assertEquals(first.previewText, second.previewText)
+    }
+
     private fun request(
         categories: Set<String> = setOf("BLOCKED", "FORWARDED"),
         includeHostnames: Boolean = false,
