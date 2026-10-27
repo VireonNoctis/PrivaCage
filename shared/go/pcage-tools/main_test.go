@@ -492,3 +492,62 @@ func TestBackupAndPrivacyValidatorsReportUnreadableFiles(t *testing.T) {
 		t.Fatalf("privacy validator swallowed missing file: %v", errorsFound)
 	}
 }
+
+func TestReadTrackerDatabaseRejectsDuplicateJSONKeys(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "duplicate top-level key",
+			input: `{"schema_version":1,"schema_version":1,"updated_at":"2026-10-21","entries":[]}`,
+		},
+		{
+			name:  "escaped-equivalent top-level key",
+			input: `{"schema_version":1,"schema\u005fversion":1,"updated_at":"2026-10-21","entries":[]}`,
+		},
+		{
+			name:  "duplicate nested key",
+			input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[{"id":"first","id":"second"}]}`,
+		},
+		{
+			name:  "escaped-equivalent nested key",
+			input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[{"id":"first","i\u0064":"second"}]}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "duplicate-keys.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+				t.Fatalf("duplicate JSON key was not rejected clearly: %v", err)
+			}
+		})
+	}
+}
+
+func TestReadTrackerDatabaseAllowsSameKeysInSeparateObjects(t *testing.T) {
+	document := fixtureDatabase()
+	second := fixtureEntry()
+	second.ID = "example-analytics-sdk-second"
+	second.Name = "Second test fixture"
+	document.Entries = append(document.Entries, second)
+
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTempFile(t, "separate-objects.json", string(encoded))
+	if _, err := readTrackerDatabase(path); err != nil {
+		t.Fatalf("same field names in separate objects must remain valid: %v", err)
+	}
+}
+
+func TestReadTrackerDatabaseRejectsOversizedInput(t *testing.T) {
+	path := writeTempFile(t, "oversized.json", strings.Repeat(" ", maxTrackerDatabaseBytes+1))
+	_, err := readTrackerDatabase(path)
+	if err == nil || !strings.Contains(err.Error(), "input limit") {
+		t.Fatalf("oversized tracker database was not rejected before parsing: %v", err)
+	}
+}
