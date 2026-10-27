@@ -79,7 +79,7 @@ class SyncRelayClientTest {
     fun rejectsEscapedEquivalentDuplicateKeysInNestedRelayedObjects() {
         assertIoFails {
             SyncRelayClient.parseMemberRevocationState(
-                """{"member_mode":true,"members":[{"fingerprint":"${"a".repeat(64)}","revoked_at_unix":null,"revoked_at_\\u0075nix":1}]}""",
+                """{"member_mode":true,"members":[{"fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","revoked_at_unix":null,"revoked_at_\u0075nix":1}]}""",
                 "a".repeat(64)
             )
         }
@@ -96,8 +96,8 @@ class SyncRelayClientTest {
 
         assertIoFails {
             client.upload(
-                "message_0001",
-                """{"body":{"header":{"message_id":"message_0001","message_id":"message_0002"}}}"""
+                "c".repeat(32),
+                """{"body":{"header":{"message_id":"${"c".repeat(32)}","message_id":"d"}}}"""
             )
         }
     }
