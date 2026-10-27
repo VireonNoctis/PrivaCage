@@ -262,6 +262,7 @@ Useful starting points:
 - [Privacy-suite expansion research](docs/research-notes/privacy-suite-expansion-2026-10-25.md)
 - [Next 20 engineering milestones](docs/roadmap/next-20-engineering-milestones.md)
 - [Next 100 engineering milestones](docs/roadmap/next-100-engineering-milestones.md)
+- [Next 1,000 engineering milestones (121–1120)](docs/roadmap/next-1000/README.md)
 - [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
 - [iOS companion capability boundary](ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
