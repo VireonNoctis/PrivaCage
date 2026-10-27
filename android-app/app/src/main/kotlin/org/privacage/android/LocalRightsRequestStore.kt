@@ -47,6 +47,7 @@ internal object LocalRightsRequestStore {
         val raw = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getString(KEY_RECORDS, "[]") ?: "[]"
         val array = try {
+            StrictJsonKeyScanner.validate(raw, "Local rights-request tracker")
             JSONArray(raw)
         } catch (exception: Exception) {
             throw IllegalStateException("The local rights-request tracker is unreadable; existing data was not overwritten.", exception)
