@@ -64,6 +64,41 @@ class AppPermissionAuditBaselineTest {
     }
 
     @Test
+    fun rejectsInvalidPackageAndPermissionNameSyntax() {
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                """{"schema_version":1,"packages":{"com/example.app":{"android.permission.CAMERA":true}}}"""
+            )
+        }
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                """{"schema_version":1,"packages":{"com.example.app":{"CAMERA":true}}}"""
+            )
+        }
+    }
+
+    @Test
+    fun rejectsExcessivePackageAndPerPackagePermissionCounts() {
+        val packageEntries = (0..2_000).joinToString(",") { index ->
+            "\"org.example.app$index\":{}"
+        }
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                """{"schema_version":1,"packages":{$packageEntries}}"""
+            )
+        }
+
+        val permissionEntries = (0..256).joinToString(",") { index ->
+            "\"android.permission.TEST_$index\":true"
+        }
+        assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(
+                """{"schema_version":1,"packages":{"org.example.app":{$permissionEntries}}}"""
+            )
+        }
+    }
+
+    @Test
     fun rejectsWrongTypesAndInvalidPermissionEntries() {
         assertThrows(IOException::class.java) {
             AppPermissionAudit.decodeBaseline("""{"schema_version":1,"packages":[]}""")
