@@ -31,8 +31,8 @@
 
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
-| 131 | Strict JSON Unicode edge cases | Test unpaired surrogates, escaped controls, surrogate-pair escapes, malformed Unicode sequences, and canonical duplicate-key equivalence. | Planned |
-| 132 | Strict JSON depth boundary | Verify exact accepted and rejected nesting limits in Android, Rust, Web, and Go with shared vectors. | Planned |
+| 131 | Strict JSON Unicode edge cases | Test unpaired surrogates, escaped controls, surrogate-pair escapes, malformed Unicode sequences, and canonical duplicate-key equivalence. | Scanner now accepts paired surrogate escapes and rejects unpaired high/low escapes; regression tests added; CI pending |
+| 132 | Strict JSON depth boundary | Verify exact accepted and rejected nesting limits in Android, Rust, Web, and Go with shared vectors. | Android scanner tests exact over-depth rejection at the configured boundary; cross-language parity vectors still planned |
 | 133 | Strict JSON input budget audit | Inventory every scanner call and enforce byte limits before scanning; reject oversized input before allocating parse trees. | Partially implemented; audit remaining call sites |
 | 134 | Baseline migration contract | Document schema migration policy and test v1, future version, missing fields, unknown fields, duplicate keys, and explicit reset. | Partially implemented |
 | 135 | Storage corruption recovery UI | Every unreadable store offers preserve/export/reset options; never auto-reset private history or keys after parse failure. | Planned |

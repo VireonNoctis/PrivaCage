@@ -42,6 +42,24 @@ class StrictJsonKeyScannerTest {
     }
 
     @Test
+    fun acceptsValidEscapedSurrogatePairs() {
+        StrictJsonKeyScanner.validate("""{"value":"\uD83D\uDE00"}""", "test JSON")
+    }
+
+    @Test
+    fun rejectsUnpairedEscapedHighAndLowSurrogates() {
+        assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate("""{"value":"\uD800"}""", "test JSON")
+        }
+        assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate("""{"value":"\uDC00"}""", "test JSON")
+        }
+        assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate("""{"value":"\uD800\u0041"}""", "test JSON")
+        }
+    }
+
+    @Test
     fun rejectsMalformedPrimitivesTrailingValuesAndOverdeepNesting() {
         assertThrows(IOException::class.java) {
             StrictJsonKeyScanner.validate("""{"value":01}""", "test JSON")
