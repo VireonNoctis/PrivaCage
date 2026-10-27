@@ -735,8 +735,8 @@ mod tests {
         assert!(verify_checkpoint_json(&duplicated).is_err());
 
         let escaped_duplicated = checkpoint.replacen(
-            "\\\"format\\\":\\\"privacage-audit-checkpoint\\\",",
-            "\\\"format\\\":\\\"privacage-audit-checkpoint\\\",\\\"fo\\\\u0072mat\\\":\\\"privacage-audit-checkpoint\\\",",
+            r##""format":"privacage-audit-checkpoint","##,
+            r##""format":"privacage-audit-checkpoint","fo\u0072mat":"privacage-audit-checkpoint","##,
             1,
         );
         assert!(verify_checkpoint_json(&escaped_duplicated).is_err());
