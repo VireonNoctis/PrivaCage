@@ -20,6 +20,24 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
+    fun historyRecordsMustMatchTheExactKnownSchema() {
+        val extraField = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":"ALLOW","socket_owner":"Unknown","raw_packet":"private"}]"""
+        val missingField = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":"ALLOW"}]"""
+        val wrongType = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":true,"socket_owner":"Unknown"}]"""
+        assertNull(LocalDnsEventHistory.parseStoredEvents(extraField))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(missingField))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(wrongType))
+    }
+
+    @Test
+    fun rejectsNonCanonicalTimestampsAndControlCharactersInStoredLabels() {
+        val nonCanonicalTimestamp = """[{"timestamp":"2026-10-26T10:00:00+00:00","domain":"example.org","action":"ALLOW","socket_owner":"Unknown"}]"""
+        val controlInOwner = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":"ALLOW","socket_owner":"Unknown\nprivate"}]"""
+        assertNull(LocalDnsEventHistory.parseStoredEvents(nonCanonicalTimestamp))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(controlInOwner))
+    }
+
+    @Test
     fun nonObjectRecordsAreRejectedRatherThanDroppedDuringRetention() {
         val stored = """[{"timestamp":"2026-10-26T10:00:00Z","domain":"example.org","action":"ALLOW","socket_owner":"Unknown"},42]"""
 
