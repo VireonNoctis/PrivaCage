@@ -117,6 +117,13 @@ internal object StrictJsonKeyScanner {
                                 else -> malformed()
                             }
                         }
+                        character.code in 0xD800..0xDBFF -> {
+                            if (cursor >= source.length) malformed()
+                            val lowSurrogate = source[cursor++]
+                            if (lowSurrogate.code !in 0xDC00..0xDFFF) malformed()
+                            decoded.append(character).append(lowSurrogate)
+                        }
+                        character.code in 0xDC00..0xDFFF -> malformed()
                         character.code < 0x20 -> malformed()
                         else -> decoded.append(character)
                     }

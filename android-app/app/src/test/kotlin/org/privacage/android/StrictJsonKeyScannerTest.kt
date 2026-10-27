@@ -60,6 +60,24 @@ class StrictJsonKeyScannerTest {
     }
 
     @Test
+    fun acceptsValidLiteralSurrogatePairs() {
+        val pair = charArrayOf(0xD83D.toChar(), 0xDE00.toChar()).concatToString()
+        StrictJsonKeyScanner.validate("""{"value":"${pair}"}""", "test JSON")
+    }
+
+    @Test
+    fun rejectsLiteralUnpairedSurrogates() {
+        val high = 0xD800.toChar()
+        val low = 0xDC00.toChar()
+        assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate("""{"value":"${high}"}""", "test JSON")
+        }
+        assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate("""{"value":"${low}"}""", "test JSON")
+        }
+    }
+
+    @Test
     fun rejectsMalformedPrimitivesTrailingValuesAndOverdeepNesting() {
         assertThrows(IOException::class.java) {
             StrictJsonKeyScanner.validate("""{"value":01}""", "test JSON")

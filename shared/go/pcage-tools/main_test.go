@@ -493,6 +493,23 @@ func TestBackupAndPrivacyValidatorsReportUnreadableFiles(t *testing.T) {
 	}
 }
 
+func TestReadTrackerDatabaseRejectsInvalidJSONUnicode(t *testing.T) {
+	valid := []byte(`{"name":"\ud83d\ude00"}`)
+	if err := rejectInvalidJSONUnicode(valid); err != nil {
+		t.Fatalf("valid escaped surrogate pair was rejected: %v", err)
+	}
+	for _, invalid := range [][]byte{
+		[]byte(`{"name":"\ud800"}`),
+		[]byte(`{"name":"\udc00"}`),
+		[]byte(`{"name":"\ud800\u0041"}`),
+		{0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d},
+	} {
+		if err := rejectInvalidJSONUnicode(invalid); err == nil {
+			t.Fatalf("invalid JSON Unicode was accepted: %q", invalid)
+		}
+	}
+}
+
 func TestReadTrackerDatabaseRejectsDuplicateJSONKeys(t *testing.T) {
 	tests := []struct {
 		name  string
