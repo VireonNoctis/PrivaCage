@@ -21,7 +21,7 @@ class AppPermissionAuditBaselineTest {
 
     @Test
     fun rejectsFractionalFutureStringAndBooleanSchemaVersions() {
-        val invalidVersions = listOf("1.5", "2", "\"1\"", "true", "null")
+        val invalidVersions = listOf("1.0", "1.5", "2", "\"1\"", "true", "null")
         for (version in invalidVersions) {
             val json = """{"schema_version":$version,"packages":{}}"""
             assertThrows("schema_version=$version", IOException::class.java) {
