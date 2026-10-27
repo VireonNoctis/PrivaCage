@@ -149,6 +149,67 @@ class DnsPolicyEngineTest {
         assertTrue(exception is IllegalArgumentException)
     }
 
+    @Test
+    fun rejectsMultipleQuestionsAndUnsupportedQuestionClass() {
+        val multiple = query("tracker.example").apply { this[5] = 2 }
+        assertIs<DnsDecision.Malformed>(DnsPolicyEngine(setOf("tracker.example")).evaluate(multiple))
+
+        val nonInternetClass = query("tracker.example").apply { this[this.size - 1] = 3 }
+        assertIs<DnsDecision.Malformed>(
+            DnsPolicyEngine(setOf("tracker.example")).evaluate(nonInternetClass)
+        )
+    }
+
+    @Test
+    fun rejectsReservedDnsFlagAndUnsupportedOpcode() {
+        val reservedFlag = query("tracker.example").apply {
+            this[3] = (this[3].toInt() or 0x40).toByte()
+        }
+        assertIs<DnsDecision.Malformed>(
+            DnsPolicyEngine(setOf("tracker.example")).evaluate(reservedFlag)
+        )
+
+        val unsupportedOpcode = query("tracker.example").apply {
+            this[2] = (this[2].toInt() or 0x08).toByte()
+        }
+        assertIs<DnsDecision.Malformed>(
+            DnsPolicyEngine(setOf("tracker.example")).evaluate(unsupportedOpcode)
+        )
+    }
+
+    @Test
+    fun rejectsOverlongLabelsAndUnderscoreLabels() {
+        val overlong = query("a".repeat(64) + ".example")
+        assertIs<DnsDecision.Malformed>(DnsPolicyEngine(emptySet()).evaluate(overlong))
+
+        val underscore = query("_service.example")
+        assertIs<DnsDecision.Malformed>(DnsPolicyEngine(emptySet()).evaluate(underscore))
+    }
+
+    @Test
+    fun seededMalformedQueriesNeverEscapeTheParserAsExceptions() {
+        val engine = DnsPolicyEngine(setOf("tracker.example", "ads.example.org"))
+        val random = java.util.Random(0x50434147454L)
+        val seed = query("tracker.example")
+
+        // Flip one bit at each byte boundary, including header counts, labels and question fields.
+        for (index in seed.indices) {
+            for (mask in listOf(1, 0x20, 0x80)) {
+                val mutated = seed.copyOf()
+                mutated[index] = (mutated[index].toInt() xor mask).toByte()
+                val outcome = runCatching { engine.evaluate(mutated) }
+                assertTrue("Parser threw on single-byte mutation at $index/$mask", outcome.isSuccess)
+            }
+        }
+
+        repeat(512) { caseIndex ->
+            val input = ByteArray(random.nextInt(0, 512))
+            random.nextBytes(input)
+            val outcome = runCatching { engine.evaluate(input) }
+            assertTrue("Parser threw on deterministic malformed case $caseIndex", outcome.isSuccess)
+        }
+    }
+
     private fun query(name: String, type: Int = 1): ByteArray {
         val qname = name.trimEnd('.').split('.').flatMap { label ->
             val bytes = label.toByteArray(Charsets.US_ASCII)
