@@ -70,4 +70,29 @@ class LocalAuditCheckpointSignerTest {
         }
     }
 
+
+    @Test
+    fun comparesAnIdenticalSharedCheckpointWithoutExposingEvents() {
+        val checkpoint = sharedCheckpoint()
+        val result = LocalAuditCheckpointSigner.compare(checkpoint, checkpoint)
+
+        assertEquals("same-chain", result.relationship)
+        assertEquals(1, result.sharedPrefixEvents)
+        assertEquals(0, result.firstEventsAfterSharedPrefix)
+        assertEquals(0, result.secondEventsAfterSharedPrefix)
+        assertEquals(1, result.eventCountA)
+        assertEquals(1, result.eventCountB)
+    }
+
+    @Test
+    fun refusesToCompareCheckpointWithTamperedPayload() {
+        val checkpointA = sharedCheckpoint()
+        val checkpointB = checkpointA.replace("[REDACTED]", "private.example")
+
+        assertThrows(IOException::class.java) {
+            LocalAuditCheckpointSigner.compare(checkpointA, checkpointB)
+        }
+    }
+
+
 }
