@@ -166,7 +166,7 @@ func TestAppAlternativeFreshnessReportMarksStaleCatalogAndListsAffectedIDs(t *te
 
 func TestAppAlternativeFreshnessReportMarksDueSoonCatalog(t *testing.T) {
 	catalog := appAlternativeFixture()
-	catalog.UpdatedAt = "2026-10-10"
+	catalog.UpdatedAt = "2026-05-15"
 	report, stale := buildAppAlternativeFreshnessReport(
 		catalog,
 		time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC),
