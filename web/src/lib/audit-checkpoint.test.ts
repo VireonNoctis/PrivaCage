@@ -9,6 +9,16 @@ const sharedCheckpointVector = readFileSync(
   'utf8'
 );
 
+const sharedEmptyCheckpointVector = readFileSync(
+  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1-empty.json'),
+  'utf8'
+);
+
+const sharedMultiEventCheckpointVector = readFileSync(
+  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1-multi-event.json'),
+  'utf8'
+);
+
 const cryptoProvider = webcrypto as unknown as Crypto;
 const encoder = new TextEncoder();
 const zeroHash = '0'.repeat(64);
@@ -203,6 +213,22 @@ describe('local signed audit checkpoint verifier', () => {
     expect(report.eventCount).toBe(1);
     expect(report.chainHeadSha256).toBe('ebdef2e58dba2dda4942283befe0b5913101be88f35d7e2521c319e42273fecb');
     expect(report.signerPublicKeySha256).toBe('11086649cd3e5d1892200a4200b165bbea5c9f9b47ca83792d4f9a1ef0dc8921');
+  });
+
+  it('verifies shared empty-chain and multi-event checkpoint vectors', async () => {
+    const empty = await verifyAuditCheckpoint(sharedEmptyCheckpointVector, cryptoProvider);
+    expect(empty.signatureValid).toBe(true);
+    expect(empty.payloadHashValid).toBe(true);
+    expect(empty.chainValid).toBe(true);
+    expect(empty.eventCount).toBe(0);
+    expect(empty.chainHeadSha256).toBe(zeroHash);
+
+    const multi = await verifyAuditCheckpoint(sharedMultiEventCheckpointVector, cryptoProvider);
+    expect(multi.signatureValid).toBe(true);
+    expect(multi.payloadHashValid).toBe(true);
+    expect(multi.chainValid).toBe(true);
+    expect(multi.eventCount).toBe(2);
+    expect(multi.chainHeadSha256).toBe('04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf');
   });
 
   it('rejects the shared vector after the same payload mutation tested by Android and Rust', async () => {

@@ -2,7 +2,7 @@
 
 ## Canonical schema-v1 vector
 
-`test-vectors/checkpoint-v1.json` is the single checked-in signed checkpoint fixture for cross-implementation verification. Keep its embedded `payload_json` string byte-for-byte unchanged when updating the outer JSON: the payload digest covers the exact UTF-8 bytes of that string.
+`test-vectors/checkpoint-v1.json` is the canonical one-event fixture. `checkpoint-v1-empty.json` covers the zero-event genesis chain, and `checkpoint-v1-multi-event.json` covers ordered multi-event chaining. All are signed test vectors for cross-implementation verification. Keep its embedded `payload_json` string byte-for-byte unchanged when updating the outer JSON: the payload digest covers the exact UTF-8 bytes of that string.
 
 The current fixture is consumed by:
 
@@ -10,7 +10,7 @@ The current fixture is consumed by:
 - `web/src/lib/audit-checkpoint.test.ts` — browser Web Crypto verifier tests.
 - `android-app/app/src/test/kotlin/org/privacage/android/LocalAuditCheckpointSignerTest.kt` — Android checkpoint verifier tests.
 
-All three implementations must accept the same fixture and detect the same payload mutation: replacing `[REDACTED]` with `private.example` without updating the signed digest.
+All three implementations consume the same three acceptance vectors and detect the same payload mutation: replacing `[REDACTED]` with `private.example` without updating the signed digest. These vectors use test-only keys generated for fixtures; their private keys are not checked in.
 
 ## Security boundary
 

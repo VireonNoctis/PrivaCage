@@ -1,0 +1,13 @@
+{
+  "format": "privacage-audit-checkpoint",
+  "schema_version": 1,
+  "signature_algorithm": "SHA256withECDSA",
+  "created_at": "2026-10-27T10:00:00Z",
+  "signer_public_key_x509_base64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEk7Bl8yjnUoccjqHfmUE716rHO2TruX04drLyzyHeKeZc+c5pX80NSUWZlsDRAfZ7phdUBpwE0+5BPqX4QAkAxw==",
+  "signer_public_key_sha256": "42bd28a96759749e648726cfbe492276f7d565610d8d4c8846a6bb358feb084a",
+  "payload_sha256": "d51248df88e00c0760d548742de54cddf69c257aadc379aed3852fb368297408",
+  "chain_head_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "event_count": 0,
+  "signature_base64": "MEYCIQC1Vvi/nGk4yyqZBmex587Kx5sYGbLscWr/pgPPfkfaGQIhANE51x3juPp1qnIhrR6k+SpG5BmXTqEozG2gv+NIL/r6",
+  "payload_json": "{\"schema_version\":1,\"source\":\"optional_local_dns_event_history\",\"generated_at\":\"2026-10-27T10:00:00Z\",\"filter_timezone\":\"UTC\",\"date_range\":{\"start_inclusive\":\"2026-10-27\",\"end_inclusive\":\"2026-10-27\"},\"selected_categories\":[\"BLOCKED\"],\"integrity\":{\"algorithm\":\"sha256-chain-v1\",\"genesis_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"chain_head_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"record_count\":0},\"redactions\":{\"queried_hostnames\":true,\"socket_owner_labels\":true,\"device_identifiers\":true,\"internal_file_paths\":true,\"packet_payloads\":true},\"records_read\":0,\"records_skipped_invalid\":0,\"records_excluded_by_filters\":0,\"event_count\":0,\"events\":[]}"
+}

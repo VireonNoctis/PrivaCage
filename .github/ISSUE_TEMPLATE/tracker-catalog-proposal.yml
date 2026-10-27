@@ -1,0 +1,86 @@
+name: Tracker catalogue proposal
+description: Propose a reviewable tracker indicator with source evidence and false-positive analysis.
+title: "[Tracker proposal]: "
+labels: ["tracker-data", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposals are untrusted candidates until reviewed. Do not submit private DNS logs, private identifiers, proprietary code, or user data. A domain match is not proof that a specific app transmitted personal information.
+  - type: input
+    id: name
+    attributes:
+      label: Service / SDK name
+      description: Use the vendor's documented name.
+      placeholder: Vendor analytics SDK
+    validations:
+      required: true
+  - type: input
+    id: official_source
+    attributes:
+      label: Official documentation or source URL
+      description: Prefer vendor or platform documentation over copied feed entries.
+      placeholder: https://vendor.example/docs
+    validations:
+      required: true
+  - type: input
+    id: reviewed_on
+    attributes:
+      label: Date you checked the source
+      description: YYYY-MM-DD. This records the proposal date; maintainers must independently review it.
+      placeholder: "2026-10-27"
+    validations:
+      required: true
+  - type: dropdown
+    id: indicator_type
+    attributes:
+      label: Proposed indicator type
+      options:
+        - Domain
+        - SDK / class signature
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: indicators
+    attributes:
+      label: Exact indicator values
+      description: One value per line, with source context for each. For domains, include the documented role and avoid wildcard claims unless evidence supports them.
+    validations:
+      required: true
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Proposed association confidence
+      options:
+        - High
+        - Medium
+        - Low
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: false_positives
+    attributes:
+      label: Likely false positives and benign uses
+      description: Describe shared infrastructure, first-party use, regional endpoints, or static-string limitations.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: What this evidence does not prove
+      description: State what cannot be inferred about runtime execution, attribution, transmission, or sensitive data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Contributor checklist
+      options:
+        - label: I have not included private user/device data.
+          required: true
+        - label: I understand this is a proposal, not an automatic activation request.
+          required: true
+        - label: I have listed source date and likely false positives.
+          required: true

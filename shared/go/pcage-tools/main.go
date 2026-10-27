@@ -203,6 +203,8 @@ func run(args []string) int {
 		return runValidateTracker(args[1:])
 	case "validate-app-alternatives":
 		return runValidateAppAlternatives(args[1:])
+	case "app-alternatives-report":
+		return runAppAlternativeReport(args[1:])
 	case "tracker-report":
 		return runTrackerReport(args[1:])
 	case "validate-android-backup":
@@ -225,6 +227,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  validate-tracker         Validate tracker schema and optionally evidence freshness")
 	fmt.Fprintln(w, "  validate-app-alternatives Validate the curated alternative-app catalogue and source URLs")
+	fmt.Fprintln(w, "  app-alternatives-report   Report catalogue freshness and affected record IDs")
 	fmt.Fprintln(w, "  tracker-report           Generate the local evidence review report")
 	fmt.Fprintln(w, "  validate-android-backup  Check the declared Android backup posture")
 	fmt.Fprintln(w, "  validate-android-privacy Check sensitive permissions and known telemetry dependency markers")

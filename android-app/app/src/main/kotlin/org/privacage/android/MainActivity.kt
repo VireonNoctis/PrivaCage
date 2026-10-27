@@ -30,6 +30,10 @@ import org.json.JSONObject
 import org.privacage.audit.AuditExportRequest
 import org.privacage.audit.AuditExportResult
 import org.privacage.audit.LocalAuditExporter
+import org.privacage.rights.PrivacyRight
+import org.privacage.rights.PrivacyRightsRequestBuilder
+import org.privacage.rights.RightsJurisdiction
+import org.privacage.rights.RightsRequestStatus
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
@@ -74,6 +78,7 @@ class MainActivity : Activity() {
     private var pendingAuditExport: ByteArray? = null
     private var pendingAuditExportFileName: String? = null
     private var pendingAuditExportIsSignedCheckpoint = false
+    private var pendingCheckpointComparisonFirst: ByteArray? = null
     private var auditExportStartDate = LocalDate.now().minusDays(6)
     private var auditExportEndDate = LocalDate.now()
     private lateinit var auditExportStartButton: Button
@@ -87,6 +92,8 @@ class MainActivity : Activity() {
     private var pendingScrubbedMedia: File? = null
     private var pendingScrubbedMediaExtension: String? = null
     private var pendingScrubbedMediaMime: String? = null
+    private var lastSavedScrubbedMediaUri: Uri? = null
+    private var lastSavedScrubbedMediaMime: String? = null
     private val metadataScrubber by lazy { NativeMetadataScrubber() }
     private var pendingSyncRecoveryExport: ByteArray? = null
     private var pendingSyncRecoveryImport: ByteArray? = null
@@ -231,6 +238,10 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Inspect / scrub image metadata (JPEG, PNG, WebP)"
             setOnClickListener { chooseMetadataFile() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Share latest saved cleaned image"
+            setOnClickListener { shareLastScrubbedMedia() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Inspect APK manifest offline"
@@ -654,6 +665,96 @@ class MainActivity : Activity() {
             text = "Verify signed audit checkpoint"
             setOnClickListener { chooseAuditCheckpointForVerification() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Compare two signed audit checkpoints"
+            setOnClickListener { chooseFirstCheckpointForComparison() }
+        }, matchWidth())
+
+        root.addView(TextView(this).apply {
+            text = "LOCAL PRIVACY RIGHTS REQUESTS"
+            textSize = 16f
+            setPadding(0, dp(20), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Prepare a request draft or open official California DROP guidance. PrivaCage never submits these requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
+            textSize = 12f
+        }, matchWidth())
+        val rightsControllerInput = EditText(this).apply {
+            hint = "Controller / business name (for direct requests)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setSingleLine(true)
+        }
+        root.addView(rightsControllerInput, matchWidth())
+        val rightsScopeInput = EditText(this).apply {
+            hint = "Optional request scope (not stored in tracker)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2
+            maxLines = 4
+        }
+        root.addView(rightsScopeInput, matchWidth())
+        val rightsTrackerText = TextView(this).apply {
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(rightsTrackerText, matchWidth())
+        refreshRightsTrackerText(rightsTrackerText)
+        root.addView(Button(this).apply {
+            text = "Draft UK GDPR request"
+            setOnClickListener {
+                createLocalRightsDraft(
+                    RightsJurisdiction.UK_GDPR,
+                    PrivacyRight.ERASURE,
+                    rightsControllerInput.text.toString(),
+                    rightsScopeInput.text.toString(),
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Draft California CCPA/CPRA request"
+            setOnClickListener {
+                showRightsTypePicker(
+                    RightsJurisdiction.CALIFORNIA_CCPA,
+                    rightsControllerInput.text.toString(),
+                    rightsScopeInput.text.toString(),
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open California DROP guidance / checklist"
+            setOnClickListener {
+                createLocalRightsDraft(
+                    RightsJurisdiction.CALIFORNIA_DROP,
+                    PrivacyRight.ERASURE,
+                    "",
+                    rightsScopeInput.text.toString(),
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "View / update local request tracker"
+            setOnClickListener { showRightsRequestTracker(rightsTrackerText) }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Clear local request tracker"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Delete local request tracker?")
+                    .setMessage("This removes the saved tracker metadata from this app. It does not contact controllers or delete data held by any company.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Delete tracker") { _, _ ->
+                        try {
+                            LocalRightsRequestStore.clear(this@MainActivity)
+                            refreshRightsTrackerText(rightsTrackerText)
+                        } catch (exception: Exception) {
+                            statusText.text = "Could not clear the local tracker: " + (exception.message ?: exception.javaClass.simpleName)
+                        }
+                    }
+                    .show()
+            }
+        }, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "ENCRYPTED DEVICE SYNC"
@@ -1045,6 +1146,8 @@ class MainActivity : Activity() {
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_AUDIT_EXPORT -> writeLocalAuditExport(resultCode, data?.data)
             REQUEST_AUDIT_CHECKPOINT_VERIFY -> verifyAuditCheckpoint(resultCode, data?.data)
+            REQUEST_AUDIT_COMPARE_FIRST -> readFirstCheckpointForComparison(resultCode, data?.data)
+            REQUEST_AUDIT_COMPARE_SECOND -> compareSelectedCheckpoints(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
             REQUEST_APK_DIFF_BASELINE -> auditApkDiffBaseline(resultCode, data?.data)
@@ -1064,11 +1167,15 @@ class MainActivity : Activity() {
         pendingAuditExport?.fill(0)
         pendingAuditExport = null
         pendingAuditExportFileName = null
+        pendingCheckpointComparisonFirst?.fill(0)
+        pendingCheckpointComparisonFirst = null
         pendingAuditExportIsSignedCheckpoint = false
         pendingMetadataInput?.delete()
         pendingMetadataInput = null
         pendingScrubbedMedia?.delete()
         pendingScrubbedMedia = null
+        lastSavedScrubbedMediaUri = null
+        lastSavedScrubbedMediaMime = null
         pendingSyncRecoveryExport?.fill(0)
         pendingSyncRecoveryExport = null
         pendingSyncRecoveryImport?.fill(0)
@@ -1956,8 +2063,31 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun shareLastScrubbedMedia() {
+        val uri = lastSavedScrubbedMediaUri
+        val mimeType = lastSavedScrubbedMediaMime
+        if (uri == null || mimeType == null) {
+            statusText.text = "No verified cleaned copy has been saved in this app session. Inspect, scrub, and save an image first."
+            return
+        }
+        try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newUri(contentResolver, "PrivaCage verified cleaned image", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "Share verified cleaned copy"))
+            statusText.text = "Sharing the saved cleaned copy only. The original file is not shared by this action."
+        } catch (exception: Exception) {
+            statusText.text = "Could not open the system share sheet: " +
+                (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
     private fun saveScrubbedMedia(resultCode: Int, uri: Uri?) {
         val cleaned = pendingScrubbedMedia
+        val mimeType = pendingScrubbedMediaMime
         pendingScrubbedMedia = null
         pendingScrubbedMediaExtension = null
         pendingScrubbedMediaMime = null
@@ -1968,6 +2098,11 @@ class MainActivity : Activity() {
         }
         if (cleaned == null || !cleaned.isFile) {
             statusText.text = "Cleaned image is no longer available; inspect and scrub the file again."
+            return
+        }
+        if (mimeType.isNullOrBlank()) {
+            cleaned.delete()
+            statusText.text = "The cleaned image's verified format was lost. The temporary output was deleted; inspect the image again."
             return
         }
         statusText.text = "Saving the verified cleaned image locally."
@@ -1988,7 +2123,9 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        statusText.text = "Verified cleaned image saved. The selected original was never modified."
+                        lastSavedScrubbedMediaUri = uri
+                        lastSavedScrubbedMediaMime = mimeType
+                        statusText.text = "Verified cleaned image saved. The original was not modified. The share action will send only this saved cleaned copy."
                     }
                 }
             } catch (exception: Exception) {
@@ -2609,6 +2746,323 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseFirstCheckpointForComparison() {
+        pendingCheckpointComparisonFirst?.fill(0)
+        pendingCheckpointComparisonFirst = null
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        try {
+            startActivityForResult(intent, REQUEST_AUDIT_COMPARE_FIRST)
+        } catch (exception: Exception) {
+            statusText.text = "Could not open the checkpoint picker. No comparison was run."
+        }
+    }
+
+    private fun readFirstCheckpointForComparison(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            statusText.text = "Checkpoint comparison cancelled."
+            pendingCheckpointComparisonFirst?.fill(0)
+            pendingCheckpointComparisonFirst = null
+            return
+        }
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IOException("Checkpoint A could not be opened.")
+            pendingCheckpointComparisonFirst = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+            }
+            startActivityForResult(intent, REQUEST_AUDIT_COMPARE_SECOND)
+            statusText.text = "Checkpoint A is held temporarily in memory. Choose checkpoint B to finish the local comparison."
+        } catch (exception: Exception) {
+            pendingCheckpointComparisonFirst?.fill(0)
+            pendingCheckpointComparisonFirst = null
+            statusText.text = "Could not read checkpoint A: " + (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    private fun compareSelectedCheckpoints(resultCode: Int, uri: Uri?) {
+        val firstBytes = pendingCheckpointComparisonFirst
+        pendingCheckpointComparisonFirst = null
+        if (resultCode != RESULT_OK || uri == null) {
+            firstBytes?.fill(0)
+            statusText.text = "Checkpoint comparison cancelled. No comparison result was produced."
+            return
+        }
+        statusText.text = "Validating both checkpoint signatures, payloads and chains locally..."
+        Thread({
+            var secondBytes: ByteArray? = null
+            var message: String
+            try {
+                val first = firstBytes ?: throw IOException("Checkpoint A is no longer available.")
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Checkpoint B could not be opened.")
+                secondBytes = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
+                val comparison = LocalAuditCheckpointSigner.compare(
+                    String(first, StandardCharsets.UTF_8),
+                    String(secondBytes ?: throw IOException("Checkpoint B bytes are missing."), StandardCharsets.UTF_8)
+                )
+                message = buildString {
+                    append("AUDIT CHECKPOINT COMPARISON (LOCAL ONLY)\n\n")
+                    append("Relationship: ").append(
+                        when (comparison.relationship) {
+                            "same-chain" -> "same verified record chain"
+                            "first-is-prefix" -> "checkpoint A is a strict prefix of checkpoint B"
+                            "second-is-prefix" -> "checkpoint B is a strict prefix of checkpoint A"
+                            else -> "verified chains diverge"
+                        }
+                    ).append('\n')
+                    append("Shared prefix records: ").append(comparison.sharedPrefixEvents).append('\n')
+                    append("Records after prefix — A: ").append(comparison.firstEventsAfterSharedPrefix).append('\n')
+                    append("Records after prefix — B: ").append(comparison.secondEventsAfterSharedPrefix).append('\n')
+                    append("Verified event counts — A: ").append(comparison.eventCountA)
+                        .append(", B: ").append(comparison.eventCountB).append('\n')
+                    append("Checkpoint A device-clock string: ").append(comparison.firstCreatedAt).append('\n')
+                    append("Checkpoint B device-clock string: ").append(comparison.secondCreatedAt)
+                    append("\n\nThis compares validated record hashes only. It does not prove signer identity, trusted time, or event completeness, and it does not determine which history is authoritative.")
+                }
+            } catch (exception: Exception) {
+                message = "Checkpoint comparison failed: " + (exception.message ?: exception.javaClass.simpleName)
+            } finally {
+                firstBytes?.fill(0)
+                secondBytes?.fill(0)
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) statusText.text = message
+            }
+        }, "PrivaCage-audit-checkpoint-compare").start()
+    }
+
+    private fun showRightsTypePicker(
+        jurisdiction: RightsJurisdiction,
+        controllerName: String,
+        scopeDescription: String,
+        trackerView: TextView
+    ) {
+        val rights = arrayOf(
+            PrivacyRight.ACCESS.label,
+            PrivacyRight.ERASURE.label,
+            PrivacyRight.CORRECTION.label,
+            PrivacyRight.OPT_OUT.label
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Choose the right to request")
+            .setItems(rights) { _, index ->
+                createLocalRightsDraft(
+                    jurisdiction,
+                    PrivacyRight.values()[index],
+                    controllerName,
+                    scopeDescription,
+                    trackerView
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun createLocalRightsDraft(
+        jurisdiction: RightsJurisdiction,
+        right: PrivacyRight,
+        controllerName: String,
+        scopeDescription: String,
+        trackerView: TextView
+    ) {
+        val draft = try {
+            PrivacyRightsRequestBuilder.createDraft(
+                jurisdiction = jurisdiction,
+                right = right,
+                controllerName = controllerName,
+                scopeDescription = scopeDescription,
+                preparedOn = LocalDate.now(),
+                receivedOn = null
+            )
+        } catch (exception: Exception) {
+            statusText.text = "Could not prepare a rights-request draft: " + (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+        try {
+            LocalRightsRequestStore.add(this, draft)
+            refreshRightsTrackerText(trackerView)
+        } catch (exception: Exception) {
+            statusText.text = "Could not save tracker metadata. The draft was not submitted or saved: " +
+                (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+        val due = buildString {
+            append("\n\nTiming guidance: ").append(draft.responsePeriodNote)
+            draft.standardResponseDueOn?.let { append("\nPlanning date (based on reported receipt): ").append(it) }
+            draft.extendedResponseDueOn?.let { append("\nPotential extended planning date (notice recorded by user): ").append(it) }
+            append("\n\nPrepared on: ").append(draft.preparedOn)
+            append("\nNo request was sent. Confirm eligibility and the destination using the official source.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "DROP checklist — not submitted" else "Local draft — not submitted")
+            .setMessage(draft.message + due)
+            .setPositiveButton(if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Copy checklist" else "Copy draft") { _, _ ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText("PrivaCage privacy rights draft", draft.message)
+                )
+                statusText.text = "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
+            }
+            .setNeutralButton("Open official guidance") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(draft.officialGuidanceUrl)))
+                } catch (exception: Exception) {
+                    statusText.text = "Could not open official guidance. Check the URL manually: " + draft.officialGuidanceUrl
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun refreshRightsTrackerText(view: TextView) {
+        try {
+            val records = LocalRightsRequestStore.list(this)
+            view.text = if (records.isEmpty()) {
+                "No request-tracker records. Creating a draft saves only metadata; it does not mean a request was submitted."
+            } else buildString {
+                append("Saved tracker entries: ").append(records.size).append("/100\n")
+                records.asReversed().take(5).forEach { record ->
+                    append("• ").append(record.displayLabel()).append('\n')
+                }
+                append("\nStatuses are user-reported workflow states, not independent evidence of receipt, compliance or deletion.")
+            }
+        } catch (exception: Exception) {
+            view.text = "Local request tracker is unreadable. Existing data was preserved; it was not reset. " +
+                (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    private fun showRightsRequestTracker(trackerView: TextView) {
+        val records = try {
+            LocalRightsRequestStore.list(this)
+        } catch (exception: Exception) {
+            statusText.text = "The local request tracker could not be read and was not overwritten."
+            refreshRightsTrackerText(trackerView)
+            return
+        }
+        if (records.isEmpty()) {
+            statusText.text = "No local rights-request entries to update."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Choose a tracker entry")
+            .setItems(records.map { it.displayLabel() }.toTypedArray()) { _, index ->
+                showRightsRequestActions(records[index], trackerView)
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showRightsRequestActions(record: StoredRightsRequest, trackerView: TextView) {
+        val transitions = RightsRequestStatus.values().filter {
+            PrivacyRightsRequestBuilder.canTransition(record.status, it)
+        }
+        val canRecordReceipt = record.status in setOf(
+            RightsRequestStatus.SUBMITTED,
+            RightsRequestStatus.ACKNOWLEDGED,
+            RightsRequestStatus.RESPONSE_RECEIVED,
+            RightsRequestStatus.OUTCOME_REPORTED
+        )
+        val actions = transitions.map { "Mark ${it.name.replace('_', ' ')} (user-reported)" } +
+            (if (canRecordReceipt) listOf("Record confirmed receipt date / extension notice") else emptyList()) +
+            "Delete this tracker entry"
+        val receiptIndex = transitions.size
+        val deleteIndex = transitions.size + if (canRecordReceipt) 1 else 0
+        AlertDialog.Builder(this)
+            .setTitle(record.displayLabel())
+            .setItems(actions.toTypedArray()) { _, index ->
+                when {
+                    index < transitions.size -> {
+                        try {
+                            LocalRightsRequestStore.transition(this, record.id, transitions[index])
+                            refreshRightsTrackerText(trackerView)
+                            statusText.text = "Tracker state updated. This records your report only; it is not proof of delivery, acknowledgement or deletion."
+                        } catch (exception: Exception) {
+                            statusText.text = "Could not update tracker: " + (exception.message ?: exception.javaClass.simpleName)
+                        }
+                    }
+                    canRecordReceipt && index == receiptIndex -> chooseRightsReceiptDate(record, trackerView)
+                    index == deleteIndex -> {
+                        AlertDialog.Builder(this)
+                            .setTitle("Delete tracker entry?")
+                            .setMessage("Only this app's local metadata will be deleted. Nothing will be sent to the controller.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Delete entry") { _, _ ->
+                                try {
+                                    LocalRightsRequestStore.delete(this, record.id)
+                                    refreshRightsTrackerText(trackerView)
+                                } catch (exception: Exception) {
+                                    statusText.text = "Could not delete entry: " + (exception.message ?: exception.javaClass.simpleName)
+                                }
+                            }
+                            .show()
+                    }
+                }
+            }
+            .setNeutralButton("Open official guidance") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(record.officialGuidanceUrl)))
+                } catch (exception: Exception) {
+                    statusText.text = "Could not open official guidance."
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun chooseRightsReceiptDate(record: StoredRightsRequest, trackerView: TextView) {
+        val initial = record.receivedOn ?: LocalDate.now()
+        val dialog = DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                val receivedDate = LocalDate.of(year, month + 1, day)
+                AlertDialog.Builder(this)
+                    .setTitle("Extension notice")
+                    .setMessage("Did the controller separately tell you that it is extending the response period? Select Yes only if you received that notice. This is a user report, not an independently verified event.")
+                    .setPositiveButton("Yes, notice received") { _, _ ->
+                        saveRightsReceiptDate(record, trackerView, receivedDate, true)
+                    }
+                    .setNegativeButton("No extension notice") { _, _ ->
+                        saveRightsReceiptDate(record, trackerView, receivedDate, false)
+                    }
+                    .setNeutralButton("Cancel", null)
+                    .show()
+            },
+            initial.year,
+            initial.monthValue - 1,
+            initial.dayOfMonth
+        )
+        dialog.datePicker.maxDate = System.currentTimeMillis()
+        dialog.setTitle("Date the controller received the request")
+        dialog.show()
+    }
+
+    private fun saveRightsReceiptDate(
+        record: StoredRightsRequest,
+        trackerView: TextView,
+        receivedOn: LocalDate,
+        extensionNoticeRecorded: Boolean
+    ) {
+        try {
+            val updated = LocalRightsRequestStore.recordReceivedDate(
+                this, record.id, receivedOn, extensionNoticeRecorded
+            )
+            refreshRightsTrackerText(trackerView)
+            statusText.text = buildString {
+                append("Receipt date saved as user-reported: ").append(receivedOn).append('.')
+                updated.standardResponseDueOn?.let { append(" Planning date: ").append(it).append('.') }
+                updated.extendedResponseDueOn?.let { append(" Potential extended planning date: ").append(it).append('.') }
+                append(" These are reminders, not legal conclusions or proof of controller compliance.")
+            }
+        } catch (exception: Exception) {
+            statusText.text = "Could not record the receipt date: " + (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
     private fun verifyAuditCheckpoint(resultCode: Int, uri: Uri?) {
         if (resultCode != RESULT_OK || uri == null) {
             statusText.text = "Checkpoint verification cancelled."
@@ -3136,7 +3590,9 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_DIFF_CANDIDATE = 4116
         private const val REQUEST_AUDIT_EXPORT = 4117
         private const val REQUEST_AUDIT_CHECKPOINT_VERIFY = 4118
-        private const val MAX_AUDIT_CHECKPOINT_BYTES = 512 * 1024
+        private const val REQUEST_AUDIT_COMPARE_FIRST = 4121
+        private const val REQUEST_AUDIT_COMPARE_SECOND = 4122
+        private const val MAX_AUDIT_CHECKPOINT_BYTES = 2 * 1024 * 1024
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
         private const val REQUEST_SYNC_RECOVERY_EXPORT = 4113

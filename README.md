@@ -39,6 +39,8 @@ Features do not all have the same maturity. A coded path is not the same as a te
 | Encrypted profile transfer | Android implementation + shared format | PCAGE01 passphrase-encrypted profile files use Argon2id and AES-256-GCM. This protects file contents but does not authenticate the sender. |
 | E2EE sync | Rust protocol/relay and Android integration | Uses device identity, signed trust-roster state and encrypted payloads. Physical-device lifecycle, recovery and end-to-end integration still require validation. |
 | Metadata inspection/scrubbing | Rust core + Android UI | Handles JPEG, PNG and WebP with bounded parsing and output verification; it is not a universal metadata or visual-content anonymizer. |
+| Signed audit checkpoint comparison | Android + Web, local-only | Verifies both signatures, payload digests and record chains before comparing same-key, same-scope hash sequences. It cannot establish identity, trusted time or event completeness. |
+| Privacy-rights drafts | Android local workflow | Produces user-reviewed UK GDPR / California CCPA drafts and a user-guided DROP checklist. Nothing is sent automatically; legal review is required before release. |
 | Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
 | Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |
 | Web console | Svelte 5 + TypeScript, Rust/Axum API | Displays tracker intelligence. It is not yet a live-device event ingestion dashboard. |
@@ -117,6 +119,8 @@ Validate the schema and review-freshness report with:
 ```sh
 go -C shared/go/pcage-tools test ./...
 go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+go -C shared/go/pcage-tools run . validate-app-alternatives
+go -C shared/go/pcage-tools run . app-alternatives-report --max-age-days 180 --fail-stale --format json
 go -C shared/go/pcage-tools run . tracker-report --format markdown
 ```
 
@@ -232,7 +236,7 @@ cd ../windows/pcage-audit
 go test ./...
 ```
 
-The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
+The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. `app-alternatives-report` gates the catalogue-level `updated_at` date and identifies affected entries; schema v1 has no per-entry source-review date, so the report explicitly cannot claim that individual URLs or trade-offs were recently re-checked. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
 
 Before a release, use the current [research notes](docs/research-notes/privacy-suite-expansion-2026-10-25.md) as a validation checklist. They separate platform-documented capabilities from assumptions and list the device tests still required.
 
@@ -257,6 +261,8 @@ Useful starting points:
 - [Tracker database schema](shared/tracker-db/schema.md)
 - [Privacy-suite expansion research](docs/research-notes/privacy-suite-expansion-2026-10-25.md)
 - [Next 20 engineering milestones](docs/roadmap/next-20-engineering-milestones.md)
+- [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
+- [iOS companion capability boundary](ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
