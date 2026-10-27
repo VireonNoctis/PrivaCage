@@ -65,6 +65,30 @@ class ApkPrivacyDiffTest {
         ApkPrivacyDiff.compare(report(), report(versionCode = 2), "unknown")
     }
 
+    @Test
+    fun identicalInputsAndCatalogFingerprintProduceIdenticalDiffs() {
+        val baseline = report(
+            versionName = "1.0",
+            versionCode = 1,
+            permissions = listOf(INTERNET, CAMERA),
+            components = listOf(ExportedApkComponent("Service", "com.example.SyncService", true, null)),
+            findings = listOf(indicator("analytics", "metrics.example"))
+        )
+        val candidate = report(
+            versionName = "2.0",
+            versionCode = 2,
+            permissions = listOf(INTERNET, CAMERA, FINE_LOCATION),
+            components = listOf(ExportedApkComponent("Service", "com.example.SyncService", true, null)),
+            findings = listOf(indicator("analytics", "metrics.example"))
+        )
+
+        val first = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+        val second = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(first, second)
+        assertEquals(listOf(FINE_LOCATION), first.addedPermissions.map { it.permissionName })
+    }
+
     private fun report(
         packageName: String = "com.example.app",
         versionName: String = "1.0",
