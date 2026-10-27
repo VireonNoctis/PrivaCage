@@ -142,7 +142,6 @@ async function readBoundedText(response: Response): Promise<string> {
 
 async function getJson<T>(
   path: string,
-  resource: string,
   validate: (value: unknown) => T,
   signal?: AbortSignal
 ): Promise<T> {
@@ -385,17 +384,17 @@ function parseCapabilities(value: unknown): WorkspaceCapabilities {
 }
 
 export function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {
-  return getJson('/api/health', 'health', parseHealth, signal);
+  return getJson('/api/health', parseHealth, signal);
 }
 
 export function fetchCatalogSummary(signal?: AbortSignal): Promise<CatalogSummary> {
-  return getJson('/api/v1/summary', 'tracker summary', parseCatalogSummary, signal);
+  return getJson('/api/v1/summary', parseCatalogSummary, signal);
 }
 
 export function fetchTrackerCatalog(signal?: AbortSignal): Promise<TrackerCatalog> {
-  return getJson('/api/v1/tracker-catalog', 'tracker catalogue', parseTrackerCatalog, signal);
+  return getJson('/api/v1/tracker-catalog', parseTrackerCatalog, signal);
 }
 
 export function fetchCapabilities(signal?: AbortSignal): Promise<WorkspaceCapabilities> {
-  return getJson('/api/v1/capabilities', 'capabilities', parseCapabilities, signal);
+  return getJson('/api/v1/capabilities', parseCapabilities, signal);
 }
