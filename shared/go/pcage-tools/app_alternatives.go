@@ -278,3 +278,128 @@ func runValidateAppAlternatives(args []string) int {
 	fmt.Printf("OK: %s passed app-alternative validation (%d records; schema v%d)\n", *path, len(catalog.Alternatives), catalog.SchemaVersion)
 	return 0
 }
+
+
+type appAlternativeFreshnessEntry struct {
+	ID                     string `json:"id"`
+	Name                   string `json:"name"`
+	EvidenceURL            string `json:"evidence_url"`
+	CatalogUpdatedAt       string `json:"catalog_updated_at"`
+	CatalogAgeDays         int    `json:"catalog_age_days"`
+	CatalogReviewState     string `json:"catalog_review_state"`
+	SourceReviewDateKnown  bool   `json:"source_review_date_known"`
+	SourceReviewLimitation string `json:"source_review_limitation"`
+}
+
+type appAlternativeFreshnessReport struct {
+	GeneratedAt        string                         `json:"generated_at"`
+	CatalogUpdatedAt   string                         `json:"catalog_updated_at"`
+	MaxAgeDays         int                            `json:"max_age_days"`
+	DueSoonDays        int                            `json:"due_soon_days"`
+	Counts             map[string]int                 `json:"counts"`
+	Entries            []appAlternativeFreshnessEntry `json:"entries"`
+	Limitation         string                         `json:"limitation"`
+}
+
+func buildAppAlternativeFreshnessReport(
+	catalog appAlternativeCatalog,
+	today time.Time,
+	maxAgeDays int,
+	dueSoonDays int,
+) (appAlternativeFreshnessReport, bool) {
+	updatedAt, _ := time.Parse(dateLayout, catalog.UpdatedAt) // Schema validation has already checked this date.
+	ageDays := int(today.Sub(updatedAt).Hours() / 24)
+	state := "current"
+	if updatedAt.After(today) {
+		state = "future-dated"
+	} else if ageDays > maxAgeDays {
+		state = "stale"
+	} else if dueSoonDays > 0 && maxAgeDays-ageDays <= dueSoonDays {
+		state = "due-soon"
+	}
+
+	report := appAlternativeFreshnessReport{
+		GeneratedAt:      today.Format(dateLayout),
+		CatalogUpdatedAt: catalog.UpdatedAt,
+		MaxAgeDays:       maxAgeDays,
+		DueSoonDays:      dueSoonDays,
+		Counts:            map[string]int{"current": 0, "due-soon": 0, "stale": 0, "future-dated": 0},
+		Entries:           make([]appAlternativeFreshnessEntry, 0, len(catalog.Alternatives)),
+		Limitation:        "Freshness here means catalogue updated_at only. Schema v1 has no per-entry source review date, so this report cannot claim individual evidence URLs or trade-offs were re-checked on that date.",
+	}
+	report.Counts[state] = len(catalog.Alternatives)
+	for _, record := range catalog.Alternatives {
+		report.Entries = append(report.Entries, appAlternativeFreshnessEntry{
+			ID:                     record.ID,
+			Name:                   record.Name,
+			EvidenceURL:            record.EvidenceURL,
+			CatalogUpdatedAt:       catalog.UpdatedAt,
+			CatalogAgeDays:         ageDays,
+			CatalogReviewState:     state,
+			SourceReviewDateKnown:  false,
+			SourceReviewLimitation: "No per-entry source-review date exists in schema v1.",
+		})
+	}
+	sort.Slice(report.Entries, func(i, j int) bool {
+		return report.Entries[i].ID < report.Entries[j].ID
+	})
+	return report, state == "stale" || state == "future-dated"
+}
+
+func runAppAlternativeReport(args []string) int {
+	flags := newFlagSet("app-alternatives-report")
+	path := flags.String("file", defaultAppAlternativeCatalogPath(), "path to app-alternative catalogue JSON")
+	maxAgeDays := flags.Int("max-age-days", 180, "mark the catalogue stale after this many days")
+	dueSoonDays := flags.Int("due-soon-days", 30, "mark catalogue review due soon within this many days")
+	todayText := flags.String("today", todayDate().Format(dateLayout), "override date (YYYY-MM-DD), mainly for tests")
+	format := flags.String("format", "markdown", "output format: markdown or json")
+	failStale := flags.Bool("fail-stale", false, "return exit code 1 when the catalogue date is stale or future-dated")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "ERROR: unexpected positional arguments")
+		return 2
+	}
+	if *maxAgeDays <= 0 || *dueSoonDays < 0 {
+		fmt.Fprintln(os.Stderr, "ERROR: max-age-days must be positive and due-soon-days must be non-negative")
+		return 2
+	}
+	if *format != "markdown" && *format != "json" {
+		fmt.Fprintln(os.Stderr, "ERROR: format must be markdown or json")
+		return 2
+	}
+	today, err := parseDate(*todayText, "today")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR: today must be canonical YYYY-MM-DD")
+		return 2
+	}
+	catalog, err := readAppAlternativeCatalog(*path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	report, stale := buildAppAlternativeFreshnessReport(catalog, today, *maxAgeDays, *dueSoonDays)
+	if *format == "json" {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(report); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: encode report: %v\n", err)
+			return 1
+		}
+	} else {
+		fmt.Printf("# App-alternative catalogue freshness\n\n")
+		fmt.Printf("- Generated: %s\n- Catalogue updated: %s\n- Age: %d days (limit %d)\n", report.GeneratedAt, report.CatalogUpdatedAt, report.Entries[0].CatalogAgeDays, report.MaxAgeDays)
+		fmt.Printf("- Status counts: current=%d, due-soon=%d, stale=%d, future-dated=%d\n\n", report.Counts["current"], report.Counts["due-soon"], report.Counts["stale"], report.Counts["future-dated"])
+		fmt.Printf("| ID | Alternative | Catalogue state | Evidence URL |\n|---|---|---|---|\n")
+		for _, entry := range report.Entries {
+			fmt.Printf("| %s | %s | %s | %s |\n", entry.ID, entry.Name, entry.CatalogReviewState, entry.EvidenceURL)
+		}
+		fmt.Printf("\n**Limitation:** %s\n", report.Limitation)
+	}
+	if stale && *failStale {
+		fmt.Fprintln(os.Stderr, "ERROR: app-alternative catalogue updated_at is stale or future-dated")
+		return 1
+	}
+	return 0
+}
