@@ -38,6 +38,14 @@
     settings: 'Settings'
   };
 
+  function formatLocalClock(): string {
+    const now = new Date();
+    return [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map((part) => String(part).padStart(2, '0'))
+      .join(':');
+  }
+
+  let localClock = $state(formatLocalClock());
   let activeView = $state<View>('overview');
   let health = $state<HealthResponse | null>(null);
   let summary = $state<CatalogSummary | null>(null);
@@ -240,10 +248,16 @@
     };
     motionQuery.addEventListener('change', handleMotionChange);
 
+    // The local clock keeps the digit-wheel system visible without relying on API data.
+    const clockTimer = window.setInterval(() => {
+      localClock = formatLocalClock();
+    }, 1000);
+
     void refreshWorkspace();
 
     return () => {
       requestController?.abort();
+      window.clearInterval(clockTimer);
       window.removeEventListener('hashchange', readViewFromHash);
       motionQuery.removeEventListener('change', handleMotionChange);
     };
@@ -302,6 +316,12 @@
     <header class="topbar">
       <div class="breadcrumb"><span>PRIVACAGE</span><span class="breadcrumb-slash">/</span><strong>{currentViewName.toUpperCase()}</strong></div>
       <div class="topbar-actions">
+        <div class="topbar-clock">
+          <span class="topbar-clock-label">LOCAL TIME</span>
+          <strong class="topbar-clock-value">
+            <RollingNumber value={localClock} reducedMotion={reducedMotion} announce={false} />
+          </strong>
+        </div>
         <div class="device-pill"><span class="device-pill-dot"></span> DEVICE NOT LINKED</div>
         <button class="icon-button refresh-button" type="button" onclick={refreshWorkspace} disabled={loading} aria-label="Refresh workspace">
           <span class:spin={loading} class="refresh-glyph" aria-hidden="true">↻</span>
