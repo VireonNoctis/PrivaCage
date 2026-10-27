@@ -66,6 +66,43 @@ class SyncRelayClientTest {
     }
 
     @Test
+    fun rejectsDuplicateMemberModeInRelayAdminResponse() {
+        assertIoFails {
+            SyncRelayClient.parseMemberRevocationState(
+                """{"member_mode":true,"member_mode":false,"members":[]}""",
+                "a".repeat(64)
+            )
+        }
+    }
+
+    @Test
+    fun rejectsEscapedEquivalentDuplicateKeysInNestedRelayedObjects() {
+        assertIoFails {
+            SyncRelayClient.parseMemberRevocationState(
+                """{"member_mode":true,"members":[{"fingerprint":"${"a".repeat(64)}","revoked_at_unix":null,"revoked_at_\\u0075nix":1}]}""",
+                "a".repeat(64)
+            )
+        }
+    }
+
+    @Test
+    fun uploadRejectsAmbiguousPacketBeforeOpeningNetworkConnection() {
+        val client = SyncRelayClient(
+            "https://sync.example.org",
+            "device-space_0001",
+            "a".repeat(64),
+            "b".repeat(64)
+        ) { _, _, _, _, _ -> "signature" }
+
+        assertIoFails {
+            client.upload(
+                "message_0001",
+                """{"body":{"header":{"message_id":"message_0001","message_id":"message_0002"}}}"""
+            )
+        }
+    }
+
+    @Test
     fun rejectsPlainHttpAndCredentialBearingUrls() {
         assertFails { SyncRelayClient.validateBaseUrl("http://sync.example.org") }
         assertFails { SyncRelayClient.validateBaseUrl("https://user:secret@sync.example.org") }
