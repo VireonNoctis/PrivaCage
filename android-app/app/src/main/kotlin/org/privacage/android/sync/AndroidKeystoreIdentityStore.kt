@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import org.json.JSONObject
+import org.privacage.android.StrictJsonKeyScanner
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -32,10 +33,21 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
         if (!recordFile.isFile || recordFile.length() !in 1..MAX_RECORD_FILE_BYTES.toLong()) {
             throw IOException("The protected sync record has an invalid size or type; it was not changed.")
         }
-        val wrapper = try {
-            JSONObject(String(recordFile.readBytes(), StandardCharsets.UTF_8))
+        val wrapperBytes = try {
+            recordFile.readBytes()
         } catch (exception: Exception) {
-            throw IOException("The protected sync record is damaged; it was not overwritten.", exception)
+            throw IOException("The protected sync record could not be read; it was not overwritten.", exception)
+        }
+        val wrapper = try {
+            val wrapperText = decodeUtf8Strict(wrapperBytes, "Protected sync envelope")
+            StrictJsonKeyScanner.validate(wrapperText, "Protected sync envelope")
+            JSONObject(wrapperText).also {
+                requireExactKeys(it, setOf("version", "iv", "ciphertext"), "Protected sync envelope")
+            }
+        } catch (exception: Exception) {
+            throw IOException("The protected sync record is damaged or ambiguous; it was not overwritten.", exception)
+        } finally {
+            wrapperBytes.fill(0)
         }
         if (wrapper.optInt("version", -1) != ENVELOPE_VERSION) {
             throw IOException("Unsupported protected sync envelope version; the file was preserved.")
@@ -71,7 +83,9 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
         }
 
         return try {
-            JSONObject(String(cleartext, StandardCharsets.UTF_8)).also {
+            val cleartextJson = decodeUtf8Strict(cleartext, "Decrypted sync record")
+            StrictJsonKeyScanner.validate(cleartextJson, "Decrypted sync record")
+            JSONObject(cleartextJson).also {
                 if (it.optInt("record_version", -1) != RECORD_VERSION) {
                     throw IOException("Unsupported protected sync record version; the file was preserved.")
                 }
@@ -140,6 +154,23 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
             wrappedBytes.fill(0)
             if (temporary.exists()) temporary.delete()
         }
+    }
+
+    private fun decodeUtf8Strict(bytes: ByteArray, label: String): String = try {
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (exception: Exception) {
+        throw IOException("$label is not valid UTF-8.", exception)
+    }
+
+    private fun requireExactKeys(value: JSONObject, expected: Set<String>, label: String) {
+        val actual = mutableSetOf<String>()
+        val iterator = value.keys()
+        while (iterator.hasNext()) actual += iterator.next()
+        if (actual != expected) throw IOException("$label has unsupported or missing fields.")
     }
 
     private fun loadExistingKey(): SecretKey {
