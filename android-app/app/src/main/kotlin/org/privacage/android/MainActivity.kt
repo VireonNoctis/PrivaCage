@@ -74,6 +74,7 @@ class MainActivity : Activity() {
     private var pendingAuditExport: ByteArray? = null
     private var pendingAuditExportFileName: String? = null
     private var pendingAuditExportIsSignedCheckpoint = false
+    private var pendingCheckpointComparisonFirst: ByteArray? = null
     private var auditExportStartDate = LocalDate.now().minusDays(6)
     private var auditExportEndDate = LocalDate.now()
     private lateinit var auditExportStartButton: Button
@@ -654,6 +655,10 @@ class MainActivity : Activity() {
             text = "Verify signed audit checkpoint"
             setOnClickListener { chooseAuditCheckpointForVerification() }
         }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Compare two signed audit checkpoints"
+            setOnClickListener { chooseFirstCheckpointForComparison() }
+        }, matchWidth())
 
         root.addView(TextView(this).apply {
             text = "ENCRYPTED DEVICE SYNC"
@@ -1045,6 +1050,8 @@ class MainActivity : Activity() {
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_AUDIT_EXPORT -> writeLocalAuditExport(resultCode, data?.data)
             REQUEST_AUDIT_CHECKPOINT_VERIFY -> verifyAuditCheckpoint(resultCode, data?.data)
+            REQUEST_AUDIT_COMPARE_FIRST -> readFirstCheckpointForComparison(resultCode, data?.data)
+            REQUEST_AUDIT_COMPARE_SECOND -> compareSelectedCheckpoints(resultCode, data?.data)
             REQUEST_IMPORT_FILE -> readEncryptedBackup(resultCode, data?.data)
             REQUEST_APK_AUDIT -> auditSelectedApk(resultCode, data?.data)
             REQUEST_APK_DIFF_BASELINE -> auditApkDiffBaseline(resultCode, data?.data)
@@ -1064,6 +1071,8 @@ class MainActivity : Activity() {
         pendingAuditExport?.fill(0)
         pendingAuditExport = null
         pendingAuditExportFileName = null
+        pendingCheckpointComparisonFirst?.fill(0)
+        pendingCheckpointComparisonFirst = null
         pendingAuditExportIsSignedCheckpoint = false
         pendingMetadataInput?.delete()
         pendingMetadataInput = null
@@ -2609,6 +2618,96 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseFirstCheckpointForComparison() {
+        pendingCheckpointComparisonFirst?.fill(0)
+        pendingCheckpointComparisonFirst = null
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        try {
+            startActivityForResult(intent, REQUEST_AUDIT_COMPARE_FIRST)
+        } catch (exception: Exception) {
+            statusText.text = "Could not open the checkpoint picker. No comparison was run."
+        }
+    }
+
+    private fun readFirstCheckpointForComparison(resultCode: Int, uri: Uri?) {
+        if (resultCode != RESULT_OK || uri == null) {
+            statusText.text = "Checkpoint comparison cancelled."
+            pendingCheckpointComparisonFirst?.fill(0)
+            pendingCheckpointComparisonFirst = null
+            return
+        }
+        try {
+            val input = contentResolver.openInputStream(uri)
+                ?: throw IOException("Checkpoint A could not be opened.")
+            pendingCheckpointComparisonFirst = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+            }
+            startActivityForResult(intent, REQUEST_AUDIT_COMPARE_SECOND)
+            statusText.text = "Checkpoint A is held temporarily in memory. Choose checkpoint B to finish the local comparison."
+        } catch (exception: Exception) {
+            pendingCheckpointComparisonFirst?.fill(0)
+            pendingCheckpointComparisonFirst = null
+            statusText.text = "Could not read checkpoint A: " + (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    private fun compareSelectedCheckpoints(resultCode: Int, uri: Uri?) {
+        val firstBytes = pendingCheckpointComparisonFirst
+        pendingCheckpointComparisonFirst = null
+        if (resultCode != RESULT_OK || uri == null) {
+            firstBytes?.fill(0)
+            statusText.text = "Checkpoint comparison cancelled. No comparison result was produced."
+            return
+        }
+        statusText.text = "Validating both checkpoint signatures, payloads and chains locally..."
+        Thread({
+            var secondBytes: ByteArray? = null
+            var message: String
+            try {
+                val first = firstBytes ?: throw IOException("Checkpoint A is no longer available.")
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IOException("Checkpoint B could not be opened.")
+                secondBytes = input.use { readLimited(it, MAX_AUDIT_CHECKPOINT_BYTES) }
+                val comparison = LocalAuditCheckpointSigner.compare(
+                    String(first, StandardCharsets.UTF_8),
+                    String(secondBytes ?: throw IOException("Checkpoint B bytes are missing."), StandardCharsets.UTF_8)
+                )
+                message = buildString {
+                    append("AUDIT CHECKPOINT COMPARISON (LOCAL ONLY)\n\n")
+                    append("Relationship: ").append(
+                        when (comparison.relationship) {
+                            "same-chain" -> "same verified record chain"
+                            "first-is-prefix" -> "checkpoint A is a strict prefix of checkpoint B"
+                            "second-is-prefix" -> "checkpoint B is a strict prefix of checkpoint A"
+                            else -> "verified chains diverge"
+                        }
+                    ).append('\n')
+                    append("Shared prefix records: ").append(comparison.sharedPrefixEvents).append('\n')
+                    append("Records after prefix — A: ").append(comparison.firstEventsAfterSharedPrefix).append('\n')
+                    append("Records after prefix — B: ").append(comparison.secondEventsAfterSharedPrefix).append('\n')
+                    append("Verified event counts — A: ").append(comparison.eventCountA)
+                        .append(", B: ").append(comparison.eventCountB).append('\n')
+                    append("Checkpoint A device-clock string: ").append(comparison.firstCreatedAt).append('\n')
+                    append("Checkpoint B device-clock string: ").append(comparison.secondCreatedAt)
+                    append("\n\nThis compares validated record hashes only. It does not prove signer identity, trusted time, or event completeness, and it does not determine which history is authoritative.")
+                }
+            } catch (exception: Exception) {
+                message = "Checkpoint comparison failed: " + (exception.message ?: exception.javaClass.simpleName)
+            } finally {
+                firstBytes?.fill(0)
+                secondBytes?.fill(0)
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) statusText.text = message
+            }
+        }, "PrivaCage-audit-checkpoint-compare").start()
+    }
+
     private fun verifyAuditCheckpoint(resultCode: Int, uri: Uri?) {
         if (resultCode != RESULT_OK || uri == null) {
             statusText.text = "Checkpoint verification cancelled."
@@ -3136,6 +3235,8 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_DIFF_CANDIDATE = 4116
         private const val REQUEST_AUDIT_EXPORT = 4117
         private const val REQUEST_AUDIT_CHECKPOINT_VERIFY = 4118
+        private const val REQUEST_AUDIT_COMPARE_FIRST = 4121
+        private const val REQUEST_AUDIT_COMPARE_SECOND = 4122
         private const val MAX_AUDIT_CHECKPOINT_BYTES = 512 * 1024
         private const val REQUEST_METADATA_SCRUB_INPUT = 4111
         private const val REQUEST_METADATA_SCRUB_OUTPUT = 4112
