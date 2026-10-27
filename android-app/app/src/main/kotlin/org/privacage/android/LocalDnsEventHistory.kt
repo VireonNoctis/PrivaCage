@@ -260,8 +260,12 @@ internal object LocalDnsEventHistory {
     fun record(context: Context, packet: ByteArray, domain: String, action: String): RecordResult {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return RecordResult.DISABLED
-        val normalizedDomain = domain.take(MAX_DOMAIN_LENGTH).lowercase()
+        val normalizedDomain = domain.filterNot(Char::isISOControl).trim()
+            .take(MAX_DOMAIN_LENGTH).lowercase()
+        val normalizedAction = action.filterNot(Char::isISOControl).trim().take(64)
+        if (normalizedDomain.isBlank() || normalizedAction.isBlank()) return RecordResult.HISTORY_UNREADABLE
         val attribution = resolveSocketOwner(context, packet)
+            .filterNot(Char::isISOControl).trim().take(512).ifBlank { "Unknown" }
         return synchronized(this) {
             val current = readAndPruneEvents(prefs, Instant.now())
                 ?: return RecordResult.HISTORY_UNREADABLE
@@ -273,7 +277,7 @@ internal object LocalDnsEventHistory {
             next.put(JSONObject()
                 .put("timestamp", Instant.now().toString())
                 .put("domain", normalizedDomain)
-                .put("action", action)
+                .put("action", normalizedAction)
                 .put("socket_owner", attribution))
             try {
                 writeStoredHistory(prefs, next.toString())
