@@ -277,6 +277,30 @@ describe('local signed audit checkpoint verifier', () => {
       .rejects.toThrow('Checkpoint JSON contains a duplicate object key.');
   });
 
+  it('rejects escaped-equivalent duplicate envelope keys', async () => {
+    const checkpoint = await createCheckpoint();
+    const ambiguous = checkpoint.replace(
+      '"format":"privacage-audit-checkpoint"',
+      '"format":"privacage-audit-checkpoint","fo\\u0072mat":"privacage-audit-checkpoint"'
+    );
+
+    await expect(verifyAuditCheckpoint(ambiguous, cryptoProvider))
+      .rejects.toThrow('Checkpoint JSON contains a duplicate object key.');
+  });
+
+  it('rejects duplicate fields inside the embedded payload', async () => {
+    const checkpoint = await createCheckpoint();
+    const envelope = JSON.parse(checkpoint) as { payload_json: string };
+    const duplicatedPayload = envelope.payload_json.replace(
+      '"schema_version":1,',
+      '"schema_version":1,"schema_version":1,'
+    );
+    const ambiguous = JSON.stringify({ ...envelope, payload_json: duplicatedPayload });
+
+    await expect(verifyAuditCheckpoint(ambiguous, cryptoProvider))
+      .rejects.toThrow('Embedded audit payload contains a duplicate object key.');
+  });
+
   it('rejects inputs over the documented checkpoint size limit before parsing', async () => {
     await expect(verifyAuditCheckpoint(' '.repeat(2 * 1024 * 1024 + 1), cryptoProvider))
       .rejects.toThrow('Checkpoint exceeds the 2 MiB input limit.');
