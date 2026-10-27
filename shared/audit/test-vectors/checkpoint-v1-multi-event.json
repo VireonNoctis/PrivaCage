@@ -1,0 +1,13 @@
+{
+  "format": "privacage-audit-checkpoint",
+  "schema_version": 1,
+  "signature_algorithm": "SHA256withECDSA",
+  "created_at": "2026-10-27T10:01:00Z",
+  "signer_public_key_x509_base64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwSsxd5+pCO4xSI1iBD9S76Z4W3GEXVxGvu6gZE4fSpl299buSBLD0vvuLmSNFFgMHdsQkQcv6vs9VDjD680McQ==",
+  "signer_public_key_sha256": "85955a807903d48acb77d81bacf32cdadbac230b1c1df1f6325277889548b748",
+  "payload_sha256": "0d8cc3e62cf4dffdab37b61630a48db54cc41a5a73ba7fc2d2d168ddc72d8677",
+  "chain_head_sha256": "04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf",
+  "event_count": 2,
+  "signature_base64": "MEUCIQCdKa6jkimoHLqqZ6FCcjRBXLjSe4ebWAuVT4a+PaNHzgIgHmncDLuAhgpFI7+OV5Wb7LgQaZy6AfYg9G4R4klhVPE=",
+  "payload_json": "{\"schema_version\":1,\"source\":\"optional_local_dns_event_history\",\"generated_at\":\"2026-10-27T10:01:00Z\",\"filter_timezone\":\"UTC\",\"date_range\":{\"start_inclusive\":\"2026-10-27\",\"end_inclusive\":\"2026-10-27\"},\"selected_categories\":[\"BLOCKED\",\"FORWARDED\"],\"integrity\":{\"algorithm\":\"sha256-chain-v1\",\"genesis_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"chain_head_sha256\":\"04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf\",\"record_count\":2},\"redactions\":{\"queried_hostnames\":true,\"socket_owner_labels\":true,\"device_identifiers":true,\"internal_file_paths":true,\"packet_payloads":true},\"records_read\":2,\"records_skipped_invalid\":0,\"records_excluded_by_filters":0,\"event_count\":2,\"events\":[{\"timestamp\":\"2026-10-27T09:58:00Z\",\"local_date\":\"2026-10-27\",\"category\":\"BLOCKED\",\"queried_hostname\":\"[REDACTED]\",\"socket_owner_label\":\"[REDACTED]\",\"previous_record_sha256\":\"00000000000000000000000000000000000000000000000000000000000000000\",\"record_sha256\":\"fcc668ef1f261aafb9aac45bc7623688cdd118d6ef963c632b231e23f645ec1f\"},{\"timestamp\":\"2026-10-27T09:59:00Z\",\"local_date\":\"2026-10-27\",\"category\":\"FORWARDED\",\"queried_hostname\":\"[REDACTED]\",\"socket_owner_label\":\"[REDACTED]\",\"previous_record_sha256\":\"fcc668ef1f261aafb9aac45bc7623688cdd118d6ef963c632b231e23f645ec1f\",\"record_sha256\":\"04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf\"}]}"
+}
