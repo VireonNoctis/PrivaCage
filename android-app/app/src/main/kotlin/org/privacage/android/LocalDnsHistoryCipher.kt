@@ -78,7 +78,10 @@ internal object LocalDnsHistoryCipher {
         }
 
         val envelope = try {
+            StrictJsonKeyScanner.validate(envelopeText, "Encrypted DNS history envelope")
             JSONObject(envelopeText)
+        } catch (exception: IOException) {
+            throw IOException("Encrypted DNS history envelope is malformed or ambiguous; stored data was preserved.", exception)
         } catch (exception: JSONException) {
             throw IOException("Encrypted DNS history envelope is malformed; stored data was preserved.", exception)
         } finally {
