@@ -92,6 +92,8 @@ class MainActivity : Activity() {
     private var pendingScrubbedMedia: File? = null
     private var pendingScrubbedMediaExtension: String? = null
     private var pendingScrubbedMediaMime: String? = null
+    private var lastSavedScrubbedMediaUri: Uri? = null
+    private var lastSavedScrubbedMediaMime: String? = null
     private val metadataScrubber by lazy { NativeMetadataScrubber() }
     private var pendingSyncRecoveryExport: ByteArray? = null
     private var pendingSyncRecoveryImport: ByteArray? = null
@@ -236,6 +238,10 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Inspect / scrub image metadata (JPEG, PNG, WebP)"
             setOnClickListener { chooseMetadataFile() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Share latest saved cleaned image"
+            setOnClickListener { shareLastScrubbedMedia() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Inspect APK manifest offline"
@@ -2064,8 +2070,31 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun shareLastScrubbedMedia() {
+        val uri = lastSavedScrubbedMediaUri
+        val mimeType = lastSavedScrubbedMediaMime
+        if (uri == null || mimeType == null) {
+            statusText.text = "No verified cleaned copy has been saved in this app session. Inspect, scrub, and save an image first."
+            return
+        }
+        try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newUri(contentResolver, "PrivaCage verified cleaned image", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, "Share verified cleaned copy"))
+            statusText.text = "Sharing the saved cleaned copy only. The original file is not shared by this action."
+        } catch (exception: Exception) {
+            statusText.text = "Could not open the system share sheet: " +
+                (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
     private fun saveScrubbedMedia(resultCode: Int, uri: Uri?) {
         val cleaned = pendingScrubbedMedia
+        val mimeType = pendingScrubbedMediaMime
         pendingScrubbedMedia = null
         pendingScrubbedMediaExtension = null
         pendingScrubbedMediaMime = null
@@ -2096,7 +2125,9 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        statusText.text = "Verified cleaned image saved. The selected original was never modified."
+                        lastSavedScrubbedMediaUri = uri
+                        lastSavedScrubbedMediaMime = mimeType
+                        statusText.text = "Verified cleaned image saved. The original was not modified. The share action will send only this saved cleaned copy."
                     }
                 }
             } catch (exception: Exception) {
