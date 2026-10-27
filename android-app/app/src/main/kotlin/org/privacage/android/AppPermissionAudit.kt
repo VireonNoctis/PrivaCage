@@ -151,7 +151,11 @@ internal object AppPermissionAudit {
             }
 
             if (previousSnapshot == null) {
-                output.append("No usable previous snapshot was available; this completed scan establishes the next comparison baseline.")
+                if (preserveUnreadableBaseline) {
+                    output.append("Comparison was not run because the saved baseline is unreadable; the current scan was not saved as a replacement baseline.")
+                } else {
+                    output.append("No usable previous snapshot was available; this completed scan establishes the next comparison baseline.")
+                }
                 if (baselineWarning != null) output.append("\n").append(baselineWarning)
             } else {
                 val diff = currentSnapshot.compare(previousSnapshot)
