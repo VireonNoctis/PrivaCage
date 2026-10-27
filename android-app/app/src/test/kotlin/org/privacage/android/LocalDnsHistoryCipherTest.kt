@@ -48,7 +48,9 @@ class LocalDnsHistoryCipherTest {
     fun duplicateEnvelopeFieldsAreRejectedBeforeJsonParsing() {
         val secret = key()
         val valid = JSONObject(LocalDnsHistoryCipher.encrypt("[]", secret))
-        val duplicate = """{"version":1,"version":1,"iv":"${valid.getString("iv")}","ciphertext":"${valid.getString("ciphertext")}"}"""
+        val iv = valid.getString("iv")
+        val ciphertext = valid.getString("ciphertext")
+        val duplicate = """{"version":1,"version":1,"iv":"${iv}","ciphertext":"${ciphertext}"}"""
         assertIOException("ambiguous") {
             LocalDnsHistoryCipher.decrypt(duplicate, secret)
         }
