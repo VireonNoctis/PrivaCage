@@ -57,14 +57,14 @@ class DnsPacketProcessorTest {
             val packet = ByteArray(size)
             random.nextBytes(packet)
             val result = runCatching { processor.processIpPacket(packet) }
-            kotlin.test.assertTrue("Packet of length $size escaped the decoder", result.isSuccess)
+            kotlin.test.assertTrue(result.isSuccess, "Packet of length $size escaped the decoder")
             kotlin.test.assertNotNull(result.getOrNull())
         }
         repeat(512) { caseIndex ->
             val packet = ByteArray(random.nextInt(0, 1500))
             random.nextBytes(packet)
             val result = runCatching { processor.processIpPacket(packet) }
-            kotlin.test.assertTrue("Arbitrary packet case $caseIndex escaped the decoder", result.isSuccess)
+            kotlin.test.assertTrue(result.isSuccess, "Arbitrary packet case $caseIndex escaped the decoder")
         }
     }
 
