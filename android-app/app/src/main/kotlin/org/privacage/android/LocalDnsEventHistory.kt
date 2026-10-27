@@ -56,6 +56,11 @@ internal object LocalDnsEventHistory {
         if (serialized == null) return JSONArray()
         if (serialized.length > MAX_STORED_HISTORY_BYTES) return null
         if (serialized.toByteArray(Charsets.UTF_8).size > MAX_STORED_HISTORY_BYTES) return null
+        try {
+            StrictJsonKeyScanner.validate(serialized, "Local DNS history")
+        } catch (_: IOException) {
+            return null
+        }
         val events = try {
             JSONArray(serialized)
         } catch (_: JSONException) {
