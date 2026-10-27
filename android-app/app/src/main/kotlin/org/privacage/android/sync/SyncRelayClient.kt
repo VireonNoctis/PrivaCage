@@ -1,6 +1,7 @@
 package org.privacage.android.sync
 
 import org.json.JSONObject
+import org.privacage.android.StrictJsonKeyScanner
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -45,6 +46,7 @@ internal class SyncRelayClient(
     @Throws(IOException::class)
     fun upload(messageId: String, packetJson: String) {
         require(isValidMessageId(messageId)) { "Sync message ID is invalid." }
+        StrictJsonKeyScanner.validate(packetJson, "Outbound encrypted sync packet")
         val payload = packetJson.toByteArray(StandardCharsets.UTF_8)
         if (payload.isEmpty() || payload.size > MAX_REQUEST_BYTES) {
             payload.fill(0)
@@ -60,6 +62,7 @@ internal class SyncRelayClient(
 
     @Throws(IOException::class)
     fun publishRoster(rosterJson: String) {
+        StrictJsonKeyScanner.validate(rosterJson, "Outbound signed roster")
         val payload = rosterJson.toByteArray(StandardCharsets.UTF_8)
         if (payload.isEmpty() || payload.size > MAX_ROSTER_BYTES) {
             payload.fill(0)
@@ -135,7 +138,9 @@ internal class SyncRelayClient(
             MAX_RESPONSE_BYTES
         )
         try {
-            val json = JSONObject(String(bytes, StandardCharsets.UTF_8))
+            val responseText = String(bytes, StandardCharsets.UTF_8)
+            StrictJsonKeyScanner.validate(responseText, "Relay roster page")
+            val json = JSONObject(responseText)
             val nextRevision = json.optLong("next_revision", -1L)
             if (nextRevision < afterRevision) throw IOException("Relay returned a backward roster revision.")
             val rawRosters = json.optJSONArray("rosters")
@@ -195,7 +200,9 @@ internal class SyncRelayClient(
             MAX_RESPONSE_BYTES
         )
         try {
-            val json = JSONObject(String(bytes, StandardCharsets.UTF_8))
+            val responseText = String(bytes, StandardCharsets.UTF_8)
+            StrictJsonKeyScanner.validate(responseText, "Relay message page")
+            val json = JSONObject(responseText)
             val nextCursor = json.optLong("next_cursor", -1L)
             if (nextCursor < cursor) throw IOException("Relay returned a backward cursor.")
             val rawMessages = json.optJSONArray("messages")
@@ -228,6 +235,7 @@ internal class SyncRelayClient(
                     payload.fill(0)
                 }
                 try {
+                    StrictJsonKeyScanner.validate(packetJson, "Relayed encrypted sync packet")
                     JSONObject(packetJson)
                 } catch (exception: Exception) {
                     throw IOException("Relay packet is not a JSON object.", exception)
@@ -403,6 +411,7 @@ internal class SyncRelayClient(
             targetFingerprint: String
         ): RelayMemberRevocationResult {
             val response = try {
+                StrictJsonKeyScanner.validate(responseJson, "Relay administrator response")
                 JSONObject(responseJson)
             } catch (exception: Exception) {
                 throw IOException("Relay administrator response was not valid JSON.", exception)
