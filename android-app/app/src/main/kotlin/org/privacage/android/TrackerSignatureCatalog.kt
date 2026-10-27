@@ -39,6 +39,7 @@ internal object TrackerSignatureCatalog {
             output.toByteArray()
         }
         val text = String(catalogBytes, Charsets.UTF_8)
+        StrictJsonKeyScanner.validate(text, "Tracker catalog")
         val root = try {
             JSONObject(text)
         } catch (exception: Exception) {
