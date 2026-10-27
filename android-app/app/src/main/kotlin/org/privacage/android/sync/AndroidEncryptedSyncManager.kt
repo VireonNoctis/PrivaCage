@@ -3,6 +3,7 @@ package org.privacage.android.sync
 import android.content.Context
 import android.util.Base64
 import org.json.JSONObject
+import org.privacage.android.StrictJsonKeyScanner
 import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -64,15 +65,14 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     @Synchronized
     @Throws(IOException::class)
     fun verifyPeerCard(cardJson: String): JSONObject {
-        if (cardJson.isBlank() || cardJson.length > MAX_CARD_JSON_BYTES) {
-            throw IOException("Paste a complete public device card under 32 KiB.")
-        }
+        validatePeerCardJson(cardJson)
         return parseNative(bridge.nativeVerifyIdentityCard(cardJson)).getJSONObject("card")
     }
 
     @Synchronized
     @Throws(IOException::class)
     fun trustPeerCard(cardJson: String, independentlyConfirmedFingerprint: String): String {
+        validatePeerCardJson(cardJson)
         val record = requireRecord()
         validateLocalRecord(record)
         val verified = parseNative(bridge.nativeVerifyIdentityCard(cardJson))
@@ -1369,6 +1369,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 return@repeat
             }
             try {
+                StrictJsonKeyScanner.validate(payloadJson, "Received sync profile")
                 validateProfile(payloadJson)
             } catch (_: Exception) {
                 cursor = advanceCursor(record, message.cursor)
@@ -1469,6 +1470,18 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         }
         // Recovery import begins with a clean local trust/configuration state.
         store.saveRecord(importedRecord, replaceMissingKeystoreKey = true)
+    }
+
+    private fun validatePeerCardJson(cardJson: String) {
+        val bytes = cardJson.toByteArray(StandardCharsets.UTF_8)
+        try {
+            if (cardJson.isBlank() || bytes.isEmpty() || bytes.size > MAX_CARD_JSON_BYTES) {
+                throw IOException("Paste a complete public device card under 32 KiB.")
+            }
+            StrictJsonKeyScanner.validate(cardJson, "Peer device card")
+        } finally {
+            bytes.fill(0)
+        }
     }
 
     private fun relayClient(record: JSONObject): SyncRelayClient {
