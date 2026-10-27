@@ -314,7 +314,7 @@ func buildAppAlternativeFreshnessReport(
 		state = "future-dated"
 	} else if ageDays > maxAgeDays {
 		state = "stale"
-	} else if dueSoonDays > 0 && maxAgeDays-ageDays <= dueSoonDays {
+	} else if dueSoonDays > 0 && ageDays >= maxAgeDays-dueSoonDays {
 		state = "due-soon"
 	}
 
