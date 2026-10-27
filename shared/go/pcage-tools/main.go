@@ -20,6 +20,7 @@ import (
 
 const (
 	dateLayout = "2006-01-02"
+	maxTrackerDatabaseBytes = 8 << 20
 )
 
 var (
@@ -412,11 +413,90 @@ func runValidateAndroidPrivacy(args []string) int {
 	return 0
 }
 
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := scanJSONValue(decoder, "$"); err != nil {
+		return fmt.Errorf("invalid JSON or duplicate object key: %w", err)
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder, path string) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+
+	delimiter, isDelimiter := token.(json.Delim)
+	if !isDelimiter {
+		return nil
+	}
+
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return fmt.Errorf("object key at %s is not a string", path)
+			}
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("duplicate object key %q at %s", key, path)
+			}
+			seen[key] = struct{}{}
+			if err := scanJSONValue(decoder, path+"."+key); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if closing != json.Delim('}') {
+			return fmt.Errorf("expected end of object at %s", path)
+		}
+	case '[':
+		for index := 0; decoder.More(); index++ {
+			if err := scanJSONValue(decoder, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if closing != json.Delim(']') {
+			return fmt.Errorf("expected end of array at %s", path)
+		}
+	default:
+		return fmt.Errorf("unexpected delimiter %q at %s", delimiter, path)
+	}
+	return nil
+}
+
 func readTrackerDatabase(path string) (trackerDatabase, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return trackerDatabase{}, fmt.Errorf("cannot read tracker database %s: %w", path, err)
 	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, int64(maxTrackerDatabaseBytes+1)))
+	if err != nil {
+		return trackerDatabase{}, fmt.Errorf("cannot read tracker database %s: %w", path, err)
+	}
+	if len(data) > maxTrackerDatabaseBytes {
+		return trackerDatabase{}, fmt.Errorf("tracker database %s exceeds the %d-byte input limit", path, maxTrackerDatabaseBytes)
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return trackerDatabase{}, fmt.Errorf("invalid JSON in %s: %w", path, err)
+	}
+
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document trackerDatabase
