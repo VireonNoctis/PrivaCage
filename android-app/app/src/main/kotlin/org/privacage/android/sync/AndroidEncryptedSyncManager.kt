@@ -1305,7 +1305,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 )
             if (message.cursor <= cursor) throw IOException("Relay cursor did not advance.")
             val packet = try {
-                JSONObject(message.packetJson)
+                SyncPacketJsonValidator.parse(message.packetJson)
             } catch (exception: Exception) {
                 cursor = advanceCursor(record, message.cursor)
                 skipped += 1
