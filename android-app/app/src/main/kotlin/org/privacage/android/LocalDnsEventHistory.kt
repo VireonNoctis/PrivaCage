@@ -66,8 +66,29 @@ internal object LocalDnsEventHistory {
         } catch (_: JSONException) {
             return null
         }
+        val expectedKeys = setOf("timestamp", "domain", "action", "socket_owner")
         for (index in 0 until events.length()) {
-            if (events.optJSONObject(index) == null) return null
+            val event = events.optJSONObject(index) ?: return null
+            val eventKeys = mutableSetOf<String>()
+            val iterator = event.keys()
+            while (iterator.hasNext()) eventKeys += iterator.next()
+            if (eventKeys != expectedKeys) return null
+
+            val timestamp = event.opt("timestamp") as? String ?: return null
+            val domain = event.opt("domain") as? String ?: return null
+            val action = event.opt("action") as? String ?: return null
+            val socketOwner = event.opt("socket_owner") as? String ?: return null
+            if (timestamp.length > 64 || domain.isBlank() || domain.length > MAX_DOMAIN_LENGTH ||
+                domain != domain.trim() || domain.any(Char::isISOControl) ||
+                action.isBlank() || action.length > 64 || action.any(Char::isISOControl) ||
+                socketOwner.isBlank() || socketOwner.length > 512 || socketOwner.any(Char::isISOControl)
+            ) return null
+            val instant = try {
+                Instant.parse(timestamp)
+            } catch (_: DateTimeParseException) {
+                return null
+            }
+            if (instant.toString() != timestamp) return null
         }
         return events
     }
