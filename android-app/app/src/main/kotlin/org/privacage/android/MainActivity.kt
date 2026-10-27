@@ -1183,6 +1183,8 @@ class MainActivity : Activity() {
         pendingMetadataInput = null
         pendingScrubbedMedia?.delete()
         pendingScrubbedMedia = null
+        lastSavedScrubbedMediaUri = null
+        lastSavedScrubbedMediaMime = null
         pendingSyncRecoveryExport?.fill(0)
         pendingSyncRecoveryExport = null
         pendingSyncRecoveryImport?.fill(0)
@@ -2105,6 +2107,11 @@ class MainActivity : Activity() {
         }
         if (cleaned == null || !cleaned.isFile) {
             statusText.text = "Cleaned image is no longer available; inspect and scrub the file again."
+            return
+        }
+        if (mimeType.isNullOrBlank()) {
+            cleaned.delete()
+            statusText.text = "The cleaned image's verified format was lost. The temporary output was deleted; inspect the image again."
             return
         }
         statusText.text = "Saving the verified cleaned image locally."
