@@ -551,3 +551,12 @@ func TestReadTrackerDatabaseRejectsOversizedInput(t *testing.T) {
 		t.Fatalf("oversized tracker database was not rejected before parsing: %v", err)
 	}
 }
+
+func TestReadTrackerDatabaseRejectsExcessiveJSONNesting(t *testing.T) {
+	input := strings.Repeat("[", maxTrackerJSONDepth+2) + "0" + strings.Repeat("]", maxTrackerJSONDepth+2)
+	path := writeTempFile(t, "deeply-nested.json", input)
+	_, err := readTrackerDatabase(path)
+	if err == nil || !strings.Contains(err.Error(), "JSON nesting exceeds") {
+		t.Fatalf("deeply nested JSON was not rejected with a nesting-limit error: %v", err)
+	}
+}
