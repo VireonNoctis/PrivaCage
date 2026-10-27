@@ -21,6 +21,7 @@ import (
 const (
 	dateLayout = "2006-01-02"
 	maxTrackerDatabaseBytes = 8 << 20
+	maxTrackerJSONDepth       = 128
 )
 
 var (
@@ -416,13 +417,16 @@ func runValidateAndroidPrivacy(args []string) int {
 func rejectDuplicateJSONKeys(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	if err := scanJSONValue(decoder, "$"); err != nil {
+	if err := scanJSONValue(decoder, "$", 0); err != nil {
 		return fmt.Errorf("invalid JSON or duplicate object key: %w", err)
 	}
 	return nil
 }
 
-func scanJSONValue(decoder *json.Decoder, path string) error {
+func scanJSONValue(decoder *json.Decoder, path string, depth int) error {
+	if depth > maxTrackerJSONDepth {
+		return fmt.Errorf("JSON nesting exceeds %d levels", maxTrackerJSONDepth)
+	}
 	token, err := decoder.Token()
 	if err != nil {
 		return err
@@ -449,7 +453,7 @@ func scanJSONValue(decoder *json.Decoder, path string) error {
 				return fmt.Errorf("duplicate object key %q at %s", key, path)
 			}
 			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder, path+"."+key); err != nil {
+			if err := scanJSONValue(decoder, path+"."+key, depth+1); err != nil {
 				return err
 			}
 		}
@@ -462,7 +466,7 @@ func scanJSONValue(decoder *json.Decoder, path string) error {
 		}
 	case '[':
 		for index := 0; decoder.More(); index++ {
-			if err := scanJSONValue(decoder, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+			if err := scanJSONValue(decoder, fmt.Sprintf("%s[%d]", path, index), depth+1); err != nil {
 				return err
 			}
 		}
