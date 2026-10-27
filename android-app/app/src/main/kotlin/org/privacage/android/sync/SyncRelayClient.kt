@@ -46,13 +46,13 @@ internal class SyncRelayClient(
     @Throws(IOException::class)
     fun upload(messageId: String, packetJson: String) {
         require(isValidMessageId(messageId)) { "Sync message ID is invalid." }
-        StrictJsonKeyScanner.validate(packetJson, "Outbound encrypted sync packet")
         val payload = packetJson.toByteArray(StandardCharsets.UTF_8)
         if (payload.isEmpty() || payload.size > MAX_REQUEST_BYTES) {
             payload.fill(0)
             throw IOException("Encrypted sync packet exceeds the relay's 2 MiB request limit.")
         }
         try {
+            StrictJsonKeyScanner.validate(packetJson, "Outbound encrypted sync packet")
             request("PUT", "/v1/spaces/$spaceId/messages/$messageId", payload,
                 setOf(HttpURLConnection.HTTP_CREATED), 1024)
         } finally {
@@ -62,13 +62,13 @@ internal class SyncRelayClient(
 
     @Throws(IOException::class)
     fun publishRoster(rosterJson: String) {
-        StrictJsonKeyScanner.validate(rosterJson, "Outbound signed roster")
         val payload = rosterJson.toByteArray(StandardCharsets.UTF_8)
         if (payload.isEmpty() || payload.size > MAX_ROSTER_BYTES) {
             payload.fill(0)
             throw IOException("Signed roster exceeds the relay's 256 KiB limit.")
         }
         try {
+            StrictJsonKeyScanner.validate(rosterJson, "Outbound signed roster")
             val response = request(
                 "PUT",
                 "/v1/spaces/$spaceId/roster",
@@ -138,7 +138,7 @@ internal class SyncRelayClient(
             MAX_RESPONSE_BYTES
         )
         try {
-            val responseText = String(bytes, StandardCharsets.UTF_8)
+            val responseText = decodeUtf8Strict(bytes, "Relay roster page")
             StrictJsonKeyScanner.validate(responseText, "Relay roster page")
             val json = JSONObject(responseText)
             val nextRevision = json.optLong("next_revision", -1L)
@@ -200,7 +200,7 @@ internal class SyncRelayClient(
             MAX_RESPONSE_BYTES
         )
         try {
-            val responseText = String(bytes, StandardCharsets.UTF_8)
+            val responseText = decodeUtf8Strict(bytes, "Relay message page")
             StrictJsonKeyScanner.validate(responseText, "Relay message page")
             val json = JSONObject(responseText)
             val nextCursor = json.optLong("next_cursor", -1L)
@@ -324,6 +324,16 @@ internal class SyncRelayClient(
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun decodeUtf8Strict(bytes: ByteArray, label: String): String = try {
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (exception: Exception) {
+        throw IOException("$label is not valid UTF-8.", exception)
     }
 
     private fun readLimited(input: java.io.InputStream, maxBytes: Int): ByteArray {
