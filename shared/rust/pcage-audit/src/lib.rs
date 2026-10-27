@@ -734,6 +734,13 @@ mod tests {
         );
         assert!(verify_checkpoint_json(&duplicated).is_err());
 
+        let escaped_duplicated = checkpoint.replacen(
+            "\\"format\\":\\"privacage-audit-checkpoint\\",",
+            "\\"format\\":\\"privacage-audit-checkpoint\\",\\"fo\\\\u0072mat\\":\\"privacage-audit-checkpoint\\",",
+            1,
+        );
+        assert!(verify_checkpoint_json(&escaped_duplicated).is_err());
+
         let mut value: serde_json::Value = serde_json::from_str(&checkpoint).unwrap();
         value["unexpected"] = serde_json::json!(true);
         assert!(verify_checkpoint_json(&value.to_string()).is_err());
