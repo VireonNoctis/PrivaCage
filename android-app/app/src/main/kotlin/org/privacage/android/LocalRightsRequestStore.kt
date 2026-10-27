@@ -19,6 +19,7 @@ internal data class StoredRightsRequest(
     val receivedOn: LocalDate?,
     val standardResponseDueOn: LocalDate?,
     val extendedResponseDueOn: LocalDate?,
+    val extensionNoticeRecorded: Boolean,
     val status: RightsRequestStatus,
     val officialGuidanceUrl: String
 ) {
@@ -73,11 +74,43 @@ internal object LocalRightsRequestStore {
             receivedOn = draft.receivedOn,
             standardResponseDueOn = draft.standardResponseDueOn,
             extendedResponseDueOn = draft.extendedResponseDueOn,
+            extensionNoticeRecorded = draft.extendedResponseDueOn != null,
             status = RightsRequestStatus.DRAFT,
             officialGuidanceUrl = draft.officialGuidanceUrl
         )
         save(context, current + record)
         return record
+    }
+
+    fun recordReceivedDate(
+        context: Context,
+        id: String,
+        receivedOn: LocalDate,
+        extensionNoticeRecorded: Boolean
+    ): StoredRightsRequest {
+        val current = list(context)
+        val index = current.indexOfFirst { it.id == id }
+        require(index >= 0) { "The selected rights-request record no longer exists." }
+        val existing = current[index]
+        require(existing.status != RightsRequestStatus.DRAFT && existing.status != RightsRequestStatus.REVIEWED) {
+            "Record a receipt date only after you have manually submitted the request."
+        }
+        val deadlineGuidance = org.privacage.rights.PrivacyRightsRequestBuilder.createDraft(
+            jurisdiction = existing.jurisdiction,
+            right = existing.right,
+            controllerName = existing.controllerName.orEmpty(),
+            preparedOn = LocalDate.now(),
+            receivedOn = receivedOn,
+            extensionNoticeRecorded = extensionNoticeRecorded
+        )
+        val updated = existing.copy(
+            receivedOn = receivedOn,
+            standardResponseDueOn = deadlineGuidance.standardResponseDueOn,
+            extendedResponseDueOn = deadlineGuidance.extendedResponseDueOn,
+            extensionNoticeRecorded = extensionNoticeRecorded
+        )
+        save(context, current.toMutableList().apply { set(index, updated) })
+        return updated
     }
 
     fun delete(context: Context, id: String) {
@@ -115,6 +148,7 @@ internal object LocalRightsRequestStore {
                 .put("received_on", record.receivedOn?.toString())
                 .put("standard_due_on", record.standardResponseDueOn?.toString())
                 .put("extended_due_on", record.extendedResponseDueOn?.toString())
+                .put("extension_notice_recorded", record.extensionNoticeRecorded)
                 .put("status", record.status.name)
                 .put("official_guidance_url", record.officialGuidanceUrl))
         }
@@ -152,7 +186,7 @@ internal object LocalRightsRequestStore {
             require(guidanceUrl.startsWith("https://") && guidanceUrl.length <= 2048)
             StoredRightsRequest(
                 id, jurisdiction, right, controller, preparedOn, receivedOn, standardDueOn,
-                extendedDueOn, status, guidanceUrl
+                extendedDueOn, item.optBoolean("extension_notice_recorded", false), status, guidanceUrl
             )
         } catch (exception: Exception) {
             throw IllegalStateException("The local rights-request tracker contains a malformed record; existing data was not overwritten.", exception)
