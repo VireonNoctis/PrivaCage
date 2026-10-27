@@ -171,6 +171,9 @@ internal fun decodeNativeMetadataResponse(value: String): NativeMetadataReport {
     if (outputBytes > inputBytes || metadataBytesRemoved > inputBytes) {
         throw IOException("Native metadata report byte counts exceed the input size.")
     }
+    if (inputBytes - outputBytes != metadataBytesRemoved) {
+        throw IOException("Native metadata input/output byte counts do not reconcile with reported removals.")
+    }
     val metadataSegmentsRemoved = count("metadata_segments_removed")
     val categoryCounts = listOf(
         count("jpeg_app1_segments_removed"),
@@ -183,8 +186,12 @@ internal fun decodeNativeMetadataResponse(value: String): NativeMetadataReport {
         count("webp_exif_chunks_removed"),
         count("webp_xmp_chunks_removed")
     )
-    if (categoryCounts.sum() > metadataSegmentsRemoved) {
-        throw IOException("Native metadata category counters exceed the aggregate segment count.")
+    var categoryTotal = 0L
+    for (count in categoryCounts) {
+        if (count > metadataSegmentsRemoved - categoryTotal) {
+            throw IOException("Native metadata category counters exceed the aggregate segment count.")
+        }
+        categoryTotal += count
     }
 
     return NativeMetadataReport(

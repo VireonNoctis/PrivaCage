@@ -59,6 +59,12 @@ class NativeMetadataResponseTest {
         assertThrows(IOException::class.java) {
             decodeNativeMetadataResponse(inconsistent.toString())
         }
+
+        val mismatchedByteCounts = successResponse()
+        mismatchedByteCounts.getJSONObject("report").put("metadata_bytes_removed", 9)
+        assertThrows(IOException::class.java) {
+            decodeNativeMetadataResponse(mismatchedByteCounts.toString())
+        }
     }
 
     @Test
