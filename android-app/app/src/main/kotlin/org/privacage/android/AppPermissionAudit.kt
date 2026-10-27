@@ -135,13 +135,15 @@ internal object AppPermissionAudit {
             val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             val rawBaseline = preferences.getString(KEY_BASELINE, null)
             var baselineWarning: String? = null
+            var preserveUnreadableBaseline = false
             val previousSnapshot = if (rawBaseline.isNullOrBlank()) {
                 null
             } else {
                 try {
                     decodeBaseline(rawBaseline)
                 } catch (exception: Exception) {
-                    baselineWarning = "The saved baseline was invalid and has been replaced: " +
+                    preserveUnreadableBaseline = true
+                    baselineWarning = "The saved baseline is unreadable and has been preserved: " +
                         (exception.message ?: exception.javaClass.simpleName)
                     null
                 }
@@ -204,16 +206,20 @@ internal object AppPermissionAudit {
                 }
             }
 
-            try {
-                val saved = preferences.edit()
-                    .putString(KEY_BASELINE, encodeBaseline(currentSnapshot))
-                    .commit()
-                if (!saved) {
-                    output.append("\nBaseline write failed: Android did not confirm the local preference write.")
+            if (preserveUnreadableBaseline) {
+                output.append("\nSaved baseline was not replaced. Clear it explicitly if you want to start a new comparison history.")
+            } else {
+                try {
+                    val saved = preferences.edit()
+                        .putString(KEY_BASELINE, encodeBaseline(currentSnapshot))
+                        .commit()
+                    if (!saved) {
+                        output.append("\nBaseline write failed: Android did not confirm the local preference write.")
+                    }
+                } catch (exception: RuntimeException) {
+                    output.append("\nBaseline write failed: ")
+                        .append(exception.message ?: exception.javaClass.simpleName)
                 }
-            } catch (exception: RuntimeException) {
-                output.append("\nBaseline write failed: ")
-                    .append(exception.message ?: exception.javaClass.simpleName)
             }
         }
 
@@ -239,14 +245,19 @@ internal object AppPermissionAudit {
             .toString()
     }
 
-    private fun decodeBaseline(text: String): PermissionGrantSnapshot {
+    internal fun decodeBaseline(text: String): PermissionGrantSnapshot {
         val root = try {
             JSONObject(text)
         } catch (exception: JSONException) {
             throw IOException("Baseline is not valid JSON", exception)
         }
-        if (root.opt("schema_version") !is Number ||
-            (root.opt("schema_version") as Number).toInt() != BASELINE_SCHEMA_VERSION ||
+        val rootKeys = root.keys().asSequence().toSet()
+        if (rootKeys != setOf("schema_version", "packages")) {
+            throw IOException("Baseline contains missing or unsupported top-level fields")
+        }
+        val schemaVersion = root.opt("schema_version") as? Number
+        if (schemaVersion == null ||
+            schemaVersion.toDouble() != BASELINE_SCHEMA_VERSION.toDouble() ||
             root.opt("packages") !is JSONObject) {
             throw IOException("Baseline schema version or package map is invalid")
         }
