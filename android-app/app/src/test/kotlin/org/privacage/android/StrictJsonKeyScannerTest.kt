@@ -9,7 +9,7 @@ class StrictJsonKeyScannerTest {
     @Test
     fun acceptsNestedJsonAndEscapedStringValues() {
         StrictJsonKeyScanner.validate(
-            """{"schema_version":1,"items":[{"name":"quoted \\"text\\"","enabled":true,"weight":-1.25e+2}]}""",
+            """{"schema_version":1,"items":[{"name":"quoted \"text\"","enabled":true,"weight":-1.25e+2}]}""",
             "test JSON"
         )
     }
