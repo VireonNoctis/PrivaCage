@@ -25,6 +25,10 @@ internal object AppPermissionAudit {
     private const val KEY_BASELINE = "dangerous_permission_baseline_v1"
     private const val BASELINE_SCHEMA_VERSION = 1
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
+    private const val MAX_BASELINE_PACKAGES = 2_000
+    private const val MAX_PERMISSIONS_PER_PACKAGE = 256
+    private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
+    private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
 
     fun clearBaseline(context: Context): Boolean =
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -272,6 +276,9 @@ internal object AppPermissionAudit {
             throw IOException("Baseline schema version or package map is invalid")
         }
         val packagesObject = root.getJSONObject("packages")
+        if (packagesObject.length() > MAX_BASELINE_PACKAGES) {
+            throw IOException("Baseline package count exceeds the supported limit")
+        }
         val packages = linkedMapOf<String, Map<String, Boolean>>()
         val packageIterator = packagesObject.keys()
         while (packageIterator.hasNext()) {
@@ -279,15 +286,21 @@ internal object AppPermissionAudit {
             if (packageName.isBlank() || packageName.length > 255) {
                 throw IOException("Baseline contains an invalid package name")
             }
+            if (!PACKAGE_NAME_PATTERN.matches(packageName)) {
+                throw IOException("Baseline contains an invalid package name")
+            }
             val permissionsObject = packagesObject.opt(packageName) as? JSONObject
                 ?: throw IOException("Baseline permission map is invalid for " + packageName)
+            if (permissionsObject.length() > MAX_PERMISSIONS_PER_PACKAGE) {
+                throw IOException("Baseline permission count exceeds the supported limit for " + packageName)
+            }
             val permissions = linkedMapOf<String, Boolean>()
             val permissionIterator = permissionsObject.keys()
             while (permissionIterator.hasNext()) {
                 val permission = permissionIterator.next()
                 val granted = permissionsObject.opt(permission) as? Boolean
                     ?: throw IOException("Baseline grant flag is invalid for " + packageName)
-                if (permission.isBlank() || permission.length > 255) {
+                if (!PERMISSION_NAME_PATTERN.matches(permission) || permission.length > 255) {
                     throw IOException("Baseline contains an invalid permission name")
                 }
                 permissions[permission] = granted
