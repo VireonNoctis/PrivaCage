@@ -30,6 +30,10 @@ import org.json.JSONObject
 import org.privacage.audit.AuditExportRequest
 import org.privacage.audit.AuditExportResult
 import org.privacage.audit.LocalAuditExporter
+import org.privacage.rights.PrivacyRight
+import org.privacage.rights.PrivacyRightsRequestBuilder
+import org.privacage.rights.RightsJurisdiction
+import org.privacage.rights.RightsRequestStatus
 import org.privacage.crypto.EncryptedBackupEnvelope
 import org.privacage.dns.DnsPolicyEngine
 import org.privacage.dns.DnsOverTlsForwarder
@@ -658,6 +662,101 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Compare two signed audit checkpoints"
             setOnClickListener { chooseFirstCheckpointForComparison() }
+        }, matchWidth())
+
+        root.addView(TextView(this).apply {
+            text = "LOCAL PRIVACY RIGHTS REQUESTS"
+            textSize = 16f
+            setPadding(0, dp(20), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Prepare a request draft or open official California DROP guidance. PrivaCage never submits these requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
+            textSize = 12f
+        }, matchWidth())
+        val rightsControllerInput = EditText(this).apply {
+            hint = "Controller / business name (for direct requests)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setSingleLine(true)
+        }
+        root.addView(rightsControllerInput, matchWidth())
+        val rightsScopeInput = EditText(this).apply {
+            hint = "Optional request scope (not stored in tracker)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2
+            maxLines = 4
+        }
+        root.addView(rightsScopeInput, matchWidth())
+        val rightsReceivedDateInput = EditText(this).apply {
+            hint = "Date controller received request (YYYY-MM-DD; optional)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_NORMAL
+            setSingleLine(true)
+        }
+        root.addView(rightsReceivedDateInput, matchWidth())
+        val rightsTrackerText = TextView(this).apply {
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(rightsTrackerText, matchWidth())
+        refreshRightsTrackerText(rightsTrackerText)
+        root.addView(Button(this).apply {
+            text = "Draft UK GDPR request"
+            setOnClickListener {
+                createLocalRightsDraft(
+                    RightsJurisdiction.UK_GDPR,
+                    PrivacyRight.ERASURE,
+                    rightsControllerInput.text.toString(),
+                    rightsScopeInput.text.toString(),
+                    rightsReceivedDateInput.text.toString(),
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Draft California CCPA/CPRA request"
+            setOnClickListener {
+                showRightsTypePicker(
+                    RightsJurisdiction.CALIFORNIA_CCPA,
+                    rightsControllerInput.text.toString(),
+                    rightsScopeInput.text.toString(),
+                    rightsReceivedDateInput.text.toString(),
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open California DROP guidance / checklist"
+            setOnClickListener {
+                createLocalRightsDraft(
+                    RightsJurisdiction.CALIFORNIA_DROP,
+                    PrivacyRight.ERASURE,
+                    "",
+                    rightsScopeInput.text.toString(),
+                    "",
+                    rightsTrackerText
+                )
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "View / update local request tracker"
+            setOnClickListener { showRightsRequestTracker(rightsTrackerText) }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Clear local request tracker"
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Delete local request tracker?")
+                    .setMessage("This removes the saved tracker metadata from this app. It does not contact controllers or delete data held by any company.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Delete tracker") { _, _ ->
+                        try {
+                            LocalRightsRequestStore.clear(this@MainActivity)
+                            refreshRightsTrackerText(rightsTrackerText)
+                        } catch (exception: Exception) {
+                            statusText.text = "Could not clear the local tracker: " + (exception.message ?: exception.javaClass.simpleName)
+                        }
+                    }
+                    .show()
+            }
         }, matchWidth())
 
         root.addView(TextView(this).apply {
@@ -2706,6 +2805,179 @@ class MainActivity : Activity() {
                 if (!isFinishing && !isDestroyed) statusText.text = message
             }
         }, "PrivaCage-audit-checkpoint-compare").start()
+    }
+
+    private fun showRightsTypePicker(
+        jurisdiction: RightsJurisdiction,
+        controllerName: String,
+        scopeDescription: String,
+        receivedOnText: String,
+        trackerView: TextView
+    ) {
+        val rights = arrayOf(
+            PrivacyRight.ACCESS.label,
+            PrivacyRight.ERASURE.label,
+            PrivacyRight.CORRECTION.label,
+            PrivacyRight.OPT_OUT.label
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Choose the right to request")
+            .setItems(rights) { _, index ->
+                createLocalRightsDraft(
+                    jurisdiction,
+                    PrivacyRight.values()[index],
+                    controllerName,
+                    scopeDescription,
+                    receivedOnText,
+                    trackerView
+                )
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun createLocalRightsDraft(
+        jurisdiction: RightsJurisdiction,
+        right: PrivacyRight,
+        controllerName: String,
+        scopeDescription: String,
+        receivedOnText: String,
+        trackerView: TextView
+    ) {
+        val receivedOn = try {
+            receivedOnText.trim().takeIf(String::isNotEmpty)?.let(LocalDate::parse)
+        } catch (_: Exception) {
+            statusText.text = "The received date must use YYYY-MM-DD, or be left blank if the controller has not confirmed receipt."
+            return
+        }
+        val draft = try {
+            PrivacyRightsRequestBuilder.createDraft(
+                jurisdiction = jurisdiction,
+                right = right,
+                controllerName = controllerName,
+                scopeDescription = scopeDescription,
+                preparedOn = LocalDate.now(),
+                receivedOn = receivedOn
+            )
+        } catch (exception: Exception) {
+            statusText.text = "Could not prepare a rights-request draft: " + (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+        try {
+            LocalRightsRequestStore.add(this, draft)
+            refreshRightsTrackerText(trackerView)
+        } catch (exception: Exception) {
+            statusText.text = "Could not save tracker metadata. The draft was not submitted or saved: " +
+                (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+        val due = buildString {
+            append("\n\nTiming guidance: ").append(draft.responsePeriodNote)
+            draft.standardResponseDueOn?.let { append("\nPlanning date (based on reported receipt): ").append(it) }
+            draft.extendedResponseDueOn?.let { append("\nPotential extended planning date (notice recorded by user): ").append(it) }
+            append("\n\nPrepared on: ").append(draft.preparedOn)
+            append("\nNo request was sent. Confirm eligibility and the destination using the official source.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "DROP checklist — not submitted" else "Local draft — not submitted")
+            .setMessage(draft.message + due)
+            .setPositiveButton(if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Copy checklist" else "Copy draft") { _, _ ->
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                    ClipData.newPlainText("PrivaCage privacy rights draft", draft.message)
+                )
+                statusText.text = "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
+            }
+            .setNeutralButton("Open official guidance") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(draft.officialGuidanceUrl)))
+                } catch (exception: Exception) {
+                    statusText.text = "Could not open official guidance. Check the URL manually: " + draft.officialGuidanceUrl
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun refreshRightsTrackerText(view: TextView) {
+        try {
+            val records = LocalRightsRequestStore.list(this)
+            view.text = if (records.isEmpty()) {
+                "No request-tracker records. Creating a draft saves only metadata; it does not mean a request was submitted."
+            } else buildString {
+                append("Saved tracker entries: ").append(records.size).append("/100\n")
+                records.asReversed().take(5).forEach { record ->
+                    append("• ").append(record.displayLabel()).append('\n')
+                }
+                append("\nStatuses are user-reported workflow states, not independent evidence of receipt, compliance or deletion.")
+            }
+        } catch (exception: Exception) {
+            view.text = "Local request tracker is unreadable. Existing data was preserved; it was not reset. " +
+                (exception.message ?: exception.javaClass.simpleName)
+        }
+    }
+
+    private fun showRightsRequestTracker(trackerView: TextView) {
+        val records = try {
+            LocalRightsRequestStore.list(this)
+        } catch (exception: Exception) {
+            statusText.text = "The local request tracker could not be read and was not overwritten."
+            refreshRightsTrackerText(trackerView)
+            return
+        }
+        if (records.isEmpty()) {
+            statusText.text = "No local rights-request entries to update."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Choose a tracker entry")
+            .setItems(records.map { it.displayLabel() }.toTypedArray()) { _, index ->
+                showRightsRequestActions(records[index], trackerView)
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showRightsRequestActions(record: StoredRightsRequest, trackerView: TextView) {
+        val transitions = RightsRequestStatus.values().filter {
+            PrivacyRightsRequestBuilder.canTransition(record.status, it)
+        }
+        val actions = transitions.map { "Mark ${it.name.replace('_', ' ')} (user-reported)" } + "Delete this tracker entry"
+        AlertDialog.Builder(this)
+            .setTitle(record.displayLabel())
+            .setItems(actions.toTypedArray()) { _, index ->
+                if (index < transitions.size) {
+                    try {
+                        LocalRightsRequestStore.transition(this, record.id, transitions[index])
+                        refreshRightsTrackerText(trackerView)
+                        statusText.text = "Tracker state updated. This records your report only; it is not proof of delivery, acknowledgement or deletion."
+                    } catch (exception: Exception) {
+                        statusText.text = "Could not update tracker: " + (exception.message ?: exception.javaClass.simpleName)
+                    }
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Delete tracker entry?")
+                        .setMessage("Only this app's local metadata will be deleted. Nothing will be sent to the controller.")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Delete entry") { _, _ ->
+                            try {
+                                LocalRightsRequestStore.delete(this, record.id)
+                                refreshRightsTrackerText(trackerView)
+                            } catch (exception: Exception) {
+                                statusText.text = "Could not delete entry: " + (exception.message ?: exception.javaClass.simpleName)
+                            }
+                        }
+                        .show()
+                }
+            }
+            .setNeutralButton("Open official guidance") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(record.officialGuidanceUrl)))
+                } catch (exception: Exception) {
+                    statusText.text = "Could not open official guidance."
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun verifyAuditCheckpoint(resultCode: Int, uri: Uri?) {
