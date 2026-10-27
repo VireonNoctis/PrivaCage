@@ -106,6 +106,7 @@ async function createCheckpoint(options: {
   breakEventHash?: boolean;
   keyPair?: CryptoKeyPair;
   eventTimestamps?: string[];
+  payloadMutation?: (payloadJson: string) => string;
 } = {}): Promise<string> {
   const keyPair = options.keyPair ?? await createTestKeyPair();
   const publicKey = await cryptoProvider.subtle.exportKey('spki', keyPair.publicKey);
@@ -152,7 +153,7 @@ async function createCheckpoint(options: {
   const chainHead = previousHash;
 
   // Preserve this exact JSON string: its UTF-8 bytes are what Android signs.
-  const payloadJson = JSON.stringify({
+  const validPayloadJson = JSON.stringify({
     schema_version: 1,
     source: 'optional_local_dns_event_history',
     generated_at: createdAt,
@@ -178,6 +179,7 @@ async function createCheckpoint(options: {
     event_count: eventCount,
     events
   });
+  const payloadJson = options.payloadMutation?.(validPayloadJson) ?? validPayloadJson;
 
   const payloadSha256 = await sha256(encoder.encode(payloadJson));
   const rawSignature = new Uint8Array(await cryptoProvider.subtle.sign(
@@ -288,14 +290,13 @@ describe('local signed audit checkpoint verifier', () => {
       .rejects.toThrow('Checkpoint JSON contains a duplicate object key.');
   });
 
-  it('rejects duplicate fields inside the embedded payload', async () => {
-    const checkpoint = await createCheckpoint();
-    const envelope = JSON.parse(checkpoint) as { payload_json: string };
-    const duplicatedPayload = envelope.payload_json.replace(
-      '"schema_version":1,',
-      '"schema_version":1,"schema_version":1,'
-    );
-    const ambiguous = JSON.stringify({ ...envelope, payload_json: duplicatedPayload });
+  it('rejects duplicate fields inside the correctly hashed and signed embedded payload', async () => {
+    const ambiguous = await createCheckpoint({
+      payloadMutation: (payloadJson) => payloadJson.replace(
+        '"schema_version":1,',
+        '"schema_version":1,"schema_version":1,'
+      )
+    });
 
     await expect(verifyAuditCheckpoint(ambiguous, cryptoProvider))
       .rejects.toThrow('Embedded audit payload contains a duplicate object key.');
