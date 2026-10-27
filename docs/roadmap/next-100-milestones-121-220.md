@@ -16,7 +16,7 @@
 
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
-| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Inbound relay packets are byte-bounded and strict-parsed before JSONObject; cards/profiles, signed rosters and protected sync records are strict-parsed; call-site audit/tests running |
+| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Inbound relay packets are byte-bounded and strict-parsed before JSONObject; cards/profiles, signed rosters and protected sync records are strict-parsed; unknown protected-record fields now fail closed; CI pending |
 | 122 | Sync record schema version inventory | Enumerate persisted record versions and explicitly migrate or reject unknown versions without discarding records. | Protected envelope and record versions now require an exact integer, not optInt coercion; unit tests added; broader optional-field inventory pending |
 | 123 | Atomic sync identity writes | Simulate failed temp writes, interrupted commits, malformed existing records, and KeyStore mismatch; previous record remains intact on failure. | Planned |
 | 124 | Trusted-peer roster consistency | Property-test sorted members, duplicate fingerprints, revoked tombstones, and owner-only signing through rotations. | Planned |

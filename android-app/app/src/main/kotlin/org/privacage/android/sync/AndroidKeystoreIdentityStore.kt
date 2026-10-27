@@ -85,8 +85,11 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
         return try {
             val cleartextJson = decodeUtf8Strict(cleartext, "Decrypted sync record")
             StrictJsonKeyScanner.validate(cleartextJson, "Decrypted sync record")
-            JSONObject(cleartextJson).also {
-                if (!hasExactIntegerVersion(it.opt("record_version"), RECORD_VERSION)) {
+            JSONObject(cleartextJson).also { record ->
+                if (!hasOnlySupportedRecordFields(record.keys().asSequence().toSet())) {
+                    throw IOException("The decrypted sync record contains unsupported fields; the file was preserved.")
+                }
+                if (!hasExactIntegerVersion(record.opt("record_version"), RECORD_VERSION)) {
                     throw IOException("Unsupported protected sync record version; the file was preserved.")
                 }
             }
@@ -207,6 +210,35 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
     companion object {
         internal fun hasExactIntegerVersion(value: Any?, expectedVersion: Int): Boolean =
             value is Int && value == expectedVersion
+
+        internal fun hasOnlySupportedRecordFields(fields: Set<String>): Boolean =
+            fields.all { it in SUPPORTED_RECORD_FIELDS }
+
+        private val SUPPORTED_RECORD_FIELDS = setOf(
+            "record_version",
+            "local_passphrase",
+            "identity_bundle_base64",
+            "card_json",
+            "relay_url",
+            "space_id",
+            "capability_token",
+            "trusted_cards",
+            "trusted_added_at",
+            "revoked_fingerprints",
+            "revoked_cards",
+            "signed_device_roster",
+            "roster_owner_fingerprint",
+            "roster_revision",
+            "roster_change_history",
+            "roster_publish_pending",
+            "pending_key_rotation",
+            "last_owner_key_rotation_package_json",
+            "owner_key_rotation_handoff_pending",
+            "next_sequence",
+            "relay_cursor",
+            "pending_profile_json",
+            "pending_sender_fingerprint"
+        )
 
         private const val DIRECTORY_NAME = "privacage-sync"
         private const val FILE_NAME = "identity-record-v1.enc"
