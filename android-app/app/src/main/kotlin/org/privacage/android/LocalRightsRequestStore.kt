@@ -80,6 +80,16 @@ internal object LocalRightsRequestStore {
         return record
     }
 
+    fun delete(context: Context, id: String) {
+        val current = list(context)
+        require(current.any { it.id == id }) { "The selected rights-request record no longer exists." }
+        save(context, current.filterNot { it.id == id })
+    }
+
+    fun clear(context: Context) {
+        save(context, emptyList())
+    }
+
     fun transition(context: Context, id: String, next: RightsRequestStatus): StoredRightsRequest {
         val current = list(context)
         val index = current.indexOfFirst { it.id == id }
