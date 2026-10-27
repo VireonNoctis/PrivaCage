@@ -4,7 +4,7 @@
 
 ## Execution rules
 
-- **Milestone 121** is the concrete Go tracker-input hardening change in the accompanying pull request: duplicate-key rejection (including escaped-equivalent keys) and an 8 MiB input ceiling. Its status remains **CI pending** until the relevant workflow passes on the PR head.
+- **Milestone 121** is the concrete Go tracker-input hardening change in the accompanying pull request: duplicate-key rejection (including escaped-equivalent keys), an 8 MiB input ceiling, and a 128-level JSON nesting limit. Its status remains **CI pending** until the relevant workflow passes on the PR head.
 - All other milestones begin as **Planned**. A title or acceptance criterion is not evidence that the work exists.
 - Split execution into small pull requests grouped by module. A milestone may be marked verified only after its tests pass on the exact commit being considered.
 - Keep device routing, Android Keystore invalidation, Windows policy behavior, iOS entitlement work, and legal copy behind their real external validation gates. Do not replace them with mocks while claiming full coverage.
