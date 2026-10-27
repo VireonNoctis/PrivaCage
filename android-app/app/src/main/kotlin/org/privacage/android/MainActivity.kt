@@ -2941,32 +2941,46 @@ class MainActivity : Activity() {
         val transitions = RightsRequestStatus.values().filter {
             PrivacyRightsRequestBuilder.canTransition(record.status, it)
         }
-        val actions = transitions.map { "Mark ${it.name.replace('_', ' ')} (user-reported)" } + "Delete this tracker entry"
+        val canRecordReceipt = record.status in setOf(
+            RightsRequestStatus.SUBMITTED,
+            RightsRequestStatus.ACKNOWLEDGED,
+            RightsRequestStatus.RESPONSE_RECEIVED,
+            RightsRequestStatus.OUTCOME_REPORTED
+        )
+        val actions = transitions.map { "Mark ${it.name.replace('_', ' ')} (user-reported)" } +
+            (if (canRecordReceipt) listOf("Record confirmed receipt date / extension notice") else emptyList()) +
+            "Delete this tracker entry"
+        val receiptIndex = transitions.size
+        val deleteIndex = transitions.size + if (canRecordReceipt) 1 else 0
         AlertDialog.Builder(this)
             .setTitle(record.displayLabel())
             .setItems(actions.toTypedArray()) { _, index ->
-                if (index < transitions.size) {
-                    try {
-                        LocalRightsRequestStore.transition(this, record.id, transitions[index])
-                        refreshRightsTrackerText(trackerView)
-                        statusText.text = "Tracker state updated. This records your report only; it is not proof of delivery, acknowledgement or deletion."
-                    } catch (exception: Exception) {
-                        statusText.text = "Could not update tracker: " + (exception.message ?: exception.javaClass.simpleName)
-                    }
-                } else {
-                    AlertDialog.Builder(this)
-                        .setTitle("Delete tracker entry?")
-                        .setMessage("Only this app's local metadata will be deleted. Nothing will be sent to the controller.")
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Delete entry") { _, _ ->
-                            try {
-                                LocalRightsRequestStore.delete(this, record.id)
-                                refreshRightsTrackerText(trackerView)
-                            } catch (exception: Exception) {
-                                statusText.text = "Could not delete entry: " + (exception.message ?: exception.javaClass.simpleName)
-                            }
+                when {
+                    index < transitions.size -> {
+                        try {
+                            LocalRightsRequestStore.transition(this, record.id, transitions[index])
+                            refreshRightsTrackerText(trackerView)
+                            statusText.text = "Tracker state updated. This records your report only; it is not proof of delivery, acknowledgement or deletion."
+                        } catch (exception: Exception) {
+                            statusText.text = "Could not update tracker: " + (exception.message ?: exception.javaClass.simpleName)
                         }
-                        .show()
+                    }
+                    canRecordReceipt && index == receiptIndex -> chooseRightsReceiptDate(record, trackerView)
+                    index == deleteIndex -> {
+                        AlertDialog.Builder(this)
+                            .setTitle("Delete tracker entry?")
+                            .setMessage("Only this app's local metadata will be deleted. Nothing will be sent to the controller.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Delete entry") { _, _ ->
+                                try {
+                                    LocalRightsRequestStore.delete(this, record.id)
+                                    refreshRightsTrackerText(trackerView)
+                                } catch (exception: Exception) {
+                                    statusText.text = "Could not delete entry: " + (exception.message ?: exception.javaClass.simpleName)
+                                }
+                            }
+                            .show()
+                    }
                 }
             }
             .setNeutralButton("Open official guidance") { _, _ ->
@@ -2978,6 +2992,55 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    private fun chooseRightsReceiptDate(record: StoredRightsRequest, trackerView: TextView) {
+        val initial = record.receivedOn ?: LocalDate.now()
+        val dialog = DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                val receivedDate = LocalDate.of(year, month + 1, day)
+                AlertDialog.Builder(this)
+                    .setTitle("Extension notice")
+                    .setMessage("Did the controller separately tell you that it is extending the response period? Select Yes only if you received that notice. This is a user report, not an independently verified event.")
+                    .setPositiveButton("Yes, notice received") { _, _ ->
+                        saveRightsReceiptDate(record, trackerView, receivedDate, true)
+                    }
+                    .setNegativeButton("No extension notice") { _, _ ->
+                        saveRightsReceiptDate(record, trackerView, receivedDate, false)
+                    }
+                    .setNeutralButton("Cancel", null)
+                    .show()
+            },
+            initial.year,
+            initial.monthValue - 1,
+            initial.dayOfMonth
+        )
+        dialog.datePicker.maxDate = System.currentTimeMillis()
+        dialog.setTitle("Date the controller received the request")
+        dialog.show()
+    }
+
+    private fun saveRightsReceiptDate(
+        record: StoredRightsRequest,
+        trackerView: TextView,
+        receivedOn: LocalDate,
+        extensionNoticeRecorded: Boolean
+    ) {
+        try {
+            val updated = LocalRightsRequestStore.recordReceivedDate(
+                this, record.id, receivedOn, extensionNoticeRecorded
+            )
+            refreshRightsTrackerText(trackerView)
+            statusText.text = buildString {
+                append("Receipt date saved as user-reported: ").append(receivedOn).append('.')
+                updated.standardResponseDueOn?.let { append(" Planning date: ").append(it).append('.') }
+                updated.extendedResponseDueOn?.let { append(" Potential extended planning date: ").append(it).append('.') }
+                append(" These are reminders, not legal conclusions or proof of controller compliance.")
+            }
+        } catch (exception: Exception) {
+            statusText.text = "Could not record the receipt date: " + (exception.message ?: exception.javaClass.simpleName)
+        }
     }
 
     private fun verifyAuditCheckpoint(resultCode: Int, uri: Uri?) {
