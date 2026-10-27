@@ -31,6 +31,17 @@ internal data class SignedAuditCheckpoint(
     val payloadSha256: String
 )
 
+internal data class AuditCheckpointComparison(
+    val relationship: String,
+    val sharedPrefixEvents: Int,
+    val firstEventsAfterSharedPrefix: Int,
+    val secondEventsAfterSharedPrefix: Int,
+    val firstCreatedAt: String,
+    val secondCreatedAt: String,
+    val eventCountA: Int,
+    val eventCountB: Int
+)
+
 internal data class AuditCheckpointVerification(
     val signatureValid: Boolean,
     val payloadHashValid: Boolean,
@@ -257,6 +268,95 @@ internal object LocalAuditCheckpointSigner {
             eventCount = eventCount,
             detail = detail
         )
+    }
+
+    /**
+     * Compares two checkpoints only after verifying each signature, exact payload digest,
+     * strict JSON structure, redaction claims, counters and the entire event chain.
+     * It reports hash-sequence relationships, not which snapshot is authoritative.
+     */
+    fun compare(checkpointAJson: String, checkpointBJson: String): AuditCheckpointComparison {
+        val firstVerification = verify(checkpointAJson)
+        val secondVerification = verify(checkpointBJson)
+        if (!firstVerification.signatureValid || !firstVerification.payloadHashValid || !firstVerification.chainValid) {
+            throw IOException("Checkpoint A did not pass all verification checks.")
+        }
+        if (!secondVerification.signatureValid || !secondVerification.payloadHashValid || !secondVerification.chainValid) {
+            throw IOException("Checkpoint B did not pass all verification checks.")
+        }
+        if (firstVerification.signerPublicKeySha256 != secondVerification.signerPublicKeySha256) {
+            throw IOException("The checkpoints use different signer public keys; continuity cannot be compared.")
+        }
+
+        val first = comparisonDetails(checkpointAJson)
+        val second = comparisonDetails(checkpointBJson)
+        if (first.scope != second.scope) {
+            throw IOException(
+                "The checkpoints use different date ranges, time zones, categories, or redaction settings."
+            )
+        }
+
+        var shared = 0
+        while (
+            shared < first.eventHashes.size &&
+            shared < second.eventHashes.size &&
+            first.eventHashes[shared] == second.eventHashes[shared]
+        ) {
+            shared += 1
+        }
+        val relationship = when {
+            shared == first.eventHashes.size && shared == second.eventHashes.size -> "same-chain"
+            shared == first.eventHashes.size -> "first-is-prefix"
+            shared == second.eventHashes.size -> "second-is-prefix"
+            else -> "diverged"
+        }
+        return AuditCheckpointComparison(
+            relationship = relationship,
+            sharedPrefixEvents = shared,
+            firstEventsAfterSharedPrefix = first.eventHashes.size - shared,
+            secondEventsAfterSharedPrefix = second.eventHashes.size - shared,
+            firstCreatedAt = firstVerification.createdAt,
+            secondCreatedAt = secondVerification.createdAt,
+            eventCountA = firstVerification.eventCount,
+            eventCountB = secondVerification.eventCount
+        )
+    }
+
+    private data class CheckpointComparisonDetails(
+        val scope: String,
+        val eventHashes: List<String>
+    )
+
+    private fun comparisonDetails(checkpointJson: String): CheckpointComparisonDetails {
+        // verify() has already checked duplicate keys, schema, payload digest and record hashes.
+        val envelope = JSONObject(checkpointJson)
+        val payload = JSONObject(requiredString(envelope, "payload_json"))
+        val range = payload.optJSONObject("date_range")
+            ?: throw IOException("Checkpoint date range is missing.")
+        val categories = payload.optJSONArray("selected_categories")
+            ?: throw IOException("Checkpoint categories are missing.")
+        val redactions = payload.optJSONObject("redactions")
+            ?: throw IOException("Checkpoint redaction settings are missing.")
+        val scope = listOf(
+            requiredString(range, "start_inclusive"),
+            requiredString(range, "end_inclusive"),
+            requiredString(payload, "filter_timezone"),
+            (0 until categories.length()).joinToString(",") { categories.getString(it) },
+            requiredBoolean(redactions, "queried_hostnames").toString(),
+            requiredBoolean(redactions, "socket_owner_labels").toString()
+        ).joinToString("|")
+        val events = payload.optJSONArray("events")
+            ?: throw IOException("Checkpoint events are missing.")
+        val hashes = (0 until events.length()).map { index ->
+            val event = events.optJSONObject(index)
+                ?: throw IOException("Checkpoint event ${index + 1} is not an object.")
+            val hash = requiredString(event, "record_sha256")
+            if (!Regex("^[0-9a-f]{64}$").matches(hash)) {
+                throw IOException("Checkpoint event ${index + 1} has an invalid record hash.")
+            }
+            hash
+        }
+        return CheckpointComparisonDetails(scope, hashes)
     }
 
     private fun verifyPayloadChain(
