@@ -55,6 +55,15 @@ class AppPermissionAuditBaselineTest {
     }
 
     @Test
+    fun rejectsOversizedBaselineBeforeBuildingJsonObjects() {
+        val oversized = " ".repeat(4 * 1024 * 1024 + 1)
+        val exception = assertThrows(IOException::class.java) {
+            AppPermissionAudit.decodeBaseline(oversized)
+        }
+        assertTrue(exception.message.orEmpty().contains("4 MiB safety limit"))
+    }
+
+    @Test
     fun rejectsWrongTypesAndInvalidPermissionEntries() {
         assertThrows(IOException::class.java) {
             AppPermissionAudit.decodeBaseline("""{"schema_version":1,"packages":[]}""")
