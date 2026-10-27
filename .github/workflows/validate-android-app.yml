@@ -110,6 +110,7 @@ jobs:
           go -C shared/go/pcage-tools run . validate-android-privacy
           go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
           go -C shared/go/pcage-tools run . validate-app-alternatives
+          go -C shared/go/pcage-tools run . app-alternatives-report --max-age-days 180 --fail-stale --format json
       - name: Validate and inspect the bundled tracker catalog
         run: |
           unzip -l android-app/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
