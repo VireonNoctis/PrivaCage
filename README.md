@@ -119,6 +119,8 @@ Validate the schema and review-freshness report with:
 ```sh
 go -C shared/go/pcage-tools test ./...
 go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
+go -C shared/go/pcage-tools run . validate-app-alternatives
+go -C shared/go/pcage-tools run . app-alternatives-report --max-age-days 180 --fail-stale --format json
 go -C shared/go/pcage-tools run . tracker-report --format markdown
 ```
 
@@ -234,7 +236,7 @@ cd ../windows/pcage-audit
 go test ./...
 ```
 
-The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
+The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. `app-alternatives-report` gates the catalogue-level `updated_at` date and identifies affected entries; schema v1 has no per-entry source-review date, so the report explicitly cannot claim that individual URLs or trade-offs were recently re-checked. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
 
 Before a release, use the current [research notes](docs/research-notes/privacy-suite-expansion-2026-10-25.md) as a validation checklist. They separate platform-documented capabilities from assumptions and list the device tests still required.
 
