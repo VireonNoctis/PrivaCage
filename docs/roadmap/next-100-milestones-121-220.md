@@ -16,7 +16,7 @@
 
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
-| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Bounded duplicate-key scan on sync relay packet/page paths; exact JSON types now enforced for critical relay metadata; protected store rejects unknown fields; CI pending |
+| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Relay response fields now require exact JSON types; native metadata JNI responses use bounded strict parsing and validate exact schema/counter consistency; call-site audit remains open |
 | 122 | Sync record schema version inventory | Enumerate persisted record versions and explicitly migrate or reject unknown versions without discarding records. | Protected envelope and record versions now require an exact integer, not optInt coercion; unit tests added; broader optional-field inventory pending |
 | 123 | Atomic sync identity writes | Simulate failed temp writes, interrupted commits, malformed existing records, and KeyStore mismatch; previous record remains intact on failure. | Planned |
 | 124 | Trusted-peer roster consistency | Property-test sorted members, duplicate fingerprints, revoked tombstones, and owner-only signing through rotations. | Planned |
@@ -55,7 +55,7 @@
 | 147 | DNS EDNS privacy behavior | Document whether ECS/other client-subnet options are forwarded; add deliberate stripping or preservation tests based on an explicit policy. | Planned |
 | 148 | DNS negative caching safety | If caching is introduced, bind negative cache to resolver and TTL, cap memory, version policy, and test policy changes invalidate entries. | Not implemented; avoid until measured need |
 | 149 | DNS rule normalization parity | Use identical normalization vectors for ASCII case, final dots, IDNA/punycode, wildcards and invalid labels across all ingest paths. | Planned |
-| 150 | DNS block reason determinism | Give every Drop/Blocked/NotDns outcome a stable reason code and test localized UI never changes the machine-readable cause. | Planned |
+| 150 | Metadata-preserving output correctness | Add byte and metadata invariants that reject impossible native report counters rather than showing a successful scrub. | Native metadata response parser now rejects negative/inconsistent counters, unknown/missing fields and invalid warnings; targeted JVM tests added; CI pending |
 
 ## VPN lifecycle and transport evidence
 
