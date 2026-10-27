@@ -138,6 +138,67 @@ func TestAppAlternativeCatalogRejectsOversizedInput(t *testing.T) {
 	}
 }
 
+func TestAppAlternativeFreshnessReportMarksStaleCatalogAndListsAffectedIDs(t *testing.T) {
+	catalog := appAlternativeFixture()
+	report, stale := buildAppAlternativeFreshnessReport(
+		catalog,
+		time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC),
+		180,
+		30,
+	)
+	if !stale {
+		t.Fatal("catalogue older than max-age-days should be reported stale")
+	}
+	if report.Counts["stale"] != 1 || len(report.Entries) != 1 {
+		t.Fatalf("unexpected stale report counts: %+v", report.Counts)
+	}
+	entry := report.Entries[0]
+	if entry.ID != "gmail-proton-mail" || entry.CatalogReviewState != "stale" {
+		t.Fatalf("stale report is missing actionable record details: %+v", entry)
+	}
+	if entry.SourceReviewDateKnown {
+		t.Fatal("schema-v1 has no per-entry source review date; report must not claim one")
+	}
+	if !strings.Contains(report.Limitation, "no per-entry source review date") {
+		t.Fatalf("report omitted source freshness limitation: %q", report.Limitation)
+	}
+}
+
+func TestAppAlternativeFreshnessReportMarksDueSoonCatalog(t *testing.T) {
+	catalog := appAlternativeFixture()
+	catalog.UpdatedAt = "2026-10-10"
+	report, stale := buildAppAlternativeFreshnessReport(
+		catalog,
+		time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC),
+		180,
+		30,
+	)
+	if stale {
+		t.Fatal("due-soon is not the same as stale")
+	}
+	if report.Counts["due-soon"] != 1 || report.Entries[0].CatalogReviewState != "due-soon" {
+		t.Fatalf("catalogue should be due soon: %+v", report)
+	}
+}
+
+func TestRunAppAlternativeReportCanGateStaleCatalogInCI(t *testing.T) {
+	data, err := json.Marshal(appAlternativeFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTempFile(t, "app-alternatives-stale.json", string(data))
+	code := runAppAlternativeReport([]string{
+		"-file", path,
+		"-today", "2026-10-25",
+		"-max-age-days", "180",
+		"-fail-stale",
+		"-format", "json",
+	})
+	if code != 1 {
+		t.Fatalf("stale catalogue with fail-stale must exit 1, got %d", code)
+	}
+}
+
 func TestRunValidateAppAlternativesCommandAcceptsExplicitFile(t *testing.T) {
 	data, err := json.Marshal(appAlternativeFixture())
 	if err != nil {
