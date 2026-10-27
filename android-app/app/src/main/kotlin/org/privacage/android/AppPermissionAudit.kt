@@ -19,6 +19,23 @@ import java.io.IOException
  * dangerous permission names, and grant booleans in app-private preferences.
  */
 internal object AppPermissionAudit {
+    internal data class BaselinePreferenceRead(
+        val value: String?,
+        val unreadable: Boolean,
+        val warning: String?
+    )
+
+    internal fun readBaselinePreference(readValue: () -> String?): BaselinePreferenceRead =
+        try {
+            BaselinePreferenceRead(readValue(), unreadable = false, warning = null)
+        } catch (exception: ClassCastException) {
+            BaselinePreferenceRead(
+                value = null,
+                unreadable = true,
+                warning = "The saved permission baseline has an unexpected stored type and has been preserved."
+            )
+        }
+
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
@@ -138,9 +155,10 @@ internal object AppPermissionAudit {
                 .append(skipped).append(" package(s) could not be inspected. This avoids treating an incomplete scan as a real permission change.")
         } else {
             val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-            val rawBaseline = preferences.getString(KEY_BASELINE, null)
-            var baselineWarning: String? = null
-            var preserveUnreadableBaseline = false
+            val baselineRead = readBaselinePreference { preferences.getString(KEY_BASELINE, null) }
+            val rawBaseline = baselineRead.value
+            var baselineWarning: String? = baselineRead.warning
+            var preserveUnreadableBaseline = baselineRead.unreadable
             val previousSnapshot = if (rawBaseline == null) {
                 null
             } else {
