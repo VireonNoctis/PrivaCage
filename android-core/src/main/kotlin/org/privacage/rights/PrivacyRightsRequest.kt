@@ -76,8 +76,8 @@ object PrivacyRightsRequestBuilder {
             }
         }
         if (receivedOn != null) {
-            require(!receivedOn.isAfter(preparedOn)) {
-                "The recorded received date cannot be after the draft preparation date."
+            require(!receivedOn.isAfter(LocalDate.now())) {
+                "The recorded received date cannot be in the future."
             }
         }
 
