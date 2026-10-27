@@ -32,8 +32,8 @@
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
 | 131 | Strict JSON Unicode edge cases | Test unpaired surrogates, escaped controls, surrogate-pair escapes, malformed Unicode sequences, and canonical duplicate-key equivalence. | Scanner now accepts paired surrogate escapes and rejects unpaired high/low escapes; regression tests added; CI pending |
-| 132 | Strict JSON depth boundary | Verify exact accepted and rejected nesting limits in Android, Rust, Web, and Go with shared vectors. | Android scanner tests exact over-depth rejection at the configured boundary; cross-language parity vectors still planned |
-| 133 | Strict JSON input budget audit | Inventory every scanner call and enforce byte limits before scanning; reject oversized input before allocating parse trees. | Partially implemented; audit remaining call sites |
+| 132 | Strict JSON depth boundary | Verify exact accepted and rejected nesting limits in Android, Rust, Web, and Go with shared vectors. | Android scanner and Go tracker reader now enforce bounded nesting; Go tests added; latest-head CI pending |
+| 133 | Strict JSON input budget audit | Inventory every scanner call and enforce byte limits before scanning; reject oversized input before allocating parse trees. | Go tracker reader now has an 8 MiB read ceiling before JSON parsing; Android entrypoint limits are partial, audit remains open |
 | 134 | Baseline migration contract | Document schema migration policy and test v1, future version, missing fields, unknown fields, duplicate keys, and explicit reset. | Partially implemented |
 | 135 | Storage corruption recovery UI | Every unreadable store offers preserve/export/reset options; never auto-reset private history or keys after parse failure. | Planned |
 | 136 | Keystore invalidation UX | Simulate invalidated, missing, unavailable, and permanently unusable keys; preserve encrypted evidence and provide truthful recovery choices. | Device-dependent |
