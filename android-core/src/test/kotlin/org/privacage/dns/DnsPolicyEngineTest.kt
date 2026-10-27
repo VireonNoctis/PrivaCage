@@ -198,7 +198,7 @@ class DnsPolicyEngineTest {
                 val mutated = seed.copyOf()
                 mutated[index] = (mutated[index].toInt() xor mask).toByte()
                 val outcome = runCatching { engine.evaluate(mutated) }
-                assertTrue("Parser threw on single-byte mutation at $index/$mask", outcome.isSuccess)
+                assertTrue(outcome.isSuccess, "Parser threw on single-byte mutation at $index/$mask")
             }
         }
 
@@ -206,7 +206,7 @@ class DnsPolicyEngineTest {
             val input = ByteArray(random.nextInt(0, 512))
             random.nextBytes(input)
             val outcome = runCatching { engine.evaluate(input) }
-            assertTrue("Parser threw on deterministic malformed case $caseIndex", outcome.isSuccess)
+            assertTrue(outcome.isSuccess, "Parser threw on deterministic malformed case $caseIndex")
         }
     }
 
