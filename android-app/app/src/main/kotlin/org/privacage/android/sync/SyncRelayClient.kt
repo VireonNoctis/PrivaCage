@@ -107,7 +107,7 @@ internal class SyncRelayClient(
             signAsDevice = false
         )
         val currentState = try {
-            parseMemberRevocationState(String(membersBytes, StandardCharsets.UTF_8), fingerprint)
+            parseMemberRevocationState(decodeUtf8Strict(membersBytes, "Relay member list"), fingerprint)
         } finally {
             membersBytes.fill(0)
         }
