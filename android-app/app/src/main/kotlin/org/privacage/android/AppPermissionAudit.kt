@@ -266,9 +266,8 @@ internal object AppPermissionAudit {
         if (rootKeys != setOf("schema_version", "packages")) {
             throw IOException("Baseline contains missing or unsupported top-level fields")
         }
-        val schemaVersion = root.opt("schema_version") as? Number
-        if (schemaVersion == null ||
-            schemaVersion.toDouble() != BASELINE_SCHEMA_VERSION.toDouble() ||
+        val schemaVersion = root.opt("schema_version")
+        if (schemaVersion !is Int || schemaVersion != BASELINE_SCHEMA_VERSION ||
             root.opt("packages") !is JSONObject) {
             throw IOException("Baseline schema version or package map is invalid")
         }
