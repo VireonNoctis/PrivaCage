@@ -72,7 +72,7 @@ class AppPermissionAuditBaselineTest {
         }
         assertThrows(IOException::class.java) {
             AppPermissionAudit.decodeBaseline(
-                """{"schema_version":1,"packages":{"com.example.app":{"CAMERA":true}}}"""
+                """{"schema_version":1,"packages":{"com.example.app":{"android..permission.CAMERA":true}}}"""
             )
         }
     }
