@@ -246,6 +246,7 @@ internal object AppPermissionAudit {
     }
 
     internal fun decodeBaseline(text: String): PermissionGrantSnapshot {
+        StrictJsonKeyScanner.validate(text, "Permission baseline")
         val root = try {
             JSONObject(text)
         } catch (exception: JSONException) {
