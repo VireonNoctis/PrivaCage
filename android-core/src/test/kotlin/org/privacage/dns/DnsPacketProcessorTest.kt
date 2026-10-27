@@ -3,6 +3,7 @@ package org.privacage.dns
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class DnsPacketProcessorTest {
 
@@ -43,6 +44,41 @@ class DnsPacketProcessorTest {
             .processIpv4Packet(ipv4UdpPacket(dnsQuery("news.example.org"), destinationPort = 443))
 
         assertIs<DnsPacketProcessingResult.NotDns>(result)
+    }
+
+    @Test
+    fun seededArbitraryIpPacketsAlwaysProduceAnExplicitResult() {
+        val processor = DnsPacketProcessor(DnsPolicyEngine(setOf("tracker.example")))
+        val random = java.util.Random(0x5043414745L)
+
+        // Include boundary sizes plus random bytes whose first nibble selects IPv4 or IPv6.
+        val sizes = listOf(0, 1, 19, 20, 27, 28, 39, 40, 47, 48, 127, 512, 1499)
+        for (size in sizes) {
+            val packet = ByteArray(size)
+            random.nextBytes(packet)
+            val result = runCatching { processor.processIpPacket(packet) }
+            kotlin.test.assertTrue("Packet of length $size escaped the decoder", result.isSuccess)
+            kotlin.test.assertNotNull(result.getOrNull())
+        }
+        repeat(512) { caseIndex ->
+            val packet = ByteArray(random.nextInt(0, 1500))
+            random.nextBytes(packet)
+            val result = runCatching { processor.processIpPacket(packet) }
+            kotlin.test.assertTrue("Arbitrary packet case $caseIndex escaped the decoder", result.isSuccess)
+        }
+    }
+
+    @Test
+    fun rejectsUnsupportedIpv4FragmentsInsteadOfForwardingPartialDatagrams() {
+        val packet = ipv4UdpPacket(dnsQuery("news.example.org"))
+        // IPv4 flags/fragment offset: set MF to mark a fragmented datagram.
+        putU16(packet, 6, 0x2000)
+        putU16(packet, 10, 0)
+        putU16(packet, 10, checksum(packet.copyOfRange(0, 20)))
+
+        val result = DnsPacketProcessor(DnsPolicyEngine(emptySet())).processIpPacket(packet)
+
+        assertIs<DnsPacketProcessingResult.Drop>(result)
     }
 
     private fun dnsQuery(name: String): ByteArray {
