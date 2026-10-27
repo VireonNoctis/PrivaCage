@@ -27,6 +27,12 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
+    fun duplicateEventKeysInvalidateHistoryWithoutDroppingTheDuplicateSilently() {
+        val stored = """[{"timestamp":"2026-10-26T10:00:00Z","timestamp":"2026-10-27T10:00:00Z","domain":"example.org","action":"ALLOW","socket_owner":"Unknown"}]"""
+        assertNull(LocalDnsEventHistory.parseStoredEvents(stored))
+    }
+
+    @Test
     fun oversizedStoredHistoryIsRejectedBeforeJsonParsing() {
         val oversized = "[" + " ".repeat(256 * 1024) + "]"
 
