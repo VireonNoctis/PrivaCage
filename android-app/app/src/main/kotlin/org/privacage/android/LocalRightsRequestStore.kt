@@ -162,7 +162,8 @@ internal object LocalRightsRequestStore {
         return try {
             val keys = setOf(
                 "id", "jurisdiction", "right", "controller_name", "prepared_on", "received_on",
-                "standard_due_on", "extended_due_on", "status", "official_guidance_url"
+                "standard_due_on", "extended_due_on", "extension_notice_recorded",
+                "status", "official_guidance_url"
             )
             val iterator = item.keys()
             while (iterator.hasNext()) {
