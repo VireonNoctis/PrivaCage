@@ -16,7 +16,7 @@
 
 | # | Milestone | Deliverable and acceptance criteria | Status |
 |---:|---|---|---|
-| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Relay response fields now require exact JSON types; native metadata JNI responses use bounded strict parsing and validate exact schema/counter consistency; call-site audit remains open |
+| 121 | Strict JSON on every sync mutation boundary | Reject duplicate keys and unsupported fields before updating peer cards, rosters, owner-rotation packages, replay state, or profile state; test every parser entry point. | Sync packet/relay JSON is bounded and duplicate-key checked; critical relay fields require exact types; protected records reject unknown fields. Per-callsite coverage remains open |
 | 122 | Sync record schema version inventory | Enumerate persisted record versions and explicitly migrate or reject unknown versions without discarding records. | Protected envelope and record versions now require an exact integer, not optInt coercion; unit tests added; broader optional-field inventory pending |
 | 123 | Atomic sync identity writes | Simulate failed temp writes, interrupted commits, malformed existing records, and KeyStore mismatch; previous record remains intact on failure. | Planned |
 | 124 | Trusted-peer roster consistency | Property-test sorted members, duplicate fingerprints, revoked tombstones, and owner-only signing through rotations. | Planned |
@@ -55,7 +55,7 @@
 | 147 | DNS EDNS privacy behavior | Document whether ECS/other client-subnet options are forwarded; add deliberate stripping or preservation tests based on an explicit policy. | Planned |
 | 148 | DNS negative caching safety | If caching is introduced, bind negative cache to resolver and TTL, cap memory, version policy, and test policy changes invalidate entries. | Not implemented; avoid until measured need |
 | 149 | DNS rule normalization parity | Use identical normalization vectors for ASCII case, final dots, IDNA/punycode, wildcards and invalid labels across all ingest paths. | Planned |
-| 150 | Metadata-preserving output correctness | Add byte and metadata invariants that reject impossible native report counters rather than showing a successful scrub. | Native metadata response parser now rejects negative/inconsistent counters, unknown/missing fields and invalid warnings; targeted JVM tests added; CI pending |
+| 150 | DNS block reason determinism | Give every Drop/Blocked/NotDns outcome a stable reason code and test localized UI never changes the machine-readable cause. | Planned |
 
 ## VPN lifecycle and transport evidence
 
@@ -95,7 +95,7 @@
 | 172 | WebP RIFF size consistency | Test declared container size, chunk sizes, odd-byte padding, feature flags and truncation; reject outputs that cannot be reparsed. | Partially covered |
 | 173 | JPEG marker and scan conformance | Build canonical baseline/progressive fixtures with APP markers, restart markers, byte stuffing, and truncated scan data. | Partially covered |
 | 174 | Scrub idempotence | Run each supported format twice and assert second-pass byte-equivalence or a documented normalization result with no false removal claims. | Planned |
-| 175 | Metadata preservation matrix | Confirm image decode payloads/critical color profiles remain valid where promised; explicitly report removed and unrecognized metadata categories. | Planned |
+| 175 | Metadata preservation matrix | Confirm image decode payloads/critical color profiles remain valid where promised; explicitly report removed and unrecognized metadata categories. | Native report parsing now requires exact fields/types and validates byte/category counters; JVM regression tests added; per-format preservation matrix still pending |
 | 176 | Atomic destination replacement | Test output provider failures and replacement semantics; never delete an existing destination before verified output is ready. | Planned |
 | 177 | Share URI grant lifecycle | Test that only the cleaned output URI receives a read grant and that grants/source refs are not retained after failed share launches. | Planned |
 | 178 | Unsupported file format handling | Test HEIC, TIFF, PDF, video and generic binaries return a clear unsupported result and are not mislabeled as cleaned. | Planned |
