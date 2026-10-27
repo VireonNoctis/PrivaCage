@@ -49,7 +49,7 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
         } finally {
             wrapperBytes.fill(0)
         }
-        if (wrapper.optInt("version", -1) != ENVELOPE_VERSION) {
+        if (!hasExactIntegerVersion(wrapper.opt("version"), ENVELOPE_VERSION)) {
             throw IOException("Unsupported protected sync envelope version; the file was preserved.")
         }
         val iv = try {
@@ -86,7 +86,7 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
             val cleartextJson = decodeUtf8Strict(cleartext, "Decrypted sync record")
             StrictJsonKeyScanner.validate(cleartextJson, "Decrypted sync record")
             JSONObject(cleartextJson).also {
-                if (it.optInt("record_version", -1) != RECORD_VERSION) {
+                if (!hasExactIntegerVersion(it.opt("record_version"), RECORD_VERSION)) {
                     throw IOException("Unsupported protected sync record version; the file was preserved.")
                 }
             }
@@ -205,6 +205,9 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
 
     companion object {
+        internal fun hasExactIntegerVersion(value: Any?, expectedVersion: Int): Boolean =
+            value is Int && value == expectedVersion
+
         private const val DIRECTORY_NAME = "privacage-sync"
         private const val FILE_NAME = "identity-record-v1.enc"
         private const val KEY_ALIAS = "org.privacage.android.sync.identity.v1"
