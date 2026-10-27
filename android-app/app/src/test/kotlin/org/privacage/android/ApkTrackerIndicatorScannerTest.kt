@@ -178,7 +178,7 @@ class ApkTrackerIndicatorScannerTest {
 
             assertEquals(0, report.dexFilesScanned)
             assertTrue(report.findings.isEmpty())
-            assertTrue(report.warnings.any { it.contains("10,000-entry limit") })
+            assertTrue(report.warnings.any { it.contains("10000-entry limit") })
             assertTrue(report.warnings.any { it.contains("No DEX entries") })
         } finally {
             apk.delete()
