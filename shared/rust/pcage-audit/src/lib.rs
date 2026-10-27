@@ -628,6 +628,28 @@ mod tests {
     }
 
     #[test]
+    fn verifies_shared_empty_chain_vector() {
+        let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1-empty.json");
+        let result = verify_checkpoint_json(checkpoint)
+            .expect("empty-chain cross-implementation vector must verify");
+        assert_eq!(result.event_count, 0);
+        assert_eq!(result.chain_head_sha256, GENESIS_SHA256);
+    }
+
+    #[test]
+    fn verifies_shared_multi_event_vector() {
+        let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1-multi-event.json");
+        let result = verify_checkpoint_json(checkpoint)
+            .expect("multi-event cross-implementation vector must verify");
+        assert_eq!(result.event_count, 2);
+        assert_eq!(result.created_at, "2026-10-27T10:01:00Z");
+        assert_eq!(
+            result.chain_head_sha256,
+            "04c0491ab7f904353ce466c16cd48aeaa4e5baba6032570a2e661cacb6ed1eaf"
+        );
+    }
+
+    #[test]
     fn rejects_the_same_payload_mutation_as_android_and_web() {
         let checkpoint = include_str!("../../../audit/test-vectors/checkpoint-v1.json")
             .replace("[REDACTED]", "private.example");
