@@ -417,13 +417,13 @@ func runValidateAndroidPrivacy(args []string) int {
 func rejectDuplicateJSONKeys(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	if err := scanJSONValue(decoder, "$", 0); err != nil {
+	if err := scanJSONValue(decoder, 0); err != nil {
 		return fmt.Errorf("invalid JSON or duplicate object key: %w", err)
 	}
 	return nil
 }
 
-func scanJSONValue(decoder *json.Decoder, path string, depth int) error {
+func scanJSONValue(decoder *json.Decoder, depth int) error {
 	if depth > maxTrackerJSONDepth {
 		return fmt.Errorf("JSON nesting exceeds %d levels", maxTrackerJSONDepth)
 	}
@@ -447,13 +447,13 @@ func scanJSONValue(decoder *json.Decoder, path string, depth int) error {
 			}
 			key, ok := keyToken.(string)
 			if !ok {
-				return fmt.Errorf("object key at %s is not a string", path)
+				return fmt.Errorf("JSON object key is not a string")
 			}
 			if _, exists := seen[key]; exists {
-				return fmt.Errorf("duplicate object key %q at %s", key, path)
+				return fmt.Errorf("duplicate object key at nesting depth %d", depth)
 			}
 			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder, path+"."+key, depth+1); err != nil {
+			if err := scanJSONValue(decoder, depth+1); err != nil {
 				return err
 			}
 		}
@@ -462,11 +462,11 @@ func scanJSONValue(decoder *json.Decoder, path string, depth int) error {
 			return err
 		}
 		if closing != json.Delim('}') {
-			return fmt.Errorf("expected end of object at %s", path)
+			return fmt.Errorf("expected end of JSON object")
 		}
 	case '[':
-		for index := 0; decoder.More(); index++ {
-			if err := scanJSONValue(decoder, fmt.Sprintf("%s[%d]", path, index), depth+1); err != nil {
+		for decoder.More() {
+			if err := scanJSONValue(decoder, depth+1); err != nil {
 				return err
 			}
 		}
@@ -475,10 +475,10 @@ func scanJSONValue(decoder *json.Decoder, path string, depth int) error {
 			return err
 		}
 		if closing != json.Delim(']') {
-			return fmt.Errorf("expected end of array at %s", path)
+			return fmt.Errorf("expected end of JSON array")
 		}
 	default:
-		return fmt.Errorf("unexpected delimiter %q at %s", delimiter, path)
+		return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
 	}
 	return nil
 }
