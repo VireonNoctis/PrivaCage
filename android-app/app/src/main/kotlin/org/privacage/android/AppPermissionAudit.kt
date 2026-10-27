@@ -28,7 +28,7 @@ internal object AppPermissionAudit {
     private const val MAX_BASELINE_PACKAGES = 2_000
     private const val MAX_PERMISSIONS_PER_PACKAGE = 256
     private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
-    private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
+    private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
 
     fun clearBaseline(context: Context): Boolean =
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
