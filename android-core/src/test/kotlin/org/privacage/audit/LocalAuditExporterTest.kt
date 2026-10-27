@@ -26,7 +26,7 @@ class LocalAuditExporterTest {
         assertFalse(result.json.contains("secret.package"))
         assertTrue(result.json.contains("\"queried_hostnames\": true"))
         assertTrue(result.json.contains("\"socket_owner_labels\": true"))
-        assertTrue(result.json.contains("\"device_identifiers\": true"))
+                assertTrue(result.json.contains("\"device_identifiers\": true"))
         assertTrue(result.previewText.contains("Queried hostnames: REDACTED"))
         assertTrue(result.previewText.contains("Socket-owner labels: REDACTED"))
     }
@@ -144,13 +144,13 @@ class LocalAuditExporterTest {
                     request(includeHostnames = includeHostnames, includeOwners = includeOwners),
                     generatedAt
                 )
-                assertEquals(!includeHostnames, result.json.contains("\\"queried_hostnames\\": true"))
-                assertEquals(!includeOwners, result.json.contains("\\"socket_owner_labels\\": true"))
+                assertEquals(!includeHostnames, result.json.contains("\"queried_hostnames\": true"))
+                assertEquals(!includeOwners, result.json.contains("\"socket_owner_labels\": true"))
                 assertEquals(includeHostnames, result.json.contains(hostname))
                 assertEquals(includeOwners, result.json.contains(owner))
-                assertTrue(result.json.contains("\\"device_identifiers\\": true"))
-                assertTrue(result.json.contains("\\"internal_file_paths\\": true"))
-                assertTrue(result.json.contains("\\"packet_payloads\\": true"))
+                assertTrue(result.json.contains("\"device_identifiers\": true"))
+                assertTrue(result.json.contains("\"internal_file_paths\": true"))
+                assertTrue(result.json.contains("\"packet_payloads\": true"))
                 assertFalse(result.json.contains("private/device/path"))
                 assertFalse(result.json.contains("raw_packet_payload"))
             }
@@ -168,7 +168,7 @@ class LocalAuditExporterTest {
         assertEquals(0, result.eventCount)
         assertEquals(1, result.recordsExcludedByFilters)
         assertEquals(AuditIntegrityChain.GENESIS_SHA256, result.chainHeadSha256)
-        assertTrue(result.json.contains("\\"event_count\\": 0"))
+        assertTrue(result.json.contains("\"event_count\": 0"))
         assertFalse(result.json.contains("outside.example"))
     }
 
