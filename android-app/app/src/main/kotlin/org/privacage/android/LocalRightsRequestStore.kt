@@ -62,7 +62,13 @@ internal object LocalRightsRequestStore {
     }
 
     fun add(context: Context, draft: org.privacage.rights.RightsRequestDraft): StoredRightsRequest {
-        val controller = draft.controllerName?.take(MAX_CONTROLLER_LENGTH)
+        val controller = draft.controllerName
+        require(controller == null || (
+            controller.length <= MAX_CONTROLLER_LENGTH &&
+            controller.none(Char::isISOControl)
+        )) {
+            "Controller name must be at most 256 characters and contain no control characters."
+        }
         val current = list(context)
         require(current.size < MAX_RECORDS) { "The local rights-request tracker is full (100 records)." }
         val record = StoredRightsRequest(
