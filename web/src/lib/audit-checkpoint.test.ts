@@ -299,7 +299,7 @@ describe('local signed audit checkpoint verifier', () => {
     });
 
     await expect(verifyAuditCheckpoint(ambiguous, cryptoProvider))
-      .rejects.toThrow('Embedded audit payload contains a duplicate object key.');
+      .rejects.toThrow('Checkpoint JSON contains a duplicate object key.');
   });
 
   it('rejects inputs over the documented checkpoint size limit before parsing', async () => {
