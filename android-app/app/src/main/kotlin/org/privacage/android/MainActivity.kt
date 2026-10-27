@@ -692,12 +692,6 @@ class MainActivity : Activity() {
             maxLines = 4
         }
         root.addView(rightsScopeInput, matchWidth())
-        val rightsReceivedDateInput = EditText(this).apply {
-            hint = "Date controller received request (YYYY-MM-DD; optional)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_NORMAL
-            setSingleLine(true)
-        }
-        root.addView(rightsReceivedDateInput, matchWidth())
         val rightsTrackerText = TextView(this).apply {
             textSize = 12f
             setPadding(0, dp(8), 0, dp(8))
@@ -712,7 +706,6 @@ class MainActivity : Activity() {
                     PrivacyRight.ERASURE,
                     rightsControllerInput.text.toString(),
                     rightsScopeInput.text.toString(),
-                    rightsReceivedDateInput.text.toString(),
                     rightsTrackerText
                 )
             }
@@ -724,7 +717,6 @@ class MainActivity : Activity() {
                     RightsJurisdiction.CALIFORNIA_CCPA,
                     rightsControllerInput.text.toString(),
                     rightsScopeInput.text.toString(),
-                    rightsReceivedDateInput.text.toString(),
                     rightsTrackerText
                 )
             }
@@ -737,7 +729,6 @@ class MainActivity : Activity() {
                     PrivacyRight.ERASURE,
                     "",
                     rightsScopeInput.text.toString(),
-                    "",
                     rightsTrackerText
                 )
             }
@@ -2849,7 +2840,6 @@ class MainActivity : Activity() {
         jurisdiction: RightsJurisdiction,
         controllerName: String,
         scopeDescription: String,
-        receivedOnText: String,
         trackerView: TextView
     ) {
         val rights = arrayOf(
@@ -2866,7 +2856,6 @@ class MainActivity : Activity() {
                     PrivacyRight.values()[index],
                     controllerName,
                     scopeDescription,
-                    receivedOnText,
                     trackerView
                 )
             }
@@ -2879,15 +2868,8 @@ class MainActivity : Activity() {
         right: PrivacyRight,
         controllerName: String,
         scopeDescription: String,
-        receivedOnText: String,
         trackerView: TextView
     ) {
-        val receivedOn = try {
-            receivedOnText.trim().takeIf(String::isNotEmpty)?.let(LocalDate::parse)
-        } catch (_: Exception) {
-            statusText.text = "The received date must use YYYY-MM-DD, or be left blank if the controller has not confirmed receipt."
-            return
-        }
         val draft = try {
             PrivacyRightsRequestBuilder.createDraft(
                 jurisdiction = jurisdiction,
@@ -2895,7 +2877,7 @@ class MainActivity : Activity() {
                 controllerName = controllerName,
                 scopeDescription = scopeDescription,
                 preparedOn = LocalDate.now(),
-                receivedOn = receivedOn
+                receivedOn = null
             )
         } catch (exception: Exception) {
             statusText.text = "Could not prepare a rights-request draft: " + (exception.message ?: exception.javaClass.simpleName)
