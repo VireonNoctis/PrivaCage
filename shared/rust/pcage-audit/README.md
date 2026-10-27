@@ -10,7 +10,7 @@ From the repository root:
 
 Exit status is 0 only when the checkpoint signature, embedded payload digest, schema, redaction claims, counters, and every event-chain link validate. Invalid, oversized, ambiguous, unsupported, or inconsistent input returns a non-zero exit code. The CLI reads at most 2 MiB before parsing and does not make network requests.
 
-The verifier accepts only the repository's current v1 format: P-256 SubjectPublicKeyInfo public keys, SHA256withECDSA signatures, at most 100 records, a 1 MiB embedded payload, and strict JSON fields. A schema change must be versioned and accompanied by test vectors.
+The verifier accepts only the repository's current v1 format: P-256 SubjectPublicKeyInfo public keys, SHA256withECDSA signatures, at most 100 records, a 1 MiB embedded payload, and strict JSON fields. The shared fixtures cover a zero-event genesis chain, one event, and a two-event chain, and are also consumed by Android and Web tests. A schema change must be versioned and accompanied by updated cross-implementation vectors.
 
 ## Trust boundary
 
