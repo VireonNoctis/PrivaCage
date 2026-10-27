@@ -148,6 +148,50 @@ class ApkTrackerIndicatorScannerTest {
         }
     }
 
+    @Test
+    fun identicalApkAndCatalogProduceByteStableFindings() {
+        val apk = zippedDex(
+            "classes.dex" to "x com.example.analytics.Client x api.metrics.example.org x"
+        )
+        try {
+            val records = listOf(
+                TrackerSignature(
+                    id = "analytics-sdk",
+                    name = "Example Analytics",
+                    category = "analytics",
+                    domains = emptyList(),
+                    sdkPatterns = listOf("com.example.analytics.Client"),
+                    confidence = "medium",
+                    status = "active",
+                    lastVerified = "2026-10-25",
+                    evidence = evidence
+                ),
+                TrackerSignature(
+                    id = "metrics-domain",
+                    name = "Metrics endpoint",
+                    category = "analytics",
+                    domains = listOf("api.metrics.example.org"),
+                    sdkPatterns = emptyList(),
+                    confidence = "high",
+                    status = "review",
+                    lastVerified = "2026-10-25",
+                    evidence = evidence
+                )
+            )
+            val scanner = ApkTrackerIndicatorScanner()
+
+            val first = scanner.scan(apk, records)
+            val second = scanner.scan(apk, records)
+
+            assertEquals(first, second)
+            assertTrue("Static matches must not be described as runtime observations.", first.warnings.none {
+                it.contains("transmitted", ignoreCase = true) || it.contains("executed", ignoreCase = true)
+            })
+        } finally {
+            apk.delete()
+        }
+    }
+
     private fun zippedDex(vararg entries: Pair<String, String>): File {
         val apk = Files.createTempFile("privacage-apk-scan-", ".apk").toFile()
         ZipOutputStream(FileOutputStream(apk)).use { zip ->
