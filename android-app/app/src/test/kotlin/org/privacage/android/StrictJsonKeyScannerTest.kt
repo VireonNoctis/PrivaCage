@@ -29,7 +29,7 @@ class StrictJsonKeyScannerTest {
             StrictJsonKeyScanner.validate(json, "test JSON")
         }
         assertTrue(exception.message.orEmpty().contains("duplicate"))
-        assertTrue(!exception.message.orEmpty().contains("format"), "Diagnostics must not echo hostile key names")
+        assertTrue("Diagnostics must not echo hostile key names", !exception.message.orEmpty().contains("format"))
     }
 
     @Test

@@ -170,7 +170,7 @@ class LocalDnsEventHistoryTest {
             val index = random.nextInt(mutated.size)
             mutated[index] = (mutated[index].code xor (1 shl random.nextInt(7))).toChar()
             val result = runCatching { LocalDnsEventHistory.parseStoredEvents(mutated.concatToString()) }
-            assertTrue(result.isSuccess, "History parser threw for mutation $caseIndex")
+            assertTrue("History parser threw for mutation $caseIndex", result.isSuccess)
         }
         assertTrue(source.contains("first.example"))
         assertTrue(source.contains("second.example"))

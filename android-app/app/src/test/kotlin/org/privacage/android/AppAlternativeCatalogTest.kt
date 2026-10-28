@@ -125,8 +125,8 @@ class AppAlternativeCatalogTest {
             val result = runCatching { AppAlternativeCatalog.parseJson(mutated.concatToString()) }
             val failure = result.exceptionOrNull()
             assertTrue(
-                result.isSuccess || failure is IOException,
-                "Mutation $caseIndex escaped the catalogue error contract: $failure"
+                "Mutation $caseIndex escaped the catalogue error contract: $failure",
+                result.isSuccess || failure is IOException
             )
         }
     }
