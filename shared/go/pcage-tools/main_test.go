@@ -577,3 +577,86 @@ func TestReadTrackerDatabaseRejectsExcessiveJSONNesting(t *testing.T) {
 		t.Fatalf("deeply nested JSON was not rejected with a nesting-limit error: %v", err)
 	}
 }
+
+func TestReadTrackerDatabaseRejectsEveryTruncationBoundary(t *testing.T) {
+	encoded, err := json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "truncated.json")
+	for boundary := 0; boundary < len(encoded); boundary++ {
+		if err := os.WriteFile(path, encoded[:boundary], 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readTrackerDatabase(path); err == nil {
+			t.Fatalf("accepted truncated JSON at byte %d of %d", boundary, len(encoded))
+		}
+	}
+}
+
+func TestReadTrackerDatabaseRejectsMalformedStructuresAndTrailingValues(t *testing.T) {
+	valid, err := json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty input", input: ""},
+		{name: "unterminated object", input: `{"schema_version":1`},
+		{name: "missing field separator", input: `{"schema_version":1 "updated_at":"2026-10-21","entries":[]}`},
+		{name: "invalid array delimiter", input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[}`},
+		{name: "trailing comma", input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[],}`},
+		{name: "invalid escape", input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[],"note":"\q"}`},
+		{name: "trailing root value", input: string(valid) + ` {}`},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "malformed.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil {
+				t.Fatal("malformed input was accepted")
+			}
+			if len(err.Error()) > 512 {
+				t.Fatalf("malformed-input diagnostic exceeded 512 bytes: %d", len(err.Error()))
+			}
+		})
+	}
+}
+
+func TestReadTrackerDatabaseBoundsUnknownFieldDiagnostics(t *testing.T) {
+	longField := strings.Repeat("x", 16*1024)
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{
+			name: "top-level unknown field",
+			input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[],"` + longField + `":null}`,
+		},
+		{
+			name: "nested tracker indicator unknown field",
+			input: `{"schema_version":1,"updated_at":"2026-10-21","entries":[{"id":"safe-id","name":"Example","category":"analytics","indicators":{"` + longField + `":[]},"confidence":"low","status":"active","last_verified":"2026-10-20","evidence":[{"url":"https://example.test","description":"fixture"}]}]}`,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "unknown-field.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil {
+				t.Fatal("unknown field was accepted")
+			}
+			if len(err.Error()) > 512 {
+				t.Fatalf("diagnostic exposed an oversized field name: %d bytes", len(err.Error()))
+			}
+			if strings.Contains(err.Error(), longField) {
+				t.Fatal("diagnostic echoed the attacker-controlled field name")
+			}
+		})
+	}
+}
