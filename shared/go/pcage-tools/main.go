@@ -92,7 +92,7 @@ func (indicators *trackerIndicators) UnmarshalJSON(data []byte) error {
 	}
 	for name := range fields {
 		if name != "domains" && name != "sdk_patterns" {
-			return errors.New("unknown field in tracker indicators")
+			return errors.New("unsupported indicators field")
 		}
 	}
 	if value, exists := fields["domains"]; exists {
@@ -566,7 +566,7 @@ func readTrackerDatabase(path string) (trackerDatabase, error) {
 	var document trackerDatabase
 	if err := decoder.Decode(&document); err != nil {
 		if strings.Contains(err.Error(), "unknown field") {
-			return trackerDatabase{}, errors.New("tracker schema contains an unknown field; expected exact version 1")
+			return trackerDatabase{}, errors.New("tracker schema fields must be exactly those defined by version 1 (unknown field)")
 		}
 		return trackerDatabase{}, fmt.Errorf("invalid JSON in %s: %w", path, err)
 	}
