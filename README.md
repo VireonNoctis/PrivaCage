@@ -263,6 +263,7 @@ Useful starting points:
 - [Next 20 engineering milestones](docs/roadmap/next-20-engineering-milestones.md)
 - [Next 100 engineering milestones](docs/roadmap/next-100-engineering-milestones.md)
 - [Next 100 milestones (121–220)](docs/roadmap/next-100-milestones-121-220.md)
+- [Next 1,000 engineering milestones (221–1220)](docs/roadmap/next-1000/README.md)
 - [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
 - [iOS companion capability boundary](ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
