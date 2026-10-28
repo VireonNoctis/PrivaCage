@@ -14,6 +14,7 @@ const MAX_API_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_TRACKER_ENTRIES = 5000;
 const MAX_INDICATORS_PER_KIND = 200;
 const MAX_EVIDENCE_PER_ENTRY = 25;
+const MAX_CATEGORIES = 200;
 
 export class ApiError extends Error {
   readonly status: number | undefined;
@@ -214,12 +215,15 @@ function parseCatalogSummary(value: unknown): CatalogSummary {
     !isNonNegativeInteger(value.domain_indicators) ||
     !isNonNegativeInteger(value.sdk_patterns) ||
     !isNonNegativeInteger(value.evidence_sources) ||
-    !isRecord(value.categories)
+    !isRecord(value.categories) ||
+    Object.keys(value.categories).length > MAX_CATEGORIES
   ) {
     return invalidPayload('tracker summary');
   }
 
-  const categories: Record<string, number> = {};
+  // Category names come from the API; a null prototype prevents special keys such as
+  // __proto__ from changing the accumulator's prototype.
+  const categories: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const [name, count] of Object.entries(value.categories)) {
     if (!isString(name, 128) || !isNonNegativeInteger(count)) {
       return invalidPayload('tracker summary');
