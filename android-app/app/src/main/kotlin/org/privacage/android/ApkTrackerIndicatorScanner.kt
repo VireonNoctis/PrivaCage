@@ -216,7 +216,7 @@ internal class ApkTrackerIndicatorScanner {
     }
 
     private fun exceedsExpansionRatio(uncompressedBytes: Long, compressedBytes: Long): Boolean {
-        if (uncompressedBytes <= 0L) return false
+        if (uncompressedBytes < MIN_ENTRY_SIZE_FOR_RATIO_CHECK) return false
         if (compressedBytes <= 0L) return true
         val quotient = uncompressedBytes / compressedBytes
         val remainder = uncompressedBytes % compressedBytes
@@ -232,6 +232,7 @@ internal class ApkTrackerIndicatorScanner {
         private const val MAX_DEX_ENTRY_BYTES = 32L * 1024 * 1024
         private const val MAX_TOTAL_DEX_BYTES = 64L * 1024 * 1024
         private const val MAX_ENTRY_EXPANSION_RATIO = 200L
+        private const val MIN_ENTRY_SIZE_FOR_RATIO_CHECK = 1024L * 1024L
         private const val READ_BUFFER_BYTES = 64 * 1024
     }
 }
