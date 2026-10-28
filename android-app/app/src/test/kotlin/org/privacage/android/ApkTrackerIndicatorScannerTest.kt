@@ -273,6 +273,31 @@ class ApkTrackerIndicatorScannerTest {
         }
     }
 
+    @Test
+    fun rejectsEveryTruncatedZipContainerPrefix() {
+        val valid = zippedDex("classes.dex" to "com.example.analytics.Client")
+        try {
+            val bytes = valid.readBytes()
+            for (length in 0 until bytes.size) {
+                val truncated = Files.createTempFile("privacage-apk-truncated-", ".apk").toFile()
+                try {
+                    truncated.writeBytes(bytes.copyOf(length))
+                    val error = runCatching {
+                        ApkTrackerIndicatorScanner().scan(truncated, emptyList())
+                    }.exceptionOrNull()
+                    assertTrue(
+                        "Truncated ZIP prefix ${length}/${bytes.size} must fail closed; got ${error}",
+                        error is java.io.IOException
+                    )
+                } finally {
+                    truncated.delete()
+                }
+            }
+        } finally {
+            valid.delete()
+        }
+    }
+
     private fun zippedDex(vararg entries: Pair<String, String>): File {
         val apk = Files.createTempFile("privacage-apk-scan-", ".apk").toFile()
         ZipOutputStream(FileOutputStream(apk)).use { zip ->
