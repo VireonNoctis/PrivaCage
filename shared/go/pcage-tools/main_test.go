@@ -720,3 +720,36 @@ func TestReadTrackerDatabaseSeededMutationsNeverPanicOrEmitUnboundedErrors(t *te
 		}
 	}
 }
+func TestTrackerJSONRejectsEscapeEquivalentDuplicateKeys(t *testing.T) {
+	base := fixtureDatabase()
+	encoded, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		input string
+	}{
+		{
+			name: "escaped top-level key",
+			input: strings.Replace(string(encoded), `"schema_version":1`, `"schema_version":1,"schema\u005fversion":1`, 1),
+		},
+		{
+			name: "escaped nested entry key",
+			input: strings.Replace(string(encoded), `"name":"Example Analytics SDK"`, `"name":"Example Analytics SDK","na\u006de":"shadowed"`, 1),
+		},
+		{
+			name: "escaped indicator key",
+			input: strings.Replace(string(encoded), `"domains":["metrics.example.org"]`, `"domains":["metrics.example.org"],"dom\u0061ins":[]`, 1),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "escaped-duplicate.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+				t.Fatalf("escape-equivalent duplicate key was not rejected: %v", err)
+			}
+		})
+	}
+}
