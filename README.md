@@ -269,10 +269,6 @@ Useful starting points:
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
 
-### Engineering execution prompt
-
-The [Master Engineering Execution Prompt](docs/agent-prompts/MASTER_EXECUTION_PROMPT.md) defines the project-wide engineering doctrine, platform boundaries, design language, ranked workstreams, acceptance criteria and test gates. Use it alongside the current repository code and research library; it is not a claim that planned features have shipped.
-
 ### Research library (25 October 2026)
 
 The expanded research library documents privacy threats, evidence-backed platform boundaries, network observability, APK analysis, data-broker workflows, data minimization, safety considerations, and acceptance tests. Start with [`docs/research/README.md`](docs/research/README.md). The notes distinguish observed signals, static indicators, inference, and unavailable capabilities; they do not imply that planned features are already implemented.
