@@ -140,4 +140,47 @@ class LocalDnsEventHistoryTest {
         assertEquals(1, parsed?.length())
         assertEquals("example.org", parsed?.optJSONObject(0)?.optString("domain"))
     }
+
+    @Test
+    fun storedHistoryRejectsRecordsAboveTheEventCeilingWithoutPruningEvidence() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val hundred = events(*Array(100) { index ->
+            event(now.minusSeconds(index.toLong()).toString(), "entry$index.example")
+        })
+        assertEquals(100, LocalDnsEventHistory.parseStoredEvents(hundred)?.length())
+
+        val oneHundredOne = events(*Array(101) { index ->
+            event(now.minusSeconds(index.toLong()).toString(), "entry$index.example")
+        })
+        assertNull(LocalDnsEventHistory.parseStoredEvents(oneHundredOne))
+        assertNull(LocalDnsEventHistory.pruneExpiredEvents(oneHundredOne, now, 7))
+        assertTrue(oneHundredOne.contains("entry0.example"))
+        assertTrue(oneHundredOne.contains("entry100.example"))
+    }
+
+    @Test
+    fun seededLocalHistoryMutationsNeverThrowOrChangeTheStoredSourceText() {
+        val source = events(
+            event("2026-10-26T10:00:00Z", "first.example"),
+            event("2026-10-26T11:00:00Z", "second.example")
+        )
+        val random = java.util.Random(0x50434147454L)
+        repeat(256) { caseIndex ->
+            val mutated = source.toCharArray()
+            val index = random.nextInt(mutated.size)
+            mutated[index] = (mutated[index].code xor (1 shl random.nextInt(7))).toChar()
+            val result = runCatching { LocalDnsEventHistory.parseStoredEvents(mutated.concatToString()) }
+            assertTrue(result.isSuccess, "History parser threw for mutation $caseIndex")
+        }
+        assertTrue(source.contains("first.example"))
+        assertTrue(source.contains("second.example"))
+    }
+
+    @Test
+    fun localHistoryEnforcesExactUtf8ByteBoundaryBeforeParsing() {
+        val exact = "[" + " ".repeat(256 * 1024 - 2) + "]"
+        assertEquals(256 * 1024, exact.toByteArray(Charsets.UTF_8).size)
+        assertEquals(0, LocalDnsEventHistory.parseStoredEvents(exact)?.length())
+        assertNull(LocalDnsEventHistory.parseStoredEvents(exact + " "))
+    }
 }

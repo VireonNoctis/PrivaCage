@@ -660,3 +660,63 @@ func TestReadTrackerDatabaseBoundsUnknownFieldDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestReadTrackerDatabaseAcceptsExactInputLimit(t *testing.T) {
+	encoded, err := json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) >= maxTrackerDatabaseBytes {
+		t.Fatal("test fixture unexpectedly exceeds the configured tracker input limit")
+	}
+
+	padded := string(encoded) + strings.Repeat(" ", maxTrackerDatabaseBytes-len(encoded))
+	path := writeTempFile(t, "exact-limit.json", padded)
+	document, err := readTrackerDatabase(path)
+	if err != nil {
+		t.Fatalf("valid tracker document padded to exactly %d bytes was rejected: %v", maxTrackerDatabaseBytes, err)
+	}
+	if document.SchemaVersion != 1 || len(document.Entries) != 1 {
+		t.Fatal("exact-limit input did not decode to the expected tracker document")
+	}
+}
+
+func TestTrackerValidatorRejectsUnsupportedSchemaVersions(t *testing.T) {
+	document := fixtureDatabase()
+	document.SchemaVersion = 2
+	today, _ := parseDate("2026-10-23", "today")
+	errorsFound := validateFixture(document, nil, today)
+	if len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "unsupported schema_version") {
+		t.Fatalf("unsupported schema version must fail closed: %v", errorsFound)
+	}
+}
+
+func TestReadTrackerDatabaseSeededMutationsNeverPanicOrEmitUnboundedErrors(t *testing.T) {
+	encoded, err := json.Marshal(fixtureDatabase())
+	if err != nil {
+		t.Fatal(err)
+	}
+	random := uint32(0x50434147)
+	path := filepath.Join(t.TempDir(), "mutated.json")
+
+	for caseIndex := 0; caseIndex < 512; caseIndex++ {
+		input := append([]byte(nil), encoded...)
+		// Deterministic xorshift32 keeps this regression independent of wall-clock state.
+		random ^= random << 13
+		random ^= random >> 17
+		random ^= random << 5
+		index := int(random % uint32(len(input)))
+		random ^= random << 13
+		random ^= random >> 17
+		random ^= random << 5
+		input[index] ^= byte(random)
+
+		if err := os.WriteFile(path, input, 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, parseErr := readTrackerDatabase(path)
+		if parseErr != nil && len(parseErr.Error()) > 512 {
+			t.Fatalf("case %d emitted a %d-byte diagnostic", caseIndex, len(parseErr.Error()))
+		}
+	}
+}

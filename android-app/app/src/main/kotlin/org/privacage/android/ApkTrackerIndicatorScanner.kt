@@ -3,6 +3,7 @@ package org.privacage.android
 import org.privacage.audit.AsciiMultiPatternMatcher
 import org.privacage.audit.AsciiSearchPattern
 import java.io.File
+import java.io.IOException
 import java.util.LinkedHashSet
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -42,6 +43,9 @@ internal class ApkTrackerIndicatorScanner {
     )
 
     fun scan(apkFile: File, signatures: List<TrackerSignature>): ApkTrackerScanReport {
+        if (!apkFile.isFile || apkFile.length() !in 1..MAX_APK_ARCHIVE_BYTES) {
+            throw IOException("APK archive must be a readable file no larger than 100 MiB.")
+        }
         val warnings = LinkedHashSet<String>()
         val markers = linkedMapOf<String, Marker>()
         val patterns = mutableListOf<AsciiSearchPattern>()
@@ -130,7 +134,16 @@ internal class ApkTrackerIndicatorScanner {
             val matcher = AsciiMultiPatternMatcher(patterns)
             for (entry in dexEntries) {
                 val remainingTotalBudget = MAX_TOTAL_DEX_BYTES - dexBytesScanned
-                if (entry.size > MAX_DEX_ENTRY_BYTES || (entry.size >= 0 && entry.size > remainingTotalBudget)) {
+                if (entry.size < 0L || entry.compressedSize < 0L) {
+                    warnings += "Skipped " + entry.name + ": ZIP entry sizes are unavailable."
+                    continue
+                }
+                if (exceedsExpansionRatio(entry.size, entry.compressedSize)) {
+                    warnings += "Skipped " + entry.name + ": expansion ratio exceeds " +
+                        MAX_ENTRY_EXPANSION_RATIO + ":1."
+                    continue
+                }
+                if (entry.size > MAX_DEX_ENTRY_BYTES || entry.size > remainingTotalBudget) {
                     warnings += "Skipped " + entry.name + ": its declared uncompressed size exceeds the remaining DEX scan budget."
                     continue
                 }
@@ -202,12 +215,23 @@ internal class ApkTrackerIndicatorScanner {
         )
     }
 
+    private fun exceedsExpansionRatio(uncompressedBytes: Long, compressedBytes: Long): Boolean {
+        if (uncompressedBytes <= 0L) return false
+        if (compressedBytes <= 0L) return true
+        val quotient = uncompressedBytes / compressedBytes
+        val remainder = uncompressedBytes % compressedBytes
+        return quotient > MAX_ENTRY_EXPANSION_RATIO ||
+            (quotient == MAX_ENTRY_EXPANSION_RATIO && remainder > 0L)
+    }
+
     companion object {
+        private const val MAX_APK_ARCHIVE_BYTES = 100L * 1024 * 1024
         private const val MAX_TRACKER_MARKERS = 4_096
         private const val MAX_ARCHIVE_ENTRIES = 10_000
         private const val MAX_DEX_FILES = 32
         private const val MAX_DEX_ENTRY_BYTES = 32L * 1024 * 1024
         private const val MAX_TOTAL_DEX_BYTES = 64L * 1024 * 1024
+        private const val MAX_ENTRY_EXPANSION_RATIO = 200L
         private const val READ_BUFFER_BYTES = 64 * 1024
     }
 }

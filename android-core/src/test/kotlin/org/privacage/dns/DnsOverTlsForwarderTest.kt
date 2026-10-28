@@ -123,4 +123,112 @@ class DnsOverTlsForwarderTest {
         assertTrue(failure.message.orEmpty().contains("blocked DNS query"))
         assertTrue(!protected, "Blocked query must not open an upstream socket")
     }
+
+    @Test
+    fun upstreamResponseValidatorAcceptsQuestionEchoAndRejectsMismatches() {
+        val policy = DnsPolicyEngine(emptySet())
+        val query = byteArrayOf(
+            0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0,
+            7, 101, 120, 97, 109, 112, 108, 101,
+            3, 99, 111, 109, 0, 0, 1, 0, 1
+        )
+        val expected = (policy.evaluate(query) as DnsDecision.Allow).question
+        val forwarder = DnsOverTlsForwarder(
+            InetAddress.getLoopbackAddress(), "dns.google",
+            TcpSocketProtector { true }, policy, timeoutMillis = 100, port = 9
+        )
+        val response = query.copyOf().apply {
+            this[2] = (this[2].toInt() or 0x80).toByte()
+        }
+
+        forwarder.validateResponse(query, expected, response)
+
+        val wrongId = response.copyOf().apply { this[0] = (this[0].toInt() xor 0x01).toByte() }
+        assertFailsWith<IOException> { forwarder.validateResponse(query, expected, wrongId) }
+
+        val wrongQuestion = response.copyOf().apply { this[13] = 'x'.code.toByte() }
+        assertFailsWith<IOException> { forwarder.validateResponse(query, expected, wrongQuestion) }
+
+        val queryNotResponse = response.copyOf().apply { this[2] = (this[2].toInt() and 0x7f).toByte() }
+        assertFailsWith<IOException> { forwarder.validateResponse(query, expected, queryNotResponse) }
+    }
+
+    @Test
+    fun upstreamResponseValidatorRejectsTruncationInvalidRecordsAndTrailingBytes() {
+        val policy = DnsPolicyEngine(emptySet())
+        val query = byteArrayOf(
+            0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0,
+            7, 101, 120, 97, 109, 112, 108, 101,
+            3, 99, 111, 109, 0, 0, 1, 0, 1
+        )
+        val expected = (policy.evaluate(query) as DnsDecision.Allow).question
+        val forwarder = DnsOverTlsForwarder(
+            InetAddress.getLoopbackAddress(), "dns.google",
+            TcpSocketProtector { true }, policy, timeoutMillis = 100, port = 9
+        )
+        val validResponse = query.copyOf().apply {
+            this[2] = (this[2].toInt() or 0x80).toByte()
+        }
+
+        assertFailsWith<IOException> {
+            forwarder.validateResponse(query, expected, validResponse.copyOf(12))
+        }
+        val missingAnswer = validResponse.copyOf().apply {
+            this[6] = 0
+            this[7] = 1
+        }
+        assertFailsWith<IOException> {
+            forwarder.validateResponse(query, expected, missingAnswer)
+        }
+        assertFailsWith<IOException> {
+            forwarder.validateResponse(query, expected, validResponse + byteArrayOf(0))
+        }
+    }
+
+    @Test
+    fun invalidAndOversizedQueriesFailBeforeAnySocketProtectionOrConnect() {
+        var protectionCalls = 0
+        val forwarder = DnsOverTlsForwarder(
+            InetAddress.getLoopbackAddress(), "dns.google",
+            TcpSocketProtector { protectionCalls += 1; true },
+            DnsPolicyEngine(emptySet()), timeoutMillis = 100, port = 9
+        )
+        val validQuery = byteArrayOf(
+            0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0,
+            7, 101, 120, 97, 109, 112, 108, 101,
+            3, 99, 111, 109, 0, 0, 1, 0, 1
+        )
+
+        assertFailsWith<IOException> { forwarder.forward(validQuery.copyOf(11)) }
+        assertFailsWith<IOException> { forwarder.forward(validQuery + ByteArray(65_536)) }
+        assertEquals(0, protectionCalls)
+    }
+
+    @Test
+    fun responseValidatorMutationCorpusNeverEscapesAsUnexpectedRuntimeErrors() {
+        val policy = DnsPolicyEngine(emptySet())
+        val query = byteArrayOf(
+            0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0,
+            7, 101, 120, 97, 109, 112, 108, 101,
+            3, 99, 111, 109, 0, 0, 1, 0, 1
+        )
+        val expected = (policy.evaluate(query) as DnsDecision.Allow).question
+        val forwarder = DnsOverTlsForwarder(
+            InetAddress.getLoopbackAddress(), "dns.google",
+            TcpSocketProtector { true }, policy, timeoutMillis = 100, port = 9
+        )
+        val response = query.copyOf().apply {
+            this[2] = (this[2].toInt() or 0x80).toByte()
+        }
+
+        for (index in response.indices) {
+            val mutated = response.copyOf()
+            mutated[index] = (mutated[index].toInt() xor 0x80).toByte()
+            val failure = runCatching { forwarder.validateResponse(query, expected, mutated) }.exceptionOrNull()
+            assertTrue(
+                failure == null || failure is IOException,
+                "Response validator threw an unexpected exception at byte $index: $failure"
+            )
+        }
+    }
 }

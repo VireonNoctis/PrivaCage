@@ -5,6 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class Ipv4UdpDnsPacketCodecTest {
 
@@ -196,5 +197,34 @@ class Ipv4UdpDnsPacketCodecTest {
     private fun putU16(bytes: ByteArray, offset: Int, value: Int) {
         bytes[offset] = (value ushr 8).toByte()
         bytes[offset + 1] = value.toByte()
+    }
+
+    @Test
+    fun everyTruncatedIpv4PrefixAndSeededMutationFailsClosedWithoutThrowing() {
+        val valid = ipv4UdpPacket(dnsQuery("tracker.example"))
+        for (length in 0 until valid.size) {
+            val outcome = runCatching { Ipv4UdpDnsPacketCodec.decode(valid.copyOf(length)) }
+            assertTrue(outcome.isSuccess, "IPv4 parser threw for prefix length $length")
+            assertTrue(outcome.getOrThrow() !is Ipv4UdpDnsDecode.Query, "Truncated IPv4 prefix was accepted")
+        }
+
+        val random = java.util.Random(0x49505634L)
+        for (caseIndex in 0 until 512) {
+            val input = ByteArray(random.nextInt(0, 1601))
+            random.nextBytes(input)
+            assertTrue(
+                runCatching { Ipv4UdpDnsPacketCodec.decode(input) }.isSuccess,
+                "IPv4 parser threw on seeded malformed packet $caseIndex"
+            )
+        }
+
+        for (index in valid.indices) {
+            val mutated = valid.copyOf()
+            mutated[index] = (mutated[index].toInt() xor 0x80).toByte()
+            assertTrue(
+                runCatching { Ipv4UdpDnsPacketCodec.decode(mutated) }.isSuccess,
+                "IPv4 parser threw after mutating byte $index"
+            )
+        }
     }
 }

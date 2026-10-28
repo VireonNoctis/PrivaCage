@@ -70,6 +70,67 @@ class AppAlternativeCatalogTest {
         assertFails(invalid, "Duplicate source type")
     }
 
+
+    @Test
+    fun rejectsDuplicateAndEscapedEquivalentObjectKeysBeforeJsonCoercion() {
+        assertFails(
+            document().replace("\"schema_version\": 1,", "\"schema_version\": 1, \"schema_version\": 1,"),
+            "ambiguous JSON"
+        )
+        assertFails(
+            document().replace("\"schema_version\": 1,", "\"schema_version\": 1, \"schema\\u005fversion\": 1,"),
+            "ambiguous JSON"
+        )
+    }
+
+    @Test
+    fun rejectsEveryTruncatedCataloguePrefix() {
+        val source = document()
+        for (length in 0 until source.length) {
+            assertFails(source.substring(0, length), "ambiguous JSON")
+        }
+    }
+
+    @Test
+    fun enforcesCatalogueByteLimitAtAndBeyondTheBoundary() {
+        val source = document()
+        val limit = 512 * 1024
+        val exact = source + " ".repeat(limit - source.toByteArray(Charsets.UTF_8).size)
+        assertEquals(1, AppAlternativeCatalog.parseJson(exact).size)
+        assertFails(exact + " ", "size limit")
+    }
+
+    @Test
+    fun oversizedUnknownFieldDoesNotLeakIntoDiagnostic() {
+        val hostileField = "x".repeat(100_000)
+        val source = document().dropLast(1) + ",\"" + hostileField + "\":null}"
+        try {
+            AppAlternativeCatalog.parseJson(source)
+            throw AssertionError("Expected an unknown field to be rejected")
+        } catch (exception: IOException) {
+            assertTrue(exception.message.orEmpty().length < 256)
+            assertTrue(!exception.message.orEmpty().contains(hostileField))
+        }
+    }
+
+
+    @Test
+    fun seededCatalogueMutationsNeverLeakUnexpectedRuntimeExceptions() {
+        val source = document()
+        val random = java.util.Random(0x414c5443L)
+        repeat(256) { caseIndex ->
+            val mutated = source.toCharArray()
+            val index = random.nextInt(mutated.size)
+            mutated[index] = (mutated[index].code xor (1 shl random.nextInt(7))).toChar()
+            val result = runCatching { AppAlternativeCatalog.parseJson(mutated.concatToString()) }
+            val failure = result.exceptionOrNull()
+            assertTrue(
+                result.isSuccess || failure is IOException,
+                "Mutation $caseIndex escaped the catalogue error contract: $failure"
+            )
+        }
+    }
+
     private fun assertFails(value: String, messagePart: String) {
         try {
             AppAlternativeCatalog.parseJson(value)

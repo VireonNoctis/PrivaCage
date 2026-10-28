@@ -50,7 +50,7 @@ internal object StrictJsonKeyScanner {
                     skipWhitespace()
                     if (cursor >= source.length || source[cursor] != '"') malformed()
                     val key = parseString()
-                    if (!keys.add(key)) throw IOException("Duplicate JSON object key '$key'.")
+                    if (!keys.add(key)) throw IOException("Duplicate JSON object key.")
                     skipWhitespace()
                     expect(':')
                     parseValue(depth + 1)

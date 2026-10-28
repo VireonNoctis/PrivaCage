@@ -74,4 +74,40 @@ class VpnSessionStatusTest {
         assertEquals("DNS filtering is not active.", snapshot.message)
         assertFalse(snapshot.stale)
     }
+
+    @Test
+    fun seededPersistedStateMutationsAlwaysResolveToBoundedKnownStatus() {
+        val random = java.util.Random(0x56504e53L)
+        val states = listOf(
+            VpnSessionStatus.STATE_STARTING,
+            VpnSessionStatus.STATE_ACTIVE,
+            VpnSessionStatus.STATE_STOPPING,
+            VpnSessionStatus.STATE_STOPPED,
+            VpnSessionStatus.STATE_ERROR,
+            "connected-ish",
+            "",
+            null
+        )
+        repeat(512) {
+            val randomMessage = CharArray(random.nextInt(0, 1025)) {
+                random.nextInt(0, 0x10000).toChar()
+            }.concatToString()
+            val snapshot = VpnSessionStatus.resolve(
+                state = states[random.nextInt(states.size)],
+                message = randomMessage,
+                processId = if (random.nextBoolean()) "process-a" else null,
+                currentProcessId = "process-a"
+            )
+            assertTrue(snapshot.state in setOf(
+                VpnSessionStatus.STATE_STARTING,
+                VpnSessionStatus.STATE_ACTIVE,
+                VpnSessionStatus.STATE_STOPPING,
+                VpnSessionStatus.STATE_STOPPED,
+                VpnSessionStatus.STATE_ERROR
+            ))
+            assertTrue(snapshot.message.length <= 512)
+            assertTrue(snapshot.message.none(Char::isISOControl))
+            if (snapshot.stale) assertEquals(VpnSessionStatus.STATE_STOPPED, snapshot.state)
+        }
+    }
 }

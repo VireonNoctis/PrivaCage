@@ -210,6 +210,36 @@ class DnsPolicyEngineTest {
         }
     }
 
+
+    @Test
+    fun rejectsEveryTruncatedDnsQueryPrefix() {
+        val engine = DnsPolicyEngine(setOf("tracker.example"))
+        val valid = query("tracker.example")
+        for (length in 0 until valid.size) {
+            val outcome = runCatching { engine.evaluate(valid.copyOf(length)) }
+            assertTrue(outcome.isSuccess, "DNS parser threw at truncated prefix length $length")
+            assertIs<DnsDecision.Malformed>(outcome.getOrThrow())
+        }
+    }
+
+    @Test
+    fun rejectsMessagesOverTheMaximumDnsWireLength() {
+        val engine = DnsPolicyEngine(emptySet())
+        val oversized = query("tracker.example") + ByteArray(65_536)
+        val result = assertIs<DnsDecision.Malformed>(engine.evaluate(oversized))
+        assertTrue(result.reason.contains("65535-byte wire limit"))
+    }
+
+    @Test
+    fun ruleMatchingIsIdempotentAcrossCaseAndTerminalDotNormalization() {
+        val engine = DnsPolicyEngine(setOf("Tracker.Example."))
+        val expected = engine.matchingRuleForDomain("tracker.example")
+        assertEquals("tracker.example", expected)
+        assertEquals(expected, engine.matchingRuleForDomain("TRACKER.EXAMPLE."))
+        assertEquals(expected, engine.matchingRuleForDomain("cdn.tracker.example"))
+        assertNull(engine.matchingRuleForDomain("nottracker.example"))
+    }
+
     private fun query(name: String, type: Int = 1): ByteArray {
         val qname = name.trimEnd('.').split('.').flatMap { label ->
             val bytes = label.toByteArray(Charsets.US_ASCII)

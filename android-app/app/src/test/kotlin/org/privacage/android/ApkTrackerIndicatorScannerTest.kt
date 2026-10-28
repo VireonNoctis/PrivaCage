@@ -229,6 +229,50 @@ class ApkTrackerIndicatorScannerTest {
         }
     }
 
+
+    @Test
+    fun rejectsUnreadableAndOversizedArchivesBeforeOpeningZip() {
+        val missing = File(Files.createTempDirectory("privacage-apk-reader-").toFile(), "missing.apk")
+        val missingError = runCatching { ApkTrackerIndicatorScanner().scan(missing, emptyList()) }.exceptionOrNull()
+        assertTrue(missingError is java.io.IOException)
+
+        val oversized = Files.createTempFile("privacage-apk-oversized-", ".apk").toFile()
+        try {
+            java.io.RandomAccessFile(oversized, "rw").use { it.setLength(100L * 1024 * 1024 + 1) }
+            val error = runCatching { ApkTrackerIndicatorScanner().scan(oversized, emptyList()) }.exceptionOrNull()
+            assertTrue(error is java.io.IOException)
+            assertTrue(error?.message.orEmpty().contains("100 MiB"))
+        } finally {
+            oversized.delete()
+        }
+    }
+
+    @Test
+    fun refusesHighExpansionRatioDexBeforeDecompression() {
+        val dexContent = "x".repeat(2 * 1024 * 1024) + "com.example.analytics.Client"
+        val apk = zippedDex("classes.dex" to dexContent)
+        try {
+            val record = TrackerSignature(
+                id = "analytics-sdk",
+                name = "Example Analytics",
+                category = "analytics",
+                domains = emptyList(),
+                sdkPatterns = listOf("com.example.analytics.Client"),
+                confidence = "medium",
+                status = "active",
+                lastVerified = "2026-10-25",
+                evidence = evidence
+            )
+            val report = ApkTrackerIndicatorScanner().scan(apk, listOf(record))
+            assertEquals(0, report.dexFilesScanned)
+            assertEquals(0L, report.dexBytesScanned)
+            assertTrue(report.findings.isEmpty())
+            assertTrue(report.warnings.any { it.contains("expansion ratio exceeds 200:1") })
+        } finally {
+            apk.delete()
+        }
+    }
+
     private fun zippedDex(vararg entries: Pair<String, String>): File {
         val apk = Files.createTempFile("privacage-apk-scan-", ".apk").toFile()
         ZipOutputStream(FileOutputStream(apk)).use { zip ->

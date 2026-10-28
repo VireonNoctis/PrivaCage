@@ -68,7 +68,7 @@ class DnsOverTlsForwarder(
         }
     }
 
-    private fun validateResponse(query: ByteArray, expected: DnsQuestionView, response: ByteArray) {
+    internal fun validateResponse(query: ByteArray, expected: DnsQuestionView, response: ByteArray) {
         if (u16(response, 0) != u16(query, 0)) throw IOException("DNS-over-TLS response ID does not match query")
         val flags = u16(response, 2)
         if ((flags and 0x8000) == 0) throw IOException("Upstream TLS packet is not a DNS response")

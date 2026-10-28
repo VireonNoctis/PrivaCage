@@ -28,7 +28,8 @@ class StrictJsonKeyScannerTest {
         val exception = assertThrows(IOException::class.java) {
             StrictJsonKeyScanner.validate(json, "test JSON")
         }
-        assertTrue(exception.message.orEmpty().contains("format"))
+        assertTrue(exception.message.orEmpty().contains("duplicate"))
+        assertTrue(!exception.message.orEmpty().contains("format"), "Diagnostics must not echo hostile key names")
     }
 
     @Test
@@ -89,5 +90,16 @@ class StrictJsonKeyScannerTest {
         assertThrows(IOException::class.java) {
             StrictJsonKeyScanner.validate(tooDeep, "test JSON")
         }
+    }
+
+    @Test
+    fun duplicateKeyDiagnosticsDoNotEchoAttackerControlledNames() {
+        val hostileKey = "x".repeat(64 * 1024)
+        val json = "{\"" + hostileKey + "\":1,\"" + hostileKey + "\":2}"
+        val exception = assertThrows(IOException::class.java) {
+            StrictJsonKeyScanner.validate(json, "test JSON")
+        }
+        assertTrue(exception.message.orEmpty().length < 256)
+        assertTrue(!exception.message.orEmpty().contains(hostileKey))
     }
 }
