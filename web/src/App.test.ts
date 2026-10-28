@@ -207,4 +207,25 @@ describe('PrivaCage web workspace', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Verification failed');
     expect(screen.queryByRole('heading', { name: 'Checkpoint verified locally' })).not.toBeInTheDocument();
   });
+
+  it('clears stale API-backed content when a workspace refresh fails', async () => {
+    render(App);
+
+    expect(await screen.findByText('Google Analytics collection endpoint')).toBeInTheDocument();
+    vi.mocked(fetchTrackerCatalog).mockRejectedValueOnce(
+      new Error('The Rust API returned an invalid tracker catalogue response.')
+    );
+
+    await fireEvent.click(screen.getAllByRole('button', { name: /Refresh workspace/ })[0]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The Rust API returned an invalid tracker catalogue response.'
+    );
+    await waitFor(() => {
+      expect(screen.queryByText('Google Analytics collection endpoint')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('NOT AVAILABLE')).toBeInTheDocument();
+    expect(screen.getByText('DEVICE NOT LINKED')).toBeInTheDocument();
+  });
+
 });
