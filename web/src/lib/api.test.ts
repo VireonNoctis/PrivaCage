@@ -209,4 +209,117 @@ describe('PrivaCage API client', () => {
       'The Rust API returned an invalid JSON response.'
     );
   });
+
+  it('rejects tracker indicators that are not valid hostnames', async () => {
+    const original = (trackerCatalog() as { entries: Record<string, unknown>[] }).entries[0];
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        trackerCatalog({
+          entries: [
+            {
+              ...original,
+              indicators: { domains: ['metrics..example.test'], sdk_patterns: ['com.example.sdk'] }
+            }
+          ]
+        })
+      )
+    );
+
+    await expect(fetchTrackerCatalog()).rejects.toThrow(
+      'The Rust API returned an invalid tracker catalogue response.'
+    );
+  });
+
+  it('rejects HTTPS evidence URLs containing credentials', async () => {
+    const original = (trackerCatalog() as { entries: Record<string, unknown>[] }).entries[0];
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse(
+        trackerCatalog({
+          entries: [
+            {
+              ...original,
+              evidence: [
+                {
+                  url: 'https://user:secret@example.test/privacy',
+                  description: 'Credential-bearing evidence URL'
+                }
+              ]
+            }
+          ]
+        })
+      )
+    );
+
+    await expect(fetchTrackerCatalog()).rejects.toThrow(
+      'The Rust API returned an invalid tracker catalogue response.'
+    );
+  });
+
+  it('rejects summary payloads with negative numeric counts', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        schema_version: 1,
+        updated_at: '2026-10-23',
+        total_records: 10,
+        active: -1,
+        review: 2,
+        retired: 0,
+        domain_indicators: 4,
+        sdk_patterns: 1,
+        evidence_sources: 8,
+        categories: { analytics: 10 }
+      })
+    );
+
+    await expect(fetchCatalogSummary()).rejects.toThrow(
+      'The Rust API returned an invalid tracker summary response.'
+    );
+  });
+
+  it('bounds the number of summary categories before they reach the UI', async () => {
+    const categories = Object.fromEntries(
+      Array.from({ length: 201 }, (_, index) => ['category-' + index, 1])
+    );
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        schema_version: 1,
+        updated_at: '2026-10-23',
+        total_records: 201,
+        active: 201,
+        review: 0,
+        retired: 0,
+        domain_indicators: 201,
+        sdk_patterns: 0,
+        evidence_sources: 201,
+        categories
+      })
+    );
+
+    await expect(fetchCatalogSummary()).rejects.toThrow(
+      'The Rust API returned an invalid tracker summary response.'
+    );
+  });
+
+  it('enforces the byte limit while reading a streamed fetch response', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(1024 * 1024));
+        controller.enqueue(new Uint8Array(1024 * 1024));
+        controller.enqueue(new Uint8Array([0]));
+        controller.close();
+      }
+    });
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: vi.fn().mockReturnValue(null) },
+      body
+    } as unknown as Response);
+
+    await expect(fetchTrackerCatalog()).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'The Rust API response exceeds the 2 MiB limit.'
+    });
+  });
+
 });
