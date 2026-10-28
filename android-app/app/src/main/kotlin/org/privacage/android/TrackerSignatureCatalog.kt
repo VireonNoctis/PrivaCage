@@ -6,6 +6,9 @@ import org.json.JSONObject
 import org.privacage.dns.DnsPolicyEngine
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.net.URI
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -38,7 +41,11 @@ internal object TrackerSignatureCatalog {
             }
             output.toByteArray()
         }
-        val text = String(catalogBytes, Charsets.UTF_8)
+        val text = try {
+            decodeUtf8Strict(catalogBytes)
+        } finally {
+            catalogBytes.fill(0)
+        }
         StrictJsonKeyScanner.validate(text, "Tracker catalog")
         val root = try {
             JSONObject(text)
@@ -116,6 +123,16 @@ internal object TrackerSignatureCatalog {
             }
         }
         return parsedEntries
+    }
+
+    internal fun decodeUtf8Strict(bytes: ByteArray): String = try {
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (exception: Exception) {
+        throw IOException("Tracker catalog is not valid UTF-8", exception)
     }
 
     internal fun isSupportedSchemaVersion(value: Any?): Boolean =

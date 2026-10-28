@@ -93,7 +93,10 @@ class LocalDnsEventHistoryTest {
         val stored = events(expired, invalid)
 
         assertNull(LocalDnsEventHistory.pruneExpiredEvents(stored, now, 1))
-        assertEquals(2, LocalDnsEventHistory.parseStoredEvents(stored)?.length())
+        // The stored history parser rejects invalid timestamps; pruning must not mutate the source text.
+        assertNull(LocalDnsEventHistory.parseStoredEvents(stored))
+        assertTrue(stored.contains("expired.example"))
+        assertTrue(stored.contains("invalid-time.example"))
     }
 
     @Test

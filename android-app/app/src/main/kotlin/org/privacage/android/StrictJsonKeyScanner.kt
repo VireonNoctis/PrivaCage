@@ -94,12 +94,36 @@ internal object StrictJsonKeyScanner {
                                     if (cursor + 4 > source.length) malformed()
                                     val hex = source.substring(cursor, cursor + 4)
                                     if (hex.any { it.digitToIntOrNull(16) == null }) malformed()
-                                    decoded.append(hex.toInt(16).toChar())
+                                    val codeUnit = hex.toInt(16)
                                     cursor += 4
+                                    when (codeUnit) {
+                                        in 0xD800..0xDBFF -> {
+                                            if (
+                                                cursor + 6 > source.length ||
+                                                source[cursor] != '\\' ||
+                                                source[cursor + 1] != 'u'
+                                            ) malformed()
+                                            val lowHex = source.substring(cursor + 2, cursor + 6)
+                                            if (lowHex.any { it.digitToIntOrNull(16) == null }) malformed()
+                                            val lowUnit = lowHex.toInt(16)
+                                            if (lowUnit !in 0xDC00..0xDFFF) malformed()
+                                            decoded.append(codeUnit.toChar()).append(lowUnit.toChar())
+                                            cursor += 6
+                                        }
+                                        in 0xDC00..0xDFFF -> malformed()
+                                        else -> decoded.append(codeUnit.toChar())
+                                    }
                                 }
                                 else -> malformed()
                             }
                         }
+                        character.code in 0xD800..0xDBFF -> {
+                            if (cursor >= source.length) malformed()
+                            val lowSurrogate = source[cursor++]
+                            if (lowSurrogate.code !in 0xDC00..0xDFFF) malformed()
+                            decoded.append(character).append(lowSurrogate)
+                        }
+                        character.code in 0xDC00..0xDFFF -> malformed()
                         character.code < 0x20 -> malformed()
                         else -> decoded.append(character)
                     }

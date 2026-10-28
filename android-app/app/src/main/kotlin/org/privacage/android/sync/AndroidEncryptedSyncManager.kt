@@ -1621,17 +1621,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             .put(KEY_NEXT_SEQUENCE, 1L)
             .put(KEY_CURSOR, 0L)
 
-    private fun parseNative(value: String): JSONObject {
-        val response = try {
-            JSONObject(value)
-        } catch (exception: Exception) {
-            throw SyncBridgeFailure("Native sync bridge returned an invalid response.")
-        }
-        if (!response.optBoolean("ok", false)) {
-            throw SyncBridgeFailure(response.optString("error", "Native sync operation failed."))
-        }
-        return response
-    }
+    private fun parseNative(value: String): JSONObject =
+        parseNativeSyncResponse(value)
 
     private fun randomLocalPassphrase(): String {
         val bytes = ByteArray(32)

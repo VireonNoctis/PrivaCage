@@ -1,5 +1,6 @@
 package org.privacage.android.sync
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -100,6 +101,33 @@ class SyncRelayClientTest {
                 """{"body":{"header":{"message_id":"${"c".repeat(32)}","message_id":"d"}}}"""
             )
         }
+    }
+
+    @Test
+    fun relayMetadataReadersRejectStringBooleanAndFractionalCoercions() {
+        assertEquals(5L, requireRelayLong(JSONObject("""{"cursor":5}"""), "cursor", "test"))
+        assertIoFails { requireRelayLong(JSONObject("""{"cursor":"5"}"""), "cursor", "test") }
+        assertIoFails { requireRelayLong(JSONObject("""{"cursor":5.0}"""), "cursor", "test") }
+        assertIoFails { requireRelayLong(JSONObject("""{"cursor":true}"""), "cursor", "test") }
+
+        assertEquals("msg-1", requireRelayString(JSONObject("""{"message_id":"msg-1"}"""), "message_id", "test"))
+        assertIoFails { requireRelayString(JSONObject("""{"message_id":123}"""), "message_id", "test") }
+
+        assertEquals(true, requireRelayBoolean(JSONObject("""{"member_mode":true}"""), "member_mode", "test"))
+        assertIoFails { requireRelayBoolean(JSONObject("""{"member_mode":"true"}"""), "member_mode", "test") }
+    }
+
+    @Test
+    fun memberRevocationParserRejectsCoercibleFieldTypes() {
+        val fingerprint = "a".repeat(64)
+        val stringMode = """{"member_mode":"true","members":[{"fingerprint":"${fingerprint}","revoked_at_unix":null}]}"""
+        assertIoFails { SyncRelayClient.parseMemberRevocationState(stringMode, fingerprint) }
+
+        val stringTimestamp = """{"member_mode":true,"members":[{"fingerprint":"${fingerprint}","revoked_at_unix":"200"}]}"""
+        assertIoFails { SyncRelayClient.parseMemberRevocationState(stringTimestamp, fingerprint) }
+
+        val numericFingerprint = """{"member_mode":true,"members":[{"fingerprint":123,"revoked_at_unix":null}]}"""
+        assertIoFails { SyncRelayClient.parseMemberRevocationState(numericFingerprint, fingerprint) }
     }
 
     @Test

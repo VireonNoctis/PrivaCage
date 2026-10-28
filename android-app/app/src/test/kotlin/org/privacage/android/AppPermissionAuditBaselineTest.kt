@@ -8,6 +8,30 @@ import java.io.IOException
 
 class AppPermissionAuditBaselineTest {
     @Test
+    fun missingAndValidPreferenceValuesAreNotClassifiedAsCorrupt() {
+        val missing = AppPermissionAudit.readBaselinePreference { null }
+        assertEquals(null, missing.value)
+        assertEquals(false, missing.unreadable)
+        assertEquals(null, missing.warning)
+
+        val valid = AppPermissionAudit.readBaselinePreference { """{"schema_version":1,"packages":{}}""" }
+        assertEquals(false, valid.unreadable)
+        assertEquals(null, valid.warning)
+        assertTrue(valid.value.orEmpty().contains("schema_version"))
+    }
+
+    @Test
+    fun wrongPreferenceTypeIsMarkedUnreadableForNonDestructiveRecovery() {
+        val result = AppPermissionAudit.readBaselinePreference {
+            throw ClassCastException("preference was stored as an integer")
+        }
+
+        assertEquals(null, result.value)
+        assertEquals(true, result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
     fun acceptsOnlyTheExactBaselineSchema() {
         val snapshot = AppPermissionAudit.decodeBaseline(
             """{"schema_version":1,"packages":{"com.example.app":{"android.permission.CAMERA":true}}}"""

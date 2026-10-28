@@ -24,6 +24,22 @@ internal data class RosterPage(val nextRevision: Long, val rosters: List<Relayed
 internal data class RelayMemberEntry(val fingerprint: String, val revokedAtUnix: Long?)
 internal data class RelayMemberRevocationResult(val alreadyRevoked: Boolean)
 
+internal fun requireRelayString(value: JSONObject, key: String, label: String): String =
+    value.opt(key) as? String
+        ?: throw IOException("$label field '$key' must be a JSON string.")
+
+internal fun requireRelayLong(value: JSONObject, key: String, label: String): Long =
+    when (val raw = value.opt(key)) {
+        is Int -> raw.toLong()
+        is Long -> raw
+        else -> throw IOException("$label field '$key' must be an integer JSON number.")
+    }
+
+internal fun requireRelayBoolean(value: JSONObject, key: String, label: String): Boolean =
+    value.opt(key) as? Boolean
+        ?: throw IOException("$label field '$key' must be a JSON boolean.")
+
+
 /**
  * HTTPS-only client for the opaque relay API. Redirects are not followed because a redirect
  * could send the bearer capability to another origin.
@@ -141,7 +157,7 @@ internal class SyncRelayClient(
             val responseText = decodeUtf8Strict(bytes, "Relay roster page")
             StrictJsonKeyScanner.validate(responseText, "Relay roster page")
             val json = JSONObject(responseText)
-            val nextRevision = json.optLong("next_revision", -1L)
+            val nextRevision = requireRelayLong(json, "next_revision", "Relay roster page")
             if (nextRevision < afterRevision) throw IOException("Relay returned a backward roster revision.")
             val rawRosters = json.optJSONArray("rosters")
                 ?: throw IOException("Relay response omitted the roster history array.")
@@ -151,14 +167,16 @@ internal class SyncRelayClient(
             for (index in 0 until rawRosters.length()) {
                 val item = rawRosters.optJSONObject(index)
                     ?: throw IOException("Relay returned a malformed roster history entry.")
-                val revision = item.optLong("revision", -1L)
-                val ownerFingerprint = item.optString("owner_fingerprint", "")
+                val revision = requireRelayLong(item, "revision", "Relay roster entry")
+                val ownerFingerprint = requireRelayString(item, "owner_fingerprint", "Relay roster entry")
                 val roster = item.optJSONObject("roster")
                     ?: throw IOException("Relay roster entry omitted its signed roster.")
                 val unsigned = roster.optJSONObject("unsigned")
-                val rosterRevision = unsigned?.optLong("revision", -1L) ?: -1L
-                val rosterOwner = unsigned?.optJSONObject("owner_card")
-                    ?.optString("fingerprint_sha256", "").orEmpty()
+                    ?: throw IOException("Relay signed roster omitted its unsigned section.")
+                val rosterRevision = requireRelayLong(unsigned, "revision", "Relay signed roster")
+                val ownerCard = unsigned.optJSONObject("owner_card")
+                    ?: throw IOException("Relay signed roster omitted its owner card.")
+                val rosterOwner = requireRelayString(ownerCard, "fingerprint_sha256", "Relay roster owner card")
                 if (revision <= previousRevision || rosterRevision != revision ||
                     !isValidFingerprint(ownerFingerprint) || ownerFingerprint != rosterOwner
                 ) {
@@ -169,7 +187,7 @@ internal class SyncRelayClient(
                     revision,
                     ownerFingerprint,
                     roster.toString(),
-                    item.optLong("inserted_at_unix", 0L)
+                    if (item.has("inserted_at_unix")) requireRelayLong(item, "inserted_at_unix", "Relay roster entry") else 0L
                 )
             }
             if (rosters.isNotEmpty() && nextRevision != rosters.last().revision) {
@@ -203,7 +221,7 @@ internal class SyncRelayClient(
             val responseText = decodeUtf8Strict(bytes, "Relay message page")
             StrictJsonKeyScanner.validate(responseText, "Relay message page")
             val json = JSONObject(responseText)
-            val nextCursor = json.optLong("next_cursor", -1L)
+            val nextCursor = requireRelayLong(json, "next_cursor", "Relay message page")
             if (nextCursor < cursor) throw IOException("Relay returned a backward cursor.")
             val rawMessages = json.optJSONArray("messages")
                 ?: throw IOException("Relay response omitted the messages array.")
@@ -212,9 +230,9 @@ internal class SyncRelayClient(
             for (index in 0 until rawMessages.length()) {
                 val item = rawMessages.optJSONObject(index)
                     ?: throw IOException("Relay response contains a malformed message.")
-                val messageCursor = item.optLong("cursor", -1L)
-                val messageId = item.optString("message_id", "")
-                val payloadHex = item.optString("payload_hex", "")
+                val messageCursor = requireRelayLong(item, "cursor", "Relay message entry")
+                val messageId = requireRelayString(item, "message_id", "Relay message entry")
+                val payloadHex = requireRelayString(item, "payload_hex", "Relay message entry")
                 if (messageCursor <= cursor || messageCursor > nextCursor ||
                     !isValidMessageId(messageId) || payloadHex.isEmpty() ||
                     payloadHex.length % 2 != 0 || payloadHex.length > MAX_REQUEST_BYTES * 2 ||
@@ -235,10 +253,9 @@ internal class SyncRelayClient(
                     payload.fill(0)
                 }
                 try {
-                    StrictJsonKeyScanner.validate(packetJson, "Relayed encrypted sync packet")
-                    JSONObject(packetJson)
+                    SyncPacketJsonValidator.parse(packetJson)
                 } catch (exception: Exception) {
-                    throw IOException("Relay packet is not a JSON object.", exception)
+                    throw IOException("Relay packet is not a bounded, strict JSON object.", exception)
                 }
                 messages += RelayedMessage(messageCursor, messageId, packetJson)
             }
@@ -429,18 +446,14 @@ internal class SyncRelayClient(
             if (!response.has("member_mode") || response.isNull("member_mode")) {
                 throw IOException("Relay administrator response omitted the member-mode state.")
             }
-            val memberMode = try {
-                response.getBoolean("member_mode")
-            } catch (exception: Exception) {
-                throw IOException("Relay administrator response contains an invalid member-mode state.", exception)
-            }
+            val memberMode = requireRelayBoolean(response, "member_mode", "Relay administrator response")
             val rawMembers = response.optJSONArray("members")
                 ?: throw IOException("Relay administrator response omitted the member list.")
             val members = ArrayList<RelayMemberEntry>(rawMembers.length())
             for (index in 0 until rawMembers.length()) {
                 val member = rawMembers.optJSONObject(index)
                     ?: throw IOException("Relay administrator response contains a malformed member.")
-                val fingerprint = member.optString("fingerprint", "")
+                val fingerprint = requireRelayString(member, "fingerprint", "Relay administrator member")
                 if (!isValidFingerprint(fingerprint)) {
                     throw IOException("Relay administrator response contains an invalid member fingerprint.")
                 }
@@ -450,7 +463,7 @@ internal class SyncRelayClient(
                 val revokedAt = if (member.isNull("revoked_at_unix")) {
                     null
                 } else {
-                    member.optLong("revoked_at_unix", -1L).also {
+                    requireRelayLong(member, "revoked_at_unix", "Relay administrator member").also {
                         if (it <= 0L) {
                             throw IOException("Relay administrator response contains an invalid revocation timestamp.")
                         }

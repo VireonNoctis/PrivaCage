@@ -16,12 +16,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
 	dateLayout = "2006-01-02"
+
 	maxTrackerDatabaseBytes = 8 << 20
-	maxTrackerJSONDepth       = 128
+	maxTrackerJSONDepth = 128
 )
 
 var (
@@ -415,10 +417,68 @@ func runValidateAndroidPrivacy(args []string) int {
 }
 
 func rejectDuplicateJSONKeys(data []byte) error {
+	if err := rejectInvalidJSONUnicode(data); err != nil {
+		return fmt.Errorf("invalid JSON Unicode: %w", err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err := scanJSONValue(decoder, 0); err != nil {
 		return fmt.Errorf("invalid JSON or duplicate object key: %w", err)
+	}
+	return nil
+}
+
+func rejectInvalidJSONUnicode(data []byte) error {
+	if !utf8.Valid(data) {
+		return fmt.Errorf("JSON input is not valid UTF-8")
+	}
+	inString := false
+	for cursor := 0; cursor < len(data); {
+		character := data[cursor]
+		if !inString {
+			if character == '"' { inString = true }
+			cursor++
+			continue
+		}
+		if character == '"' {
+			inString = false
+			cursor++
+			continue
+		}
+		if character != '\\' {
+			cursor++
+			continue
+		}
+		if cursor+1 >= len(data) {
+			return fmt.Errorf("JSON string ends with an incomplete escape")
+		}
+		if data[cursor+1] != 'u' {
+			cursor += 2
+			continue
+		}
+		if cursor+6 > len(data) {
+			return fmt.Errorf("JSON Unicode escape is truncated")
+		}
+		value, err := strconv.ParseUint(string(data[cursor+2:cursor+6]), 16, 16)
+		if err != nil {
+			return fmt.Errorf("JSON Unicode escape contains non-hexadecimal digits")
+		}
+		codeUnit := uint16(value)
+		switch {
+		case codeUnit >= 0xD800 && codeUnit <= 0xDBFF:
+			if cursor+12 > len(data) || data[cursor+6] != '\\' || data[cursor+7] != 'u' {
+				return fmt.Errorf("JSON contains an unpaired high surrogate escape")
+			}
+			lowValue, lowErr := strconv.ParseUint(string(data[cursor+8:cursor+12]), 16, 16)
+			if lowErr != nil || lowValue < 0xDC00 || lowValue > 0xDFFF {
+				return fmt.Errorf("JSON high surrogate is not followed by a low surrogate escape")
+			}
+			cursor += 12
+		case codeUnit >= 0xDC00 && codeUnit <= 0xDFFF:
+			return fmt.Errorf("JSON contains an unpaired low surrogate escape")
+		default:
+			cursor += 6
+		}
 	}
 	return nil
 }

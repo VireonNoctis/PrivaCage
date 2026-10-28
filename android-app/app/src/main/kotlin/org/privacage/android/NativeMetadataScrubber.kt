@@ -1,6 +1,7 @@
 package org.privacage.android
 
 import org.json.JSONArray
+import java.nio.charset.StandardCharsets
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -63,39 +64,8 @@ internal class NativeMetadataScrubber {
     fun scrub(input: File, output: File, maxBytes: Long = DEFAULT_MAX_BYTES): NativeMetadataReport =
         decode(nativeScrubFile(input.absolutePath, output.absolutePath, maxBytes))
 
-    private fun decode(value: String): NativeMetadataReport {
-        val response = try {
-            JSONObject(value)
-        } catch (exception: Exception) {
-            throw IOException("Native metadata library returned an invalid response.", exception)
-        }
-        if (!response.optBoolean("ok", false)) {
-            throw IOException(response.optString("error", "Metadata operation failed."))
-        }
-        val report = response.optJSONObject("report")
-            ?: throw IOException("Native metadata library omitted the report.")
-        val warningArray = report.optJSONArray("warnings") ?: JSONArray()
-        val warnings = List(warningArray.length()) { index ->
-            warningArray.optString(index, "Unspecified format limitation.")
-        }
-        return NativeMetadataReport(
-            format = report.getString("format"),
-            inputBytes = report.getLong("input_bytes"),
-            outputBytes = report.getLong("output_bytes"),
-            metadataSegmentsRemoved = report.getLong("metadata_segments_removed"),
-            metadataBytesRemoved = report.getLong("metadata_bytes_removed"),
-            jpegApp1SegmentsRemoved = report.getLong("jpeg_app1_segments_removed"),
-            jpegApp13SegmentsRemoved = report.getLong("jpeg_app13_segments_removed"),
-            jpegCommentSegmentsRemoved = report.getLong("jpeg_comment_segments_removed"),
-            pngExifChunksRemoved = report.getLong("png_exif_chunks_removed"),
-            pngTextChunksRemoved = report.getLong("png_text_chunks_removed"),
-            pngTimestampChunksRemoved = report.getLong("png_timestamp_chunks_removed"),
-            pngPhysicalChunksRemoved = report.getLong("png_physical_chunks_removed"),
-            webpExifChunksRemoved = report.getLong("webp_exif_chunks_removed"),
-            webpXmpChunksRemoved = report.getLong("webp_xmp_chunks_removed"),
-            warnings = warnings
-        )
-    }
+    private fun decode(value: String): NativeMetadataReport =
+        decodeNativeMetadataResponse(value)
 
     private external fun nativeInspectFile(inputPath: String, maxBytes: Long): String
 
@@ -109,3 +79,147 @@ internal class NativeMetadataScrubber {
         const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024
     }
 }
+
+/**
+ * Parses only the documented JNI response schema. Native JSON is still treated as an
+ * untrusted boundary: duplicate keys, coercible primitive types, unknown fields, and oversized
+ * responses must not become a misleading metadata-removal report.
+ */
+internal fun decodeNativeMetadataResponse(value: String): NativeMetadataReport {
+    if (
+        value.length > MAX_NATIVE_RESPONSE_BYTES ||
+        value.toByteArray(StandardCharsets.UTF_8).size > MAX_NATIVE_RESPONSE_BYTES
+    ) {
+        throw IOException("Native metadata library response exceeds the 64 KiB limit.")
+    }
+    StrictJsonKeyScanner.validate(value, "Native metadata response")
+    val response = try {
+        JSONObject(value)
+    } catch (exception: Exception) {
+        throw IOException("Native metadata library returned an invalid response.", exception)
+    }
+
+    val ok = response.opt("ok") as? Boolean
+        ?: throw IOException("Native metadata library response omitted a JSON boolean 'ok' field.")
+    if (!ok) {
+        if (jsonObjectKeys(response) != setOf("ok", "error")) {
+            throw IOException("Native metadata error response contains missing or unsupported fields.")
+        }
+        val error = response.opt("error") as? String
+        if (error.isNullOrBlank()) throw IOException("Native metadata operation failed with an invalid error message.")
+        throw IOException(error)
+    }
+    if (jsonObjectKeys(response) != setOf("ok", "report")) {
+        throw IOException("Native metadata success response contains missing or unsupported fields.")
+    }
+
+    val report = response.optJSONObject("report")
+        ?: throw IOException("Native metadata library omitted the report.")
+    val expectedReportKeys = setOf(
+        "format",
+        "input_bytes",
+        "output_bytes",
+        "metadata_segments_removed",
+        "metadata_bytes_removed",
+        "jpeg_app1_segments_removed",
+        "jpeg_app13_segments_removed",
+        "jpeg_comment_segments_removed",
+        "png_exif_chunks_removed",
+        "png_text_chunks_removed",
+        "png_timestamp_chunks_removed",
+        "png_physical_chunks_removed",
+        "webp_exif_chunks_removed",
+        "webp_xmp_chunks_removed",
+        "warnings"
+    )
+    if (jsonObjectKeys(report) != expectedReportKeys) {
+        throw IOException("Native metadata report contains missing or unsupported fields.")
+    }
+    val format = report.opt("format") as? String
+        ?: throw IOException("Native metadata report format must be text.")
+    if (format !in setOf("jpeg", "png", "webp")) {
+        throw IOException("Native metadata report format is unsupported.")
+    }
+    fun count(name: String): Long {
+        val raw = report.opt(name)
+        val parsed = when (raw) {
+            is Int -> raw.toLong()
+            is Long -> raw
+            else -> throw IOException("Native metadata report field '$name' must be an integer JSON number.")
+        }
+        if (parsed < 0L) throw IOException("Native metadata report field '$name' cannot be negative.")
+        return parsed
+    }
+
+    val warningArray = report.opt("warnings") as? JSONArray
+        ?: throw IOException("Native metadata report warnings must be an array.")
+    if (warningArray.length() > MAX_NATIVE_WARNING_COUNT) {
+        throw IOException("Native metadata report contains too many warning entries.")
+    }
+    val warnings = List(warningArray.length()) { index ->
+        val warning = warningArray.opt(index) as? String
+            ?: throw IOException("Native metadata report warning $index must be text.")
+        if (warning.length > MAX_NATIVE_WARNING_LENGTH) {
+            throw IOException("Native metadata report warning $index exceeds the supported length.")
+        }
+        warning
+    }
+
+    val inputBytes = count("input_bytes")
+    val outputBytes = count("output_bytes")
+    val metadataBytesRemoved = count("metadata_bytes_removed")
+    if (outputBytes > inputBytes || metadataBytesRemoved > inputBytes) {
+        throw IOException("Native metadata report byte counts exceed the input size.")
+    }
+    if (inputBytes - outputBytes != metadataBytesRemoved) {
+        throw IOException("Native metadata input/output byte counts do not reconcile with reported removals.")
+    }
+    val metadataSegmentsRemoved = count("metadata_segments_removed")
+    val categoryCounts = listOf(
+        count("jpeg_app1_segments_removed"),
+        count("jpeg_app13_segments_removed"),
+        count("jpeg_comment_segments_removed"),
+        count("png_exif_chunks_removed"),
+        count("png_text_chunks_removed"),
+        count("png_timestamp_chunks_removed"),
+        count("png_physical_chunks_removed"),
+        count("webp_exif_chunks_removed"),
+        count("webp_xmp_chunks_removed")
+    )
+    var categoryTotal = 0L
+    for (count in categoryCounts) {
+        if (count > metadataSegmentsRemoved - categoryTotal) {
+            throw IOException("Native metadata category counters exceed the aggregate segment count.")
+        }
+        categoryTotal += count
+    }
+
+    return NativeMetadataReport(
+        format = format,
+        inputBytes = inputBytes,
+        outputBytes = outputBytes,
+        metadataSegmentsRemoved = metadataSegmentsRemoved,
+        metadataBytesRemoved = metadataBytesRemoved,
+        jpegApp1SegmentsRemoved = categoryCounts[0],
+        jpegApp13SegmentsRemoved = categoryCounts[1],
+        jpegCommentSegmentsRemoved = categoryCounts[2],
+        pngExifChunksRemoved = categoryCounts[3],
+        pngTextChunksRemoved = categoryCounts[4],
+        pngTimestampChunksRemoved = categoryCounts[5],
+        pngPhysicalChunksRemoved = categoryCounts[6],
+        webpExifChunksRemoved = categoryCounts[7],
+        webpXmpChunksRemoved = categoryCounts[8],
+        warnings = warnings
+    )
+}
+
+private fun jsonObjectKeys(value: JSONObject): Set<String> {
+    val keys = mutableSetOf<String>()
+    val iterator = value.keys()
+    while (iterator.hasNext()) keys += iterator.next()
+    return keys
+}
+
+private const val MAX_NATIVE_RESPONSE_BYTES = 64 * 1024
+private const val MAX_NATIVE_WARNING_COUNT = 128
+private const val MAX_NATIVE_WARNING_LENGTH = 4_096

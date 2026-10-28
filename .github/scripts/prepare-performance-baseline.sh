@@ -31,6 +31,7 @@ copy_into_baseline "android-core/src/test/kotlin/org/privacage/dns/DnsPerformanc
 copy_into_baseline "shared/rust/tracker-intelligence/Cargo.toml"
 copy_into_baseline "shared/rust/tracker-intelligence/benches/apk_scan.rs"
 copy_into_baseline "android-app/settings.gradle.kts"
+copy_into_baseline "android-app/gradle.properties"
 copy_into_baseline "android-app/app/build.gradle.kts"
 copy_into_baseline "android-app/app/src/main/AndroidManifest.xml"
 
