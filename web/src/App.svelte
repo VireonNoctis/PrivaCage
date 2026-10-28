@@ -140,6 +140,10 @@
         error instanceof Error
           ? error.message
           : 'The Rust API could not be reached. No replacement data was generated.';
+      health = null;
+      summary = null;
+      catalog = null;
+      capabilities = [];
       notice = '';
     } finally {
       if (requestController === controller) {
