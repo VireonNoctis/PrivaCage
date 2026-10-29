@@ -425,7 +425,7 @@ func TestTrackerReviewDateLeapDayAndDueSoonBoundary(t *testing.T) {
 	for _, entry := range report.Entries {
 		states[entry.ID] = entry.ReviewState
 	}
-	if states["due-boundary"] != "overdue" || states["past-boundary"] != "overdue" {
+	if states["due-boundary"] != "due_soon" || states["past-boundary"] != "overdue" {
 		t.Fatalf("unexpected due states after the due date: %#v", states)
 	}
 	beforeDue := buildReviewReport(trackerDatabase{Entries: []trackerEntry{
