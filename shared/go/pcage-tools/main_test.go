@@ -375,6 +375,76 @@ func contains(items []string, target string) bool {
 	return false
 }
 
+func TestTrackerEvidenceURLPolicyBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		value string
+		wantError string
+	}{
+		{name: "valid HTTPS URL", value: "https://docs.example.org/path?q=1"},
+		{name: "valid explicit port", value: "https://docs.example.org:443/path"},
+		{name: "reject HTTP", value: "http://docs.example.org/path", wantError: "must use HTTPS"},
+		{name: "reject relative URL", value: "/docs", wantError: "must use HTTPS"},
+		{name: "reject missing hostname", value: "https:///path", wantError: "must include a hostname"},
+		{name: "reject credentials", value: "https://user:secret@docs.example.org/path", wantError: "must not contain credentials"},
+		{name: "reject zero port", value: "https://docs.example.org:0/path", wantError: "port must be between 1 and 65535"},
+		{name: "reject oversized port", value: "https://docs.example.org:65536/path", wantError: "port must be between 1 and 65535"},
+		{name: "reject nonnumeric port", value: "https://docs.example.org:abc/path", wantError: "invalid port"},
+		{name: "reject malformed URL", value: "https://[::1", wantError: "not a valid URL"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateHTTPSURL(test.value, "evidence.url")
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("valid URL rejected: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("got error %v, want substring %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestTrackerReviewDateLeapDayAndDueSoonBoundary(t *testing.T) {
+	today, err := parseDate("2024-03-01", "today")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dateDifference(today, mustParseTestDate(t, "2024-02-29")); got != 1 {
+		t.Fatalf("leap-day age = %d, want 1", got)
+	}
+	document := trackerDatabase{Entries: []trackerEntry{
+		{ID: "due-boundary", Name: "Due boundary", Status: "active", Confidence: "high", LastVerified: "2024-01-31", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+		{ID: "past-boundary", Name: "Past boundary", Status: "active", Confidence: "high", LastVerified: "2024-01-30", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+	}}
+	report := buildReviewReport(document, today, 30, 1)
+	states := map[string]string{}
+	for _, entry := range report.Entries {
+		states[entry.ID] = entry.ReviewState
+	}
+	if states["due-boundary"] != "overdue" || states["past-boundary"] != "overdue" {
+		t.Fatalf("unexpected due states after the due date: %#v", states)
+	}
+	beforeDue := buildReviewReport(trackerDatabase{Entries: []trackerEntry{
+		{ID: "due-soon", Name: "Due soon", Status: "active", Confidence: "high", LastVerified: "2024-01-31", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+	}}, mustParseTestDate(t, "2024-02-29"), 30, 1)
+	if len(beforeDue.Entries) != 1 || beforeDue.Entries[0].ReviewState != "due_soon" || beforeDue.Entries[0].DaysUntilDue != 1 {
+		t.Fatalf("leap-year due-soon boundary incorrect: %#v", beforeDue.Entries)
+	}
+}
+
+func mustParseTestDate(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := parseDate(value, "test date")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
+}
+
 func TestReviewReportReviewStatesAndOutput(t *testing.T) {
 	today, _ := parseDate("2026-10-23", "today")
 	document := trackerDatabase{Entries: []trackerEntry{
