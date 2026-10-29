@@ -299,6 +299,51 @@ func TestTrackerFreshnessGate(t *testing.T) {
 	}
 }
 
+
+func TestTrackerReviewDatesAcrossLeapDay(t *testing.T) {
+	lastVerified, err := parseDate("2024-02-29", "last_verified")
+	if err != nil {
+		t.Fatalf("valid leap-day date rejected: %v", err)
+	}
+	beforeLeapDay, _ := parseDate("2024-02-28", "before")
+	afterLeapDay, _ := parseDate("2024-03-01", "after")
+	if got := dateDifference(afterLeapDay, beforeLeapDay); got != 2 {
+		t.Fatalf("date difference across leap day = %d, want 2", got)
+	}
+	document := fixtureDatabase()
+	document.Entries[0].LastVerified = lastVerified.Format(dateLayout)
+	report := buildReviewReport(document, afterLeapDay, 1, 0)
+	entry := report.Entries[0]
+	if entry.ReviewDue != "2024-03-01" || entry.ReviewState != "due_soon" || entry.DaysUntilDue != 0 {
+		t.Fatalf("unexpected leap-day review boundary: %#v", entry)
+	}
+}
+
+func TestTrackerEvidenceURLPortAndAuthorityBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		url string
+		want string
+	}{
+		{name: "zero port", url: "https://docs.example.org:0/path", want: "port must be between 1 and 65535"},
+		{name: "port above maximum", url: "https://docs.example.org:65536/path", want: "port must be between 1 and 65535"},
+		{name: "nonnumeric port", url: "https://docs.example.org:notaport/path", want: "invalid port"},
+		{name: "missing hostname", url: "https:///path", want: "must include a hostname"},
+		{name: "scheme-relative URL", url: "//docs.example.org/path", want: "must use HTTPS"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateHTTPSURL(test.url, "evidence.url")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validateHTTPSURL(%q) error = %v, want substring %q", test.url, err, test.want)
+			}
+		})
+	}
+	if err := validateHTTPSURL("https://docs.example.org:65535/path?q=1#section", "evidence.url"); err != nil {
+		t.Fatalf("valid maximum port with query and fragment rejected: %v", err)
+	}
+}
+
 func TestRepositoryTrackerCatalogAndEvidenceClassifications(t *testing.T) {
 	path := filepath.Join(repoRoot(), "shared", "tracker-db", "signatures.json")
 	document, err := readTrackerDatabase(path)
