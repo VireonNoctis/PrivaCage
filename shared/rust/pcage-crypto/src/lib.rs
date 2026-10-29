@@ -321,4 +321,35 @@ mod tests {
         ));
         assert!(encrypt(b"x", &"🦊".repeat(6)).is_ok());
     }
+
+    #[test]
+    fn rejects_out_of_range_envelope_lengths_before_passphrase_processing() {
+        let too_short = vec![0_u8; HEADER_SIZE + TAG_SIZE - 1];
+        assert!(matches!(
+            decrypt(&too_short, "short"),
+            Err(CryptoError::InvalidInput(_))
+        ));
+
+        let too_large = vec![0_u8; MAX_ENVELOPE_BYTES + 1];
+        assert!(matches!(
+            decrypt(&too_large, "short"),
+            Err(CryptoError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn exact_minimum_reaches_authentication_and_maximum_round_trips() {
+        let mut minimum = vec![0_u8; HEADER_SIZE + TAG_SIZE];
+        minimum[..MAGIC_SIZE].copy_from_slice(&MAGIC);
+        assert_eq!(
+            decrypt(&minimum, TEST_PASSPHRASE),
+            Err(CryptoError::AuthenticationFailure)
+        );
+
+        let plaintext = vec![0x5a_u8; MAX_PLAINTEXT_BYTES];
+        let envelope = encrypt(&plaintext, TEST_PASSPHRASE).expect("maximum plaintext encrypts");
+        assert_eq!(envelope.len(), MAX_ENVELOPE_BYTES);
+        let decrypted = decrypt(&envelope, TEST_PASSPHRASE).expect("maximum envelope decrypts");
+        assert_eq!(decrypted, plaintext);
+    }
 }
