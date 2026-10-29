@@ -56,6 +56,7 @@ Features do not all have the same maturity. A coded path is not the same as a te
 - Optional local DNS event history, disabled by default, encrypted at rest with an AES-GCM key in Android Keystore, with bounded retention controls; recorded events include the hostname, decision, and best-effort socket-owner label.
 - Encrypted profile export/import through Android's document picker.
 - Local metadata inspection and separate cleaned copies for supported image formats.
+- A read-only, on-device status review for three named Google service/store packages, with handoff to Android's own app-info settings; it does not force-disable packages.
 - Windows baseline reports and policy changes that can be verified and restored.
 
 ### Principles
@@ -169,6 +170,12 @@ The Android screen lets a user filter by the Google app being replaced, select o
 The current catalogue contains reviewed store/project landing pages—not version-pinned APK artifacts with maintained SHA-256 and signing-certificate metadata. The app opens one selected source at a time, where the source controls downloads and Android preserves its normal install confirmation. A queue item's “completed” tick is a user reminder; PrivaCage does not pretend it can verify installation simply because an external page was opened.
 
 Automatic artifact downloading should only be added with a verifiable source index, pinned release metadata, digest and signer checks, bounded downloads, redirect policy, expiry/revocation handling, and a clear Android package-installer handoff. Do not bypass Play Protect, Android installer consent, or publisher/signature checks to make the UI appear more automated. The implementation and research trade-offs are in [the privacy-suite research note](docs/research-notes/privacy-suite-expansion-2026-10-25.md).
+
+## Google-service hardening (Android)
+
+The Android app includes a local, read-only status audit for three exact package IDs: Google Play services, Google Services Framework, and Google Play Store. It reports the package state/version exposed by Android and opens the OS-owned app-info screen for user review. The manifest declares only those package names; it does not request broad `QUERY_ALL_PACKAGES` visibility. Android 11 and later filter package visibility unless the relevant query is declared ([Android package visibility documentation](https://developer.android.com/training/package-visibility/declaring)).
+
+This is **not** a Google-services disable switch, a network monitor, or proof that data was or was not collected. Ordinary apps cannot reliably force-disable protected system packages, and Android/OEM builds may not expose a Disable control. Disabling core components can break features such as push notifications, location, sign-in, Play Store installs/updates, payments, or integrity checks, depending on the device and apps. For a substantially different Google-services model, consider only a privacy-focused OS supported for the exact device and read its migration and compatibility guidance first; for example, [GrapheneOS documents optional sandboxed Google Play](https://grapheneos.org/faq). PrivaCage does not install or replace an operating system.
 
 ## Windows privacy audit and hardening
 
