@@ -68,6 +68,7 @@ class MainActivity : Activity() {
         }
     }
     private lateinit var devicePrivacyText: TextView
+    private lateinit var googleServicesStatusText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     @Volatile private var trackerCatalogLoadComplete = false
@@ -190,6 +191,35 @@ class MainActivity : Activity() {
             text = "These controls open official Android, Google, and Samsung settings or guidance. PrivaCage does not silently change account settings or claim that a page visit disables collection."
             textSize = 13f
         })
+        root.addView(TextView(this).apply {
+            text = "GOOGLE SERVICES REVIEW (LOCAL ONLY)"
+            textSize = 14f
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Inspect only three explicitly named packages. This does not monitor their network traffic or prove what data they collect. PrivaCage cannot force-disable core system packages."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Audit core Google service package status"
+            setOnClickListener {
+                googleServicesStatusText.text = GoogleServicesReview.render(
+                    GoogleServicesReview.inspect(packageManager)
+                )
+            }
+        }, matchWidth())
+        googleServicesStatusText = TextView(this).apply {
+            text = "Not checked yet. Package status is read on-device and is not uploaded."
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(googleServicesStatusText, matchWidth())
+        GoogleServicesReview.targets.forEach { target ->
+            root.addView(Button(this).apply {
+                text = "Review ${target.displayName} in Android Settings"
+                setOnClickListener { openGoogleServiceSettings(target) }
+            }, matchWidth())
+        }
         root.addView(Button(this).apply {
             text = "Review Android ad privacy settings"
             setOnClickListener {
@@ -3427,6 +3457,43 @@ class MainActivity : Activity() {
         } catch (exception: Exception) {
             statusText.text = "Could not open $label. Open it manually from the official provider's settings or website."
         }
+    }
+
+    private fun openGoogleServiceSettings(target: GoogleServiceTarget) {
+        val observation = GoogleServicesReview.inspectPackage(packageManager, target)
+        if (
+            observation.status == GoogleServiceStatus.NOT_INSTALLED_OR_NOT_VISIBLE ||
+            observation.status == GoogleServiceStatus.INSPECTION_UNAVAILABLE
+        ) {
+            googleServicesStatusText.text = GoogleServicesReview.render(listOf(observation))
+            statusText.text = "Android did not expose ${target.displayName}; no settings change was attempted."
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Review ${target.displayName}")
+            .setMessage(
+                "This opens Android's app-info screen; it does not disable anything. " +
+                    "Android may not offer a Disable control for core system packages. Disabling Google services " +
+                    "can affect push notifications, location, sign-in, Play Store updates or purchases, and app " +
+                    "integrity checks depending on your device and apps. PrivaCage will not bypass Android's safeguards."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open app info") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", target.packageName, null)
+                        }
+                    )
+                    statusText.text =
+                        "Opened Android app info for ${target.displayName}. Any available disable control is owned by Android."
+                } catch (exception: android.content.ActivityNotFoundException) {
+                    statusText.text =
+                        "Android does not expose an app-info screen for ${target.displayName} on this build."
+                }
+            }
+            .show()
     }
 
     private fun openSystemSettings(action: String, label: String) {
