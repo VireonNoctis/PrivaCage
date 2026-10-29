@@ -55,8 +55,11 @@ internal object GoogleServicesReview {
         target: GoogleServiceTarget
     ): GoogleServiceObservation {
         return try {
-            val appInfo = packageManager.getApplicationInfo(target.packageName, 0)
-            val packageInfo = packageManager.getPackageInfo(target.packageName, 0)
+            // Include disabled entries so an installed-but-disabled service is not
+            // misreported as absent merely because Android filters disabled components.
+            val queryFlags = PackageManager.MATCH_DISABLED_COMPONENTS
+            val appInfo = packageManager.getApplicationInfo(target.packageName, queryFlags)
+            val packageInfo = packageManager.getPackageInfo(target.packageName, queryFlags)
             val systemFlags = ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
             GoogleServiceObservation(
                 target = target,
