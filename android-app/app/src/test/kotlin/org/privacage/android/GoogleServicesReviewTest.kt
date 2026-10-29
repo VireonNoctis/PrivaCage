@@ -56,6 +56,24 @@ class GoogleServicesReviewTest {
     }
 
     @Test
+    fun disabledServiceStateIsNotDescribedAsMissing() {
+        val target = GoogleServicesReview.targets.first()
+        val report = GoogleServicesReview.render(
+            listOf(
+                GoogleServiceObservation(
+                    target = target,
+                    status = GoogleServiceStatus.DISABLED,
+                    systemPackage = true
+                )
+            )
+        )
+
+        assertTrue(report.contains("Installed but disabled"))
+        assertTrue(report.contains("System package: yes"))
+        assertTrue(report.contains("PrivaCage does not disable these packages"))
+    }
+
+    @Test
     fun emptyReportIsExplicit() {
         val report = GoogleServicesReview.render(emptyList())
         assertTrue(report.contains("No package results were returned."))
