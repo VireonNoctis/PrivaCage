@@ -276,6 +276,19 @@ class ApkTrackerIndicatorScannerTest {
     @Test
     fun rejectsEveryTruncatedZipContainerPrefix() {
         val valid = zippedDex("classes.dex" to "com.example.analytics.Client")
+        val signatures = listOf(
+            TrackerSignature(
+                id = "truncation-check",
+                name = "Truncation check",
+                category = "test",
+                domains = listOf("tracker.example.org"),
+                sdkPatterns = emptyList(),
+                confidence = "low",
+                status = "review",
+                lastVerified = "2026-10-25",
+                evidence = evidence
+            )
+        )
         try {
             val bytes = valid.readBytes()
             for (length in 0 until bytes.size) {
@@ -283,7 +296,7 @@ class ApkTrackerIndicatorScannerTest {
                 try {
                     truncated.writeBytes(bytes.copyOf(length))
                     val error = runCatching {
-                        ApkTrackerIndicatorScanner().scan(truncated, emptyList())
+                        ApkTrackerIndicatorScanner().scan(truncated, signatures)
                     }.exceptionOrNull()
                     assertTrue(
                         "Truncated ZIP prefix ${length}/${bytes.size} must fail closed; got ${error}",
