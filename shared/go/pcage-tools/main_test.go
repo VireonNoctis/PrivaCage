@@ -753,3 +753,47 @@ func TestTrackerJSONRejectsEscapeEquivalentDuplicateKeys(t *testing.T) {
 		})
 	}
 }
+func TestTrackerFreshnessReportLeapDayAndExactBoundaries(t *testing.T) {
+	lastReviewed, err := parseDate("2024-02-29", "last_verified")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const intervalDays = 180
+	const dueSoonDays = 30
+	dueDate := lastReviewed.AddDate(0, 0, intervalDays)
+	cases := []struct {
+		name string
+		today time.Time
+		wantState string
+		wantDaysUntilDue int
+	}{
+		{name: "one day outside due-soon window", today: dueDate.AddDate(0, 0, -dueSoonDays-1), wantState: "current", wantDaysUntilDue: dueSoonDays + 1},
+		{name: "exact due-soon threshold", today: dueDate.AddDate(0, 0, -dueSoonDays), wantState: "due_soon", wantDaysUntilDue: dueSoonDays},
+		{name: "review due today", today: dueDate, wantState: "due_soon", wantDaysUntilDue: 0},
+		{name: "one day overdue", today: dueDate.AddDate(0, 0, 1), wantState: "overdue", wantDaysUntilDue: -1},
+		{name: "leap-day evidence date is in the future", today: lastReviewed.AddDate(0, 0, -1), wantState: "invalid_future_date", wantDaysUntilDue: intervalDays + 1},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			document := trackerDatabase{Entries: []trackerEntry{{
+				ID: "leap-day",
+				Name: "Leap day fixture",
+				Status: "review",
+				Confidence: "medium",
+				LastVerified: lastReviewed.Format(dateLayout),
+				Evidence: []trackerEvidence{{URL: "https://docs.example.org"}},
+			}}}
+			report := buildReviewReport(document, test.today, intervalDays, dueSoonDays)
+			if len(report.Entries) != 1 {
+				t.Fatalf("expected one report entry, got %d", len(report.Entries))
+			}
+			entry := report.Entries[0]
+			if entry.ReviewState != test.wantState || entry.DaysUntilDue != test.wantDaysUntilDue {
+				t.Fatalf("got state=%q days_until_due=%d, want state=%q days_until_due=%d", entry.ReviewState, entry.DaysUntilDue, test.wantState, test.wantDaysUntilDue)
+			}
+			if entry.ReviewDue != dueDate.Format(dateLayout) {
+				t.Fatalf("leap-day review due date = %q, want %q", entry.ReviewDue, dueDate.Format(dateLayout))
+			}
+		})
+	}
+}
