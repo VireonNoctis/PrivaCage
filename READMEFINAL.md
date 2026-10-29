@@ -65,7 +65,7 @@ These are the features the product aims to deliver. The status column separates 
 
 ---
 
-## Architecture## Target architecture (not a claim that each component is shipped)
+## Target architecture (not a claim that each component is shipped)
 
 The following diagram records the desired data flow. Current implementation details and platform boundaries are documented in docs/architecture.md.
 
@@ -375,7 +375,7 @@ The intended module should:
 
 ---
 
-## Limitations (read this first)## Limitations (read this first)
+## Limitations (read this first)
 
 - **Manufacturer/OEM/carrier telemetry** (baseband firmware, bundled system apps, Google Play services on stock Android) is outside an ordinary app's authority. PrivaCage can inspect a few exposed settings and hand off to OS-owned controls; it cannot force-disable protected services, replace the operating system, or promise that changing a setting removes all telemetry.
 - **Google service status is not traffic evidence.** Package presence/version/enabled state does not prove collection or data transfer. App-info handoff only opens Android-owned UI; Android decides which controls are available. Core service changes can break device and app functionality.
