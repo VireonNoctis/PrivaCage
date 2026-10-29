@@ -14,6 +14,7 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - Local UI for a numeric IPv4 upstream resolver and user-entered blocked domains.
 - Optional DNS-over-TLS on port 853 with platform trust, SNI, strict certificate hostname verification, protected sockets, bounded reads, DNS response validation, and no plaintext fallback.
 - Android Privacy Dashboard, app-management, location, and Wi-Fi settings shortcuts; these open OS-owned controls rather than claiming to revoke other apps' permissions.
+- Read-only, local package-state inspection for Google Play services, Google Services Framework, and Google Play Store, with Android app-info handoff for user-reviewed settings. It declares exact package visibility queries rather than requesting a full installed-app inventory.
 - Bundles the canonical `shared/tracker-db/signatures.json` directly as an Android asset; it does not duplicate the database.
 - Displays tracker records with evidence URLs, confidence, review status, and verification dates.
 - Lets users explicitly import only `active` domain indicators into the rule editor; changes still require saving. `review` and `retired` records are never imported by this action, and SDK class patterns are informational only.
@@ -55,6 +56,7 @@ The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 - The client-facing tunnel supports IPv4 UDP DNS only. It does not accept DNS-over-TCP connections from device apps.
 - Plain DNS mode uses ordinary UDP/TCP and remains unencrypted. Optional DNS-over-TLS encrypts only device-to-resolver DNS; the resolver can still observe queries, and DoH/DoQ or IPv6 paths are not filtered. TLS failure drops the query rather than falling back to plaintext. Encrypted backups include the selected transport and TLS hostname, but do not provide account/device sync.
 - Privacy settings shortcuts do not give PrivaCage OS privileges. Android itself, privileged system components, device-management software, and OEM services remain outside an ordinary app's control.
+- The Google-services review does not disable packages or inspect their traffic. A package can be reported as not installed or not visible; whether Android exposes a Disable control depends on the package, device, and OS build. Disabling core Google components can break dependent apps and OS features.
 - If a complete TCP response is too large to fit into the client-facing UDP packet, the query fails rather than producing a fabricated answer.
 - Queries are processed sequentially; a slow resolver delays later requests.
 - The service does not attribute queries to apps or inspect HTTPS contents.
