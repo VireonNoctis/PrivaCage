@@ -66,6 +66,7 @@ internal object LocalDnsEventHistory {
         } catch (_: JSONException) {
             return null
         }
+        if (events.length() > MAX_EVENTS) return null
         val expectedKeys = setOf("timestamp", "domain", "action", "socket_owner")
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: return null

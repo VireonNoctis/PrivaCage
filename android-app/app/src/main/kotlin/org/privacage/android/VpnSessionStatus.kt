@@ -15,6 +15,8 @@ internal object VpnSessionStatus {
     const val STATE_STOPPED = "stopped"
     const val STATE_ERROR = "error"
 
+    private const val MAX_STATUS_MESSAGE_CHARS = 512
+
     private val knownStates = setOf(
         STATE_STARTING,
         STATE_ACTIVE,
@@ -53,9 +55,12 @@ internal object VpnSessionStatus {
             STATE_ERROR -> "The DNS filtering service reported an error."
             else -> "DNS filtering is not active."
         }
+        val safeMessage = message?.takeIf {
+            it.isNotBlank() && it.length <= MAX_STATUS_MESSAGE_CHARS && it.none(Char::isISOControl)
+        }
         return Snapshot(
             state = normalizedState,
-            message = if (validState != null) message?.takeIf { it.isNotBlank() } ?: fallbackMessage else fallbackMessage,
+            message = if (validState != null) safeMessage ?: fallbackMessage else fallbackMessage,
             stale = false
         )
     }

@@ -96,6 +96,11 @@ internal object AppAlternativeCatalog {
         if (document.toByteArray(Charsets.UTF_8).size > MAX_CATALOG_BYTES) {
             throw IOException("Alternative catalogue exceeds the " + MAX_CATALOG_BYTES + "-byte size limit")
         }
+        try {
+            StrictJsonKeyScanner.validate(document, "Alternative catalogue")
+        } catch (_: IOException) {
+            throw IOException("Alternative catalogue contains malformed or ambiguous JSON")
+        }
         val root = try {
             JSONObject(document)
         } catch (exception: JSONException) {
@@ -202,8 +207,8 @@ internal object AppAlternativeCatalog {
             val missing = (expected - actual).sorted()
             val unknown = (actual - expected).sorted()
             throw IOException(
-                context + " has an invalid field set; missing=" + missing.joinToString(",") +
-                    "; unknown=" + unknown.joinToString(",")
+                context + " has an invalid field set (missing " + missing.size +
+                    ", unknown " + unknown.size + ")"
             )
         }
     }

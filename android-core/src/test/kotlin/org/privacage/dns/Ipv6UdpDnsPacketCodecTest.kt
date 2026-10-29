@@ -129,4 +129,33 @@ class Ipv6UdpDnsPacketCodecTest {
         bytes[offset] = (value ushr 8).toByte()
         bytes[offset + 1] = value.toByte()
     }
+
+    @Test
+    fun everyTruncatedIpv6PrefixAndSeededMutationFailsClosedWithoutThrowing() {
+        val valid = makeQueryPacket("tracker.example")
+        for (length in 0 until valid.size) {
+            val outcome = runCatching { Ipv6UdpDnsPacketCodec.decode(valid.copyOf(length)) }
+            assertTrue(outcome.isSuccess, "IPv6 parser threw for prefix length $length")
+            assertTrue(outcome.getOrThrow() !is Ipv6UdpDnsDecode.Query, "Truncated IPv6 prefix was accepted")
+        }
+
+        val random = java.util.Random(0x49505636L)
+        for (caseIndex in 0 until 512) {
+            val input = ByteArray(random.nextInt(0, 1601))
+            random.nextBytes(input)
+            assertTrue(
+                runCatching { Ipv6UdpDnsPacketCodec.decode(input) }.isSuccess,
+                "IPv6 parser threw on seeded malformed packet $caseIndex"
+            )
+        }
+
+        for (index in valid.indices) {
+            val mutated = valid.copyOf()
+            mutated[index] = (mutated[index].toInt() xor 0x80).toByte()
+            assertTrue(
+                runCatching { Ipv6UdpDnsPacketCodec.decode(mutated) }.isSuccess,
+                "IPv6 parser threw after mutating byte $index"
+            )
+        }
+    }
 }

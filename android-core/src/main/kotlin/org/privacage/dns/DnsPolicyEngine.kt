@@ -90,6 +90,9 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
     }
 
     private fun parseQuery(message: ByteArray): DnsQuestionView {
+        if (message.size > MAX_DNS_MESSAGE_SIZE) {
+            throw DnsFormatException("DNS message exceeds the " + MAX_DNS_MESSAGE_SIZE + "-byte wire limit")
+        }
         if (message.size < DNS_HEADER_SIZE) throw DnsFormatException("DNS header is truncated")
 
         val flags = u16(message, 2)
@@ -211,6 +214,7 @@ class DnsPolicyEngine(blockedDomains: Set<String>) {
 
     companion object {
         private const val DNS_HEADER_SIZE = 12
+        private const val MAX_DNS_MESSAGE_SIZE = 65_535
         private const val OPT_FIXED_SIZE = 10
         private const val OPT_OPTION_HEADER_SIZE = 4
         private const val FLAG_QR = 0x8000

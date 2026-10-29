@@ -107,7 +107,7 @@ class PrivacyRightsRequestBuilderTest {
                 right = PrivacyRight.ACCESS,
                 controllerName = "Example",
                 preparedOn = preparedOn,
-                receivedOn = preparedOn.plusDays(1)
+                receivedOn = LocalDate.now().plusDays(1)
             )
         }
     }
