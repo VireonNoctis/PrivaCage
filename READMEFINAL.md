@@ -19,7 +19,7 @@ This file preserves the broad product requirements and long-term direction for P
 | Panic mode | **Not implemented.** | No one-tap network shutdown for all non-essential apps is available. |
 | Anomaly alerts | **Not implemented as described.** | No general per-app behavior-baseline alert engine or on-device ML monitor is claimed. |
 | Metadata protection | **Implemented with format limits.** | Local JPEG/PNG/WebP inspection and cleaned-copy export for recognized metadata classes; unknown chunks and identifying visual content can remain. |
-| Google-service review | **Proposed in PR #20.** | Local status inspection for three package IDs plus Android-owned app-info handoff; does not force-disable core Google packages or inspect their traffic. |
+| Google-service review | **Implemented in PR #20; verification pending.** | Local status inspection for three package IDs plus Android-owned app-info handoff; does not force-disable core Google packages or inspect their traffic. |
 | Windows privacy hardening | **Implemented with explicit scope.** | Local audit and selected allowlisted, reversible policies; not a guarantee of zero telemetry or zero outbound traffic. |
 | Web console | **Implemented catalogue console; live-device ingestion not connected.** | Svelte frontend and Rust/Axum API for tracker intelligence and local signed-checkpoint verification. It does not pretend to receive a live-device event stream. |
 | iOS companion | **Design/capability notes only; executable product target not present.** | Work must use public APIs, user-provided privacy reports, and approved NetworkExtension capabilities; no cross-app binary or syscall inspection claim. |
@@ -28,17 +28,20 @@ The table is intentionally conservative. A unit test proves only the behavior it
 
 ---
 
-## Table of Contents## Table of Contents
-- [Features](#features)
-- [Architecture](#architecture)
-- [Repo Structure](#repo-structure)
-- [Core Modules](#core-modules)
-- [The Live Log System](#the-live-log-system-normal--cs-mode)
-- [Data Flow](#data-flow)
-- [Tech Stack](#tech-stack)
-- [Legal Request Engine](#legal-request-engine-gdprccpa)
-- [Limitations (read this first)](#limitations-read-this-first)
+## Table of Contents
+- [Current implementation status](#current-implementation-status-29-october-2026)
+- [Target feature set and delivery status](#target-feature-set-and-delivery-status)
+- [Target architecture](#target-architecture-not-a-claim-that-each-component-is-shipped)
+- [Historical proposed repo structure](#original-proposed-repo-structure-historical-design-reference)
+- [Target onboarding flow](#target-onboarding-flow-not-yet-shipped-as-specified)
+- [Core modules](#core-modules--target-modules-and-implementation-state)
+- [Live log target design](#the-live-log-system-normal--cs-mode--target-design)
+- [Target data flow](#data-flow--target-pipeline-not-current-end-to-end-coverage)
+- [Target tech stack](#target-tech-stack-verify-against-the-current-implementation-before-adding-modules)
+- [Legal request engine](#legal-request-engine-gdprccpa--target-specification)
+- [Limitations](#limitations-read-this-first)
 - [Roadmap](#roadmap)
+- [Additional privacy-focused ideas](#additional-privacy-focused-ideas)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -384,20 +387,31 @@ The intended module should:
 
 ---
 
-## Roadmap
+## Roadmap — desired outcomes, not implementation claims
 
-- [ ] Onboarding flow (Recommended vs Advanced setup wizard)
-- [ ] Recommended Apps directory page + `recommended-apps.json` pipeline
-- [ ] MVP: Android VPN interceptor + Normal-mode log
-- [ ] CS-mode verbose log renderer
-- [ ] Pre-install static scanner + privacy label
-- [ ] Per-app permission shim (non-root)
-- [ ] Root-extension module (Magisk)
-- [ ] Legal request engine v1 (GDPR only)
-- [ ] CCPA + additional jurisdictions
-- [ ] iOS companion app (Privacy Report dashboard + legal engine only)
-- [ ] Community tracker-signature DB + contribution pipeline
-- [ ] Anomaly detection v1 (rule-based) → v2 (lightweight on-device ML)
+This list is the next delivery queue, not a promise that a milestone can bypass its required platform/legal check.
+
+- [ ] Recommended/advanced setup wizard that previews every rule and leaves the user in control.
+- [x] App-alternative directory and local sequential source queue. **Remaining:** per-entry source review and improved onboarding.
+- [ ] Full-egress network protection only after protocol coverage, lifecycle, leak behavior, consent, fail-closed behavior, and recovery can be verified. The current tunnel is DNS-only.
+- [ ] Normal/CS log UI from typed, real observations; each item must say whether evidence is OS-observed, DNS-observed, static, user-reported, inferred, or unavailable.
+- [x] User-selected APK static inspection and comparison. **Remaining:** more hostile-input tests and better explanation; no execution/runtime claim.
+- [ ] Stock permission-control handoffs and, separately, a researched root/system integration with verified results and rollback.
+- [ ] Optional root/system extension as an isolated project with threat model, device compatibility, uninstall/recovery, and reproducible tests.
+- [x] Local UK GDPR / California CCPA request drafts and a user-guided DROP checklist. **Remaining:** qualified legal review, current template sources, and any separately authorized submission integration.
+- [ ] Add jurisdictions only after official-source verification and legal review of exemptions, identity verification, deadlines, and appeals.
+- [ ] iOS target only after the exact public-API/NetworkExtension approach and entitlement/distribution requirements are feasible.
+- [x] Evidence-backed tracker catalogue and review workflow. **Remaining:** wider evidence-backed coverage, per-entry freshness, source/license governance, and human review before promotion.
+- [ ] Anomaly alerts from observable local evidence only; distinguish novelty from wrongdoing and show the reason for each alert.
+- [ ] Device privacy change timeline from exposed settings and user-confirmed changes, not facts outside app visibility.
+- [ ] Stalkerware/coercive-monitoring checks based on OS-exposed indicators, with safety review and false-positive handling.
+- [ ] Offline breach-exposure matching using a trusted, versioned local dataset without uploading the user's identifier.
+- [ ] Data-broker opt-out checklists, source-backed forms, and reminders with user control of identity details and submission.
+- [ ] PDF/Office metadata cleaning after bounded parser implementation, format-specific regression fixtures and output verification.
+- [ ] IoT/router evidence import with explicit authorization, rather than implying a phone-only VPN sees an entire local network.
+- [ ] Release gate for telemetry inventory, input bounds, secret scanning, rollback, source provenance, accessibility, and claim-vs-code documentation parity.
+
+Status vocabulary: **Planned** means no implementation claim; **partial** means a bounded slice exists; **implemented, verification pending** means source/tests exist but required checks have not passed on the exact head; **verified** means the named checks/platform evidence passed on that exact commit; **blocked externally** means required device, entitlement, operator, or legal review is unavailable.
 
 ---
 
