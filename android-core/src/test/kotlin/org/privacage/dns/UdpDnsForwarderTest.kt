@@ -62,11 +62,10 @@ class UdpDnsForwarderTest {
             this[2] = (this[2].toInt() or 0x02).toByte()
         }
         val completeResponse = dnsResponse(query)
-        val udpServer = DatagramSocket(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+        // Reserve the TCP port first, then bind UDP to the same numeric port. Binding
+        // TCP after choosing a UDP ephemeral port can race with unrelated local TCP users.
+        val (udpServer, tcpServer) = createPairedDnsServers()
         udpServer.soTimeout = 3000
-        val tcpServer = ServerSocket()
-        tcpServer.reuseAddress = true
-        tcpServer.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), udpServer.localPort))
         tcpServer.soTimeout = 3000
         val tcpProtected = AtomicBoolean(false)
         val serverFailure = AtomicReference<Throwable?>(null)
@@ -178,6 +177,31 @@ class UdpDnsForwarderTest {
         val response = dnsResponse(query) + byteArrayOf(0x55)
         val failure = forwardWithResponse(query, response)
         assertEquals("DNS response contains trailing bytes after its resource records", failure.message)
+    }
+
+    private fun createPairedDnsServers(): Pair<DatagramSocket, ServerSocket> {
+        var lastBindFailure: IOException? = null
+        repeat(10) {
+            val tcpServer = ServerSocket()
+            try {
+                tcpServer.reuseAddress = true
+                tcpServer.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
+                val udpServer = try {
+                    DatagramSocket(null).apply {
+                        bind(InetSocketAddress(InetAddress.getLoopbackAddress(), tcpServer.localPort))
+                    }
+                } catch (failure: IOException) {
+                    tcpServer.close()
+                    lastBindFailure = failure
+                    return@repeat
+                }
+                return udpServer to tcpServer
+            } catch (failure: IOException) {
+                tcpServer.close()
+                lastBindFailure = failure
+            }
+        }
+        throw IOException("Unable to allocate paired loopback UDP/TCP ports for DNS test", lastBindFailure)
     }
 
     private fun forwardWithResponse(query: ByteArray, response: ByteArray): IOException {
