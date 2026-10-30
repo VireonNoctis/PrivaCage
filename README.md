@@ -1,5 +1,13 @@
 # PrivaCage
 
+<!-- REPOSITORY-HEALTH:START -->
+[![Code quality](https://github.com/VireonNoctis/PrivaCage/actions/workflows/repository-health.yml/badge.svg?branch=main)](https://github.com/VireonNoctis/PrivaCage/actions/workflows/repository-health.yml)
+[![Top language](https://img.shields.io/github/languages/top/VireonNoctis/PrivaCage?style=flat-square)](https://github.com/VireonNoctis/PrivaCage)
+[![Languages](https://img.shields.io/github/languages/count/VireonNoctis/PrivaCage?style=flat-square)](https://github.com/VireonNoctis/PrivaCage)
+[![Automated tech stack](https://img.shields.io/badge/tech_stack-auto--detected-64748b?style=flat-square)](TECH_STACK.md)
+<!-- REPOSITORY-HEALTH:END -->
+
+
 **Understand what your device exposes. Block what you can. Know what you cannot.**
 
 PrivaCage is an open-source, local-first privacy auditing project. It combines evidence-backed tracker intelligence, a bounded Android DNS filter, local APK and permission audits, encrypted configuration transfer, metadata inspection, and reversible Windows privacy-policy controls.
