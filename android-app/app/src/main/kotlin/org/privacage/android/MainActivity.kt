@@ -52,6 +52,9 @@ import java.security.MessageDigest
 internal object DnsVpnDisclosure {
     const val COVERAGE =
         "Coverage is deliberately narrow: only supported IPv4 UDP DNS packets and constrained IPv6 UDP-DNS packets addressed to PrivaCage's virtual DNS endpoints are routed here. This is not a full-device VPN. Client-initiated DNS-over-TCP, app-owned DNS-over-HTTPS and DNS-over-QUIC, arbitrary DNS-over-TLS endpoints, direct-IP connections, general IPv6 traffic, HTTPS contents, and OS/OEM telemetry are outside this implementation. IPv6 extension headers, fragments, and jumbograms are rejected; oversized responses are dropped. Other DNS paths may bypass these rules."
+
+    const val COMPACT_SCOPE =
+        "Only supported UDP DNS addressed to PrivaCage's virtual IPv4/IPv6 endpoints is handled; client-initiated DNS-over-TCP, app-owned DoH/DoQ, arbitrary DoT endpoints, direct-IP connections, and general IPv6 traffic remain outside scope."
 }
 
 class MainActivity : Activity() {
@@ -314,7 +317,7 @@ class MainActivity : Activity() {
         }
         root.addView(resolverHostnameInput, matchWidth())
         root.addView(TextView(this).apply {
-            text = "DNS-over-TLS encrypts DNS between this device and the selected resolver; that resolver can still see queries. It does not stop Android, apps, or the Wi-Fi operator from collecting other data, and it does not block DoH/DoQ or all IPv6 traffic."
+            text = "DNS-over-TLS encrypts DNS between this device and the selected resolver; that resolver can still see queries. It does not stop Android, apps, or the Wi-Fi operator from collecting other data. ${DnsVpnDisclosure.COMPACT_SCOPE}"
             textSize = 12f; setPadding(0, dp(4), 0, dp(8))
         })
         root.addView(TextView(this).apply {
@@ -470,7 +473,7 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "Blocking is based on hostnames, not per-app proof of tracking. Review-status records are never imported. TCP DNS from apps, IPv6 DNS, DoH, DoT, and DoQ remain outside this version's scope."
+            text = "Blocking is based on hostnames, not per-app proof of tracking. Review-status records are never imported. ${DnsVpnDisclosure.COMPACT_SCOPE}"
             textSize = 13f
             setPadding(0, dp(12), 0, dp(12))
         })
@@ -3628,7 +3631,7 @@ class MainActivity : Activity() {
                     append("\n\nThe current network snapshot differs from the last probe. Rerun the diagnostic for the current connection.")
                 }
             }
-            append("\n\nScope: this tests one fixed A query and the configured upstream only. Network snapshots do not prove every app's route, and IPv6 DNS, DNS-over-TCP from apps, DoH and DoQ remain outside the current filter.")
+            append("\n\nScope: this tests one fixed A query and the configured upstream only. Network snapshots do not prove every app's route. ${DnsVpnDisclosure.COMPACT_SCOPE}")
             append("\nNo query history is added by this diagnostic.")
         }
     }
