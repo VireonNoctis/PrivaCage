@@ -19,6 +19,14 @@ class GoogleServicesReviewTest {
         assertTrue(disclosure.contains("direct-IP connections"))
         assertTrue(disclosure.contains("general IPv6 traffic"))
         assertTrue(disclosure.contains("IPv6 extension headers, fragments, and jumbograms are rejected"))
+        val compactScope = DnsVpnDisclosure.COMPACT_SCOPE
+        assertTrue(compactScope.contains("virtual IPv4/IPv6 endpoints"))
+        assertTrue(compactScope.contains("client-initiated DNS-over-TCP"))
+        assertTrue(compactScope.contains("app-owned DoH/DoQ"))
+        assertTrue(compactScope.contains("arbitrary DoT endpoints"))
+        assertTrue(compactScope.contains("direct-IP connections"))
+        assertTrue(compactScope.contains("general IPv6 traffic"))
+        assertTrue(!compactScope.contains("IPv6 DNS remains outside"))
     }
 
     @Test
