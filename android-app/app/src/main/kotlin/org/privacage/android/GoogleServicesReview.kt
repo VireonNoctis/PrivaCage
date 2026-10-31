@@ -47,6 +47,17 @@ internal object GoogleServicesReview {
         )
     )
 
+    internal fun resolveStatus(applicationEnabled: Boolean, enabledSetting: Int): GoogleServiceStatus =
+        when (enabledSetting) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> GoogleServiceStatus.ENABLED
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED -> GoogleServiceStatus.DISABLED
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ->
+                if (applicationEnabled) GoogleServiceStatus.ENABLED else GoogleServiceStatus.DISABLED
+            else -> GoogleServiceStatus.INSPECTION_UNAVAILABLE
+        }
+
     fun inspect(packageManager: PackageManager): List<GoogleServiceObservation> =
         targets.map { target -> inspectPackage(packageManager, target) }
 
@@ -61,11 +72,18 @@ internal object GoogleServicesReview {
             val appInfo = packageManager.getApplicationInfo(target.packageName, queryFlags)
             val packageInfo = packageManager.getPackageInfo(target.packageName, queryFlags)
             val systemFlags = ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+            val enabledSetting = packageManager.getApplicationEnabledSetting(target.packageName)
+            val status = resolveStatus(appInfo.enabled, enabledSetting)
             GoogleServiceObservation(
                 target = target,
-                status = if (appInfo.enabled) GoogleServiceStatus.ENABLED else GoogleServiceStatus.DISABLED,
+                status = status,
                 versionName = packageInfo.versionName,
-                systemPackage = (appInfo.flags and systemFlags) != 0
+                systemPackage = (appInfo.flags and systemFlags) != 0,
+                diagnostic = if (status == GoogleServiceStatus.INSPECTION_UNAVAILABLE) {
+                    "Android returned an unrecognized package enabled setting ($enabledSetting)."
+                } else {
+                    null
+                }
             )
         } catch (exception: PackageManager.NameNotFoundException) {
             GoogleServiceObservation(
