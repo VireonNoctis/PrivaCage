@@ -1,10 +1,84 @@
 package org.privacage.android
 
 import org.junit.Assert.assertEquals
+import android.content.pm.PackageManager
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GoogleServicesReviewTest {
+    @Test
+    fun dnsPreflightDisclosureMatchesImplementedRoutingScope() {
+        val disclosure = DnsVpnDisclosure.COVERAGE
+        assertTrue(disclosure.contains("IPv4 UDP DNS"))
+        assertTrue(disclosure.contains("constrained IPv6 UDP-DNS"))
+        assertTrue(disclosure.contains("not a full-device VPN"))
+        assertTrue(disclosure.contains("Client-initiated DNS-over-TCP"))
+        assertTrue(disclosure.contains("DNS-over-HTTPS"))
+        assertTrue(disclosure.contains("DNS-over-QUIC"))
+        assertTrue(disclosure.contains("arbitrary DNS-over-TLS endpoints"))
+        assertTrue(disclosure.contains("direct-IP connections"))
+        assertTrue(disclosure.contains("general IPv6 traffic"))
+        assertTrue(disclosure.contains("IPv6 extension headers, fragments, and jumbograms are rejected"))
+    }
+
+    @Test
+    fun explicitEnabledSettingOverridesManifestDefault() {
+        assertEquals(
+            GoogleServiceStatus.ENABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = false,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            )
+        )
+        assertEquals(
+            GoogleServiceStatus.DISABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = true,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            )
+        )
+        assertEquals(
+            GoogleServiceStatus.DISABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = true,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+            )
+        )
+        assertEquals(
+            GoogleServiceStatus.DISABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = true,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
+            )
+        )
+    }
+
+    @Test
+    fun manifestEnabledValueIsUsedOnlyForDefaultSetting() {
+        assertEquals(
+            GoogleServiceStatus.ENABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = true,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+            )
+        )
+        assertEquals(
+            GoogleServiceStatus.DISABLED,
+            GoogleServicesReview.resolveStatus(
+                applicationEnabled = false,
+                enabledSetting = PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+            )
+        )
+    }
+
+    @Test
+    fun unknownEnabledSettingFailsClosed() {
+        assertEquals(
+            GoogleServiceStatus.INSPECTION_UNAVAILABLE,
+            GoogleServicesReview.resolveStatus(applicationEnabled = true, enabledSetting = Int.MIN_VALUE)
+        )
+    }
+
     @Test
     fun targetListIsNarrowAndStable() {
         assertEquals(
