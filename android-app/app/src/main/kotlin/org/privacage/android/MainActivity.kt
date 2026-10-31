@@ -49,6 +49,14 @@ import java.nio.charset.StandardCharsets
 import java.time.LocalDate
 import java.security.MessageDigest
 
+internal object DnsVpnDisclosure {
+    const val COVERAGE =
+        "Coverage is deliberately narrow: only supported IPv4 UDP DNS packets and constrained IPv6 UDP-DNS packets addressed to PrivaCage's virtual DNS endpoints are routed here. This is not a full-device VPN. Client-initiated DNS-over-TCP, app-owned DNS-over-HTTPS and DNS-over-QUIC, arbitrary DNS-over-TLS endpoints, direct-IP connections, general IPv6 traffic, HTTPS contents, and OS/OEM telemetry are outside this implementation. IPv6 extension headers, fragments, and jumbograms are rejected; oversized responses are dropped. Other DNS paths may bypass these rules."
+
+    const val COMPACT_SCOPE =
+        "Only supported UDP DNS addressed to PrivaCage's virtual IPv4/IPv6 endpoints is handled; client-initiated DNS-over-TCP, app-owned DoH/DoQ, arbitrary DoT endpoints, direct-IP connections, and general IPv6 traffic remain outside scope."
+}
+
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
     private lateinit var resolverHostnameInput: EditText
@@ -68,6 +76,7 @@ class MainActivity : Activity() {
         }
     }
     private lateinit var devicePrivacyText: TextView
+    private lateinit var googleServicesStatusText: TextView
     private lateinit var appPermissionAuditText: TextView
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     @Volatile private var trackerCatalogLoadComplete = false
@@ -190,6 +199,35 @@ class MainActivity : Activity() {
             text = "These controls open official Android, Google, and Samsung settings or guidance. PrivaCage does not silently change account settings or claim that a page visit disables collection."
             textSize = 13f
         })
+        root.addView(TextView(this).apply {
+            text = "GOOGLE SERVICES REVIEW (LOCAL ONLY)"
+            textSize = 14f
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Inspect only three explicitly named packages. This does not monitor their network traffic or prove what data they collect. PrivaCage cannot force-disable core system packages."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Audit core Google service package status"
+            setOnClickListener {
+                googleServicesStatusText.text = GoogleServicesReview.render(
+                    GoogleServicesReview.inspect(packageManager)
+                )
+            }
+        }, matchWidth())
+        googleServicesStatusText = TextView(this).apply {
+            text = "Not checked yet. Package status is read on-device and is not uploaded."
+            textSize = 12f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(googleServicesStatusText, matchWidth())
+        GoogleServicesReview.targets.forEach { target ->
+            root.addView(Button(this).apply {
+                text = "Review ${target.displayName} in Android Settings"
+                setOnClickListener { openGoogleServiceSettings(target) }
+            }, matchWidth())
+        }
         root.addView(Button(this).apply {
             text = "Review Android ad privacy settings"
             setOnClickListener {
@@ -279,7 +317,7 @@ class MainActivity : Activity() {
         }
         root.addView(resolverHostnameInput, matchWidth())
         root.addView(TextView(this).apply {
-            text = "DNS-over-TLS encrypts DNS between this device and the selected resolver; that resolver can still see queries. It does not stop Android, apps, or the Wi-Fi operator from collecting other data, and it does not block DoH/DoQ or all IPv6 traffic."
+            text = "DNS-over-TLS encrypts DNS between this device and the selected resolver; that resolver can still see queries. It does not stop Android, apps, or the Wi-Fi operator from collecting other data. ${DnsVpnDisclosure.COMPACT_SCOPE}"
             textSize = 12f; setPadding(0, dp(4), 0, dp(8))
         })
         root.addView(TextView(this).apply {
@@ -435,7 +473,7 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "Blocking is based on hostnames, not per-app proof of tracking. Review-status records are never imported. TCP DNS from apps, IPv6 DNS, DoH, DoT, and DoQ remain outside this version's scope."
+            text = "Blocking is based on hostnames, not per-app proof of tracking. Review-status records are never imported. ${DnsVpnDisclosure.COMPACT_SCOPE}"
             textSize = 13f
             setPadding(0, dp(12), 0, dp(12))
         })
@@ -3429,6 +3467,43 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun openGoogleServiceSettings(target: GoogleServiceTarget) {
+        val observation = GoogleServicesReview.inspectPackage(packageManager, target)
+        if (
+            observation.status == GoogleServiceStatus.NOT_INSTALLED_OR_NOT_VISIBLE ||
+            observation.status == GoogleServiceStatus.INSPECTION_UNAVAILABLE
+        ) {
+            googleServicesStatusText.text = GoogleServicesReview.render(listOf(observation))
+            statusText.text = "Android did not expose ${target.displayName}; no settings change was attempted."
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Review ${target.displayName}")
+            .setMessage(
+                "This opens Android's app-info screen; it does not disable anything. " +
+                    "Android may not offer a Disable control for core system packages. Disabling Google services " +
+                    "can affect push notifications, location, sign-in, Play Store updates or purchases, and app " +
+                    "integrity checks depending on your device and apps. PrivaCage will not bypass Android's safeguards."
+            )
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open app info") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", target.packageName, null)
+                        }
+                    )
+                    statusText.text =
+                        "Opened Android app info for ${target.displayName}. Any available disable control is owned by Android."
+                } catch (exception: android.content.ActivityNotFoundException) {
+                    statusText.text =
+                        "Android does not expose an app-info screen for ${target.displayName} on this build."
+                }
+            }
+            .show()
+    }
+
     private fun openSystemSettings(action: String, label: String) {
         try { startActivity(Intent(action)); statusText.text = "Opened Android $label. Changes are controlled by Android Settings." }
         catch (exception: Exception) { statusText.text = "This Android build does not expose the $label shortcut. Open it manually in Settings." }
@@ -3443,7 +3518,7 @@ class MainActivity : Activity() {
         }
         val message = buildString {
             append("Starting PrivaCage may disconnect the VPN you currently use. Android allows only one active VPN service per user/profile.\n\n")
-            append("Coverage is deliberately narrow: only IPv4 UDP DNS packets addressed to PrivaCage's virtual DNS endpoint are routed here. This is not a full-device VPN. DNS-over-TCP from apps, IPv6 DNS, DNS-over-HTTPS, DNS-over-QUIC, HTTPS contents, and OS/OEM telemetry are outside this implementation. Other DNS paths may bypass these rules.\n\n")
+            append(DnsVpnDisclosure.COVERAGE).append("\n\n")
             append(upstreamDescription)
             append("\n\nContinue to Android's VPN permission step?")
         }
@@ -3556,7 +3631,7 @@ class MainActivity : Activity() {
                     append("\n\nThe current network snapshot differs from the last probe. Rerun the diagnostic for the current connection.")
                 }
             }
-            append("\n\nScope: this tests one fixed A query and the configured upstream only. Network snapshots do not prove every app's route, and IPv6 DNS, DNS-over-TCP from apps, DoH and DoQ remain outside the current filter.")
+            append("\n\nScope: this tests one fixed A query and the configured upstream only. Network snapshots do not prove every app's route. ${DnsVpnDisclosure.COMPACT_SCOPE}")
             append("\nNo query history is added by this diagnostic.")
         }
     }

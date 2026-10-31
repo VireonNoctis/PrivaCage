@@ -46,3 +46,12 @@ The validator checks structure and, in CI, requires the `last_verified` date to 
 - [ ] No secrets, telemetry, or unnecessary personal data were added.
 - [ ] Documentation does not overstate observed or blocked activity.
 - [ ] Tracker entries include sources and review dates.
+
+## Daily integration cadence
+
+- Keep routine development on the default `main` branch as one consolidated commit per Europe/Dublin calendar day.
+- Open a pull request only when that day's complete, meaningful change exceeds 5,000 changed lines. Do not split work to evade the threshold or pad changes to reach it.
+- For a qualifying pull request, consolidate the day's work and use a squash merge only after the exact head has passed its required checks and its patch has been reviewed. Do not merge stale, overlapping or failing changes just to clear the queue.
+- A workflow must not independently commit or push generated files to `main`; generate reports as artifacts or include refreshed output in the day's single integration commit.
+- Large goals mean complete, tested vertical slices across implementation, regression coverage, documentation, and honest capability limits—not raw line-count targets. Keep privileged/destructive operations out of routine automation.
+- At the start of each workday, inspect the default-branch head, all open pull requests, current-head checks, issues, roadmap and relevant architecture/security docs. At the end, report the commit, changed scope, exact checks and remaining external validation.

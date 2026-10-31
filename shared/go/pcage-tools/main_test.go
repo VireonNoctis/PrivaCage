@@ -720,3 +720,197 @@ func TestReadTrackerDatabaseSeededMutationsNeverPanicOrEmitUnboundedErrors(t *te
 		}
 	}
 }
+
+
+func TestTrackerJSONRejectsEscapeEquivalentDuplicateKeys(t *testing.T) {
+	base := fixtureDatabase()
+	encoded, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		input string
+	}{
+		{
+			name: "escaped top-level key",
+			input: strings.Replace(string(encoded), `"schema_version":1`, `"schema_version":1,"schema\u005fversion":1`, 1),
+		},
+		{
+			name: "escaped nested entry key",
+			input: strings.Replace(string(encoded), `"name":"Example Analytics SDK"`, `"name":"Example Analytics SDK","na\u006de":"shadowed"`, 1),
+		},
+		{
+			name: "escaped indicator key",
+			input: strings.Replace(string(encoded), `"domains":["metrics.example.org"]`, `"domains":["metrics.example.org"],"dom\u0061ins":[]`, 1),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeTempFile(t, "escaped-duplicate.json", test.input)
+			_, err := readTrackerDatabase(path)
+			if err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+				t.Fatalf("escape-equivalent duplicate key was not rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestTrackerFreshnessReportLeapDayAndExactBoundaries(t *testing.T) {
+	lastReviewed, err := parseDate("2024-02-29", "last_verified")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const intervalDays = 180
+	const dueSoonDays = 30
+	dueDate := lastReviewed.AddDate(0, 0, intervalDays)
+	cases := []struct {
+		name string
+		today time.Time
+		wantState string
+		wantDaysUntilDue int
+	}{
+		{name: "one day outside due-soon window", today: dueDate.AddDate(0, 0, -dueSoonDays-1), wantState: "current", wantDaysUntilDue: dueSoonDays + 1},
+		{name: "exact due-soon threshold", today: dueDate.AddDate(0, 0, -dueSoonDays), wantState: "due_soon", wantDaysUntilDue: dueSoonDays},
+		{name: "review due today", today: dueDate, wantState: "due_soon", wantDaysUntilDue: 0},
+		{name: "one day overdue", today: dueDate.AddDate(0, 0, 1), wantState: "overdue", wantDaysUntilDue: -1},
+		{name: "leap-day evidence date is in the future", today: lastReviewed.AddDate(0, 0, -1), wantState: "invalid_future_date", wantDaysUntilDue: intervalDays + 1},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			document := trackerDatabase{Entries: []trackerEntry{{
+				ID: "leap-day",
+				Name: "Leap day fixture",
+				Status: "review",
+				Confidence: "medium",
+				LastVerified: lastReviewed.Format(dateLayout),
+				Evidence: []trackerEvidence{{URL: "https://docs.example.org"}},
+			}}}
+			report := buildReviewReport(document, test.today, intervalDays, dueSoonDays)
+			if len(report.Entries) != 1 {
+				t.Fatalf("expected one report entry, got %d", len(report.Entries))
+			}
+			entry := report.Entries[0]
+			if entry.ReviewState != test.wantState || entry.DaysUntilDue != test.wantDaysUntilDue {
+				t.Fatalf("got state=%q days_until_due=%d, want state=%q days_until_due=%d", entry.ReviewState, entry.DaysUntilDue, test.wantState, test.wantDaysUntilDue)
+			}
+			if entry.ReviewDue != dueDate.Format(dateLayout) {
+				t.Fatalf("leap-day review due date = %q, want %q", entry.ReviewDue, dueDate.Format(dateLayout))
+			}
+		})
+	}
+}
+
+func TestTrackerEvidenceURLPolicyBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		value string
+		wantError string
+	}{
+		{name: "valid HTTPS URL", value: "https://docs.example.org/path?q=1"},
+		{name: "valid explicit port", value: "https://docs.example.org:443/path"},
+		{name: "reject HTTP", value: "http://docs.example.org/path", wantError: "must use HTTPS"},
+		{name: "reject relative URL", value: "/docs", wantError: "must use HTTPS"},
+		{name: "reject missing hostname", value: "https:///path", wantError: "must include a hostname"},
+		{name: "reject credentials", value: "https://user:secret@docs.example.org/path", wantError: "must not contain credentials"},
+		{name: "reject zero port", value: "https://docs.example.org:0/path", wantError: "port must be between 1 and 65535"},
+		{name: "reject oversized port", value: "https://docs.example.org:65536/path", wantError: "port must be between 1 and 65535"},
+		{name: "reject nonnumeric port", value: "https://docs.example.org:abc/path", wantError: "invalid port"},
+		{name: "reject malformed URL", value: "https://[::1", wantError: "not a valid URL"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateHTTPSURL(test.value, "evidence.url")
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("valid URL rejected: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("got error %v, want substring %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestTrackerReviewDateLeapDayAndDueSoonBoundary(t *testing.T) {
+	today, err := parseDate("2024-03-01", "today")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dateDifference(today, mustParseTestDate(t, "2024-02-29")); got != 1 {
+		t.Fatalf("leap-day age = %d, want 1", got)
+	}
+	document := trackerDatabase{Entries: []trackerEntry{
+		{ID: "due-boundary", Name: "Due boundary", Status: "active", Confidence: "high", LastVerified: "2024-01-31", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+		{ID: "past-boundary", Name: "Past boundary", Status: "active", Confidence: "high", LastVerified: "2024-01-30", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+	}}
+	report := buildReviewReport(document, today, 30, 1)
+	states := map[string]string{}
+	for _, entry := range report.Entries {
+		states[entry.ID] = entry.ReviewState
+	}
+	if states["due-boundary"] != "due_soon" || states["past-boundary"] != "overdue" {
+		t.Fatalf("unexpected due states after the due date: %#v", states)
+	}
+	beforeDue := buildReviewReport(trackerDatabase{Entries: []trackerEntry{
+		{ID: "due-soon", Name: "Due soon", Status: "active", Confidence: "high", LastVerified: "2024-01-31", Evidence: []trackerEvidence{{URL: "https://docs.example.org"} }},
+	}}, mustParseTestDate(t, "2024-02-29"), 30, 1)
+	if len(beforeDue.Entries) != 1 || beforeDue.Entries[0].ReviewState != "due_soon" || beforeDue.Entries[0].DaysUntilDue != 1 {
+		t.Fatalf("leap-year due-soon boundary incorrect: %#v", beforeDue.Entries)
+	}
+}
+
+func mustParseTestDate(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := parseDate(value, "test date")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
+}
+
+func TestTrackerReviewDatesAcrossLeapDay(t *testing.T) {
+	lastVerified, err := parseDate("2024-02-29", "last_verified")
+	if err != nil {
+		t.Fatalf("valid leap-day date rejected: %v", err)
+	}
+	beforeLeapDay, _ := parseDate("2024-02-28", "before")
+	afterLeapDay, _ := parseDate("2024-03-01", "after")
+	if got := dateDifference(afterLeapDay, beforeLeapDay); got != 2 {
+		t.Fatalf("date difference across leap day = %d, want 2", got)
+	}
+	document := fixtureDatabase()
+	document.Entries[0].LastVerified = lastVerified.Format(dateLayout)
+	report := buildReviewReport(document, afterLeapDay, 1, 0)
+	entry := report.Entries[0]
+	if entry.ReviewDue != "2024-03-01" || entry.ReviewState != "due_soon" || entry.DaysUntilDue != 0 {
+		t.Fatalf("unexpected leap-day review boundary: %#v", entry)
+	}
+}
+
+func TestTrackerEvidenceURLPortAndAuthorityBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		url string
+		want string
+	}{
+		{name: "zero port", url: "https://docs.example.org:0/path", want: "port must be between 1 and 65535"},
+		{name: "port above maximum", url: "https://docs.example.org:65536/path", want: "port must be between 1 and 65535"},
+		{name: "nonnumeric port", url: "https://docs.example.org:notaport/path", want: "invalid port"},
+		{name: "missing hostname", url: "https:///path", want: "must include a hostname"},
+		{name: "scheme-relative URL", url: "//docs.example.org/path", want: "must use HTTPS"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateHTTPSURL(test.url, "evidence.url")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validateHTTPSURL(%q) error = %v, want substring %q", test.url, err, test.want)
+			}
+		})
+	}
+	if err := validateHTTPSURL("https://docs.example.org:65535/path?q=1#section", "evidence.url"); err != nil {
+		t.Fatalf("valid maximum port with query and fragment rejected: %v", err)
+	}
+}

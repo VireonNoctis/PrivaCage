@@ -7,6 +7,9 @@ android {
     namespace = "org.privacage.android.performance"
     compileSdk = 36
     targetProjectPath = ":app"
+    // AndroidX Macrobenchmark requires test modules to self-instrument separately from the target app.
+    // Source checked 2026-10-31: https://android.googlesource.com/platform/frameworks/support/+/e0ecf6d2233244754e505cb53cedc0359e0c87ba/benchmark/benchmark-macro/src/main/java/androidx/benchmark/macro/Macrobenchmark.kt
+    experimentalProperties["android.experimental.self-instrumenting"] = true
 
     defaultConfig {
         minSdk = 28

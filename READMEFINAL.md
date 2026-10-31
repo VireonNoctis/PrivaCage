@@ -1,45 +1,73 @@
-# PrivaCage 🔒
-**Know what every app is doing to your device. Right now. In real time.**
+# PrivaCage — Product Vision and Completion Specification
+**Goal: make the privacy behavior a device can actually expose understandable, auditable, and controllable.**
 
-A fully open-source, privacy-auditing companion app that scans, monitors, blocks, and reports on every piece of tracking, telemetry, and data collection happening on your device — with a live activity log, pre-install "privacy nutrition labels," granular per-app permission control, and automated GDPR/CCPA data-deletion request generation.
+This file preserves the broad product requirements and long-term direction for PrivaCage. It is **not** a claim that every item is already implemented. The current implementation overview is in README.md; the current architecture is in docs/architecture.md; Android-specific behavior and limits are in android-app/README.md. A roadmap item may be called verified only when its source code, tests, and required platform checks support the claim.
 
-> ⚠️ **Scope note:** On non-rooted devices / stock iOS, PrivaCage operates within OS sandbox limits (it cannot strip manufacturer-level telemetry baked into the OS itself — see [Limitations](#limitations-read-this-first)). On rooted Android / custom ROMs, it goes much deeper.
+> **Scope rule:** stock Android and iOS apps cannot universally inspect other apps' system calls, defeat encrypted DNS/tunnels, or force-disable privileged OS services. Root/system builds, managed-device APIs, custom operating systems, and approved iOS NetworkExtension entitlements are separate product tiers. A control that depends on unavailable authority stays clearly marked as blocked or platform-specific; it must never simulate success.
+
+## Current implementation status (29 October 2026)
+
+| Target capability | Current state | What is real today |
+|---|---|---|
+| Live activity log | **Partial; broad cross-app activity monitoring is not implemented.** | Optional, encrypted, bounded local DNS history for the events PrivaCage's DNS path handles. No universal syscall, sensor, clipboard, or app-API interception. |
+| Pre-install privacy label | **Partial implementation.** | User-selected APK static inspection/diff: package/version/target SDK, requested permissions, exported components, hashes, signer metadata/signature integrity, and bounded DEX string matches. No execution or universal destination discovery. |
+| Per-app permission toggles | **Not implemented as described.** | Launcher-visible permission declaration/grant audit and local drift comparison; changes to other apps remain OS-controlled. |
+| Per-app network kill switch | **Not implemented as described.** | DNS-only VPN routes supported UDP-DNS packets addressed to its virtual IPv4/IPv6 DNS endpoints. It is not a general egress VPN or firewall. |
+| Tracker database | **Implemented foundation; coverage is deliberately limited.** | Bundled, source-linked catalogue with 25 indicator records and explicit user-reviewed import. It is not a continuously updated or comprehensive global list. |
+| Data deletion requests | **Local draft workflow only.** | UK GDPR/California CCPA draft generation and a user-guided DROP checklist; requests are not sent automatically and company-side deletion is not technically verified. Legal review is a release gate. |
+| Consent receipt ledger | **Partial / distinct implementation.** | Optional local DNS events can be exported as redacted, hash-chained and signed checkpoints. This is not a record of every system permission grant/revoke. |
+| Panic mode | **Not implemented.** | No one-tap network shutdown for all non-essential apps is available. |
+| Anomaly alerts | **Not implemented as described.** | No general per-app behavior-baseline alert engine or on-device ML monitor is claimed. |
+| Metadata protection | **Implemented with format limits.** | Local JPEG/PNG/WebP inspection and cleaned-copy export for recognized metadata classes; unknown chunks and identifying visual content can remain. |
+| Google-service review | **Implemented in PR #20; verification pending.** | Local status inspection for three package IDs plus Android-owned app-info handoff; does not force-disable core Google packages or inspect their traffic. |
+| Windows privacy hardening | **Implemented with explicit scope.** | Local audit and selected allowlisted, reversible policies; not a guarantee of zero telemetry or zero outbound traffic. |
+| Web console | **Implemented catalogue console; live-device ingestion not connected.** | Svelte frontend and Rust/Axum API for tracker intelligence and local signed-checkpoint verification. It does not pretend to receive a live-device event stream. |
+| iOS companion | **Design/capability notes only; executable product target not present.** | Work must use public APIs, user-provided privacy reports, and approved NetworkExtension capabilities; no cross-app binary or syscall inspection claim. |
+
+The table is intentionally conservative. A unit test proves only the behavior it exercises; it does not prove OEM coverage, operating-system enforcement, legal effectiveness, or a complete live activity feed.
 
 ---
 
 ## Table of Contents
-- [Features](#features)
-- [Architecture](#architecture)
-- [Repo Structure](#repo-structure)
-- [Core Modules](#core-modules)
-- [The Live Log System](#the-live-log-system-normal--cs-mode)
-- [Data Flow](#data-flow)
-- [Tech Stack](#tech-stack)
-- [Legal Request Engine](#legal-request-engine-gdprccpa)
-- [Limitations (read this first)](#limitations-read-this-first)
+- [Current implementation status](#current-implementation-status-29-october-2026)
+- [Target feature set and delivery status](#target-feature-set-and-delivery-status)
+- [Target architecture](#target-architecture-not-a-claim-that-each-component-is-shipped)
+- [Historical proposed repo structure](#original-proposed-repo-structure-historical-design-reference)
+- [Target onboarding flow](#target-onboarding-flow-not-yet-shipped-as-specified)
+- [Core modules](#core-modules--target-modules-and-implementation-state)
+- [Live log target design](#the-live-log-system-normal--cs-mode--target-design)
+- [Target data flow](#data-flow--target-pipeline-not-current-end-to-end-coverage)
+- [Target tech stack](#target-tech-stack-verify-against-the-current-implementation-before-adding-modules)
+- [Legal request engine](#legal-request-engine-gdprccpa--target-specification)
+- [Limitations](#limitations-read-this-first)
 - [Roadmap](#roadmap)
+- [Additional privacy-focused ideas](#additional-privacy-focused-ideas)
 - [Contributing](#contributing)
 - [License](#license)
 
 ---
 
-## Features
+## Target feature set and delivery status
 
-| Feature | Normal explanation | CS yap |
+These are the features the product aims to deliver. The status column separates working slices from planned or platform-blocked work.
+
+| Feature | Product requirement | Delivery status |
 |---|---|---|
-| **Live Activity Log** | Shows a running feed of what every app is doing right now — network calls, sensor reads, clipboard grabs | Per-process syscall/API-call interception via `VpnService` (Android) network tunnel + `AccessibilityService`/Xposed hooks (root) logging `connect()`, `getLastKnownLocation()`, `ClipboardManager.getPrimaryClip()`, `Sensor.registerListener()` invocations with timestamp, PID, calling package UID, and destination endpoint |
-| **Pre-install Privacy Label** | Before you install an app, see exactly what it *can* access and who it talks to | Static APK analysis: `AndroidManifest.xml` permission extraction, dex bytecode scan against a tracker/SDK signature database (X-Ray/Exodus-style), DNS endpoint extraction from embedded strings/constants |
-| **Per-app Permission Toggles** | Flip permissions on/off per app without breaking the app (mostly) | Wraps Android's native `AppOpsManager` + `PackageManager.setComponentEnabledSetting` for granular revocation beyond stock OS granularity; fake/empty data injection for permissions that would crash on hard denial |
-| **Network Kill Switch (per-app)** | Block an app from reaching the internet entirely, or just block specific trackers | Local VPN loopback (`VpnService`) intercepting all egress traffic, routing through a per-UID iptables-style ruleset; DNS-level blocklist matching against curated tracker domain lists |
-| **Tracker Database** | A constantly updated list of known tracking/ad SDKs | Community-maintained JSON/SQLite signature DB (class name patterns, domain patterns), pollable from a public repo, versioned and diffable |
-| **Data Deletion Request Generator** | Auto-fills and sends "delete my data" requests to companies on your behalf | Template engine mapping company → jurisdiction → applicable law (GDPR Art.17, CCPA §1798.105) → auto-generated formal request + tracked submission (email/webform API) + response status tracker |
-| **Consent Receipt Ledger** | A timestamped record of every permission grant/revoke you've ever made | Append-only local log (optionally exportable/signed) acting as a personal audit trail, useful as evidence in disputes |
-| **Panic Mode** | One tap: kill network on every non-essential app | Bulk `AppOpsManager` + VPN ruleset push, reversible, logged |
-| **Anomaly Alerts** | Notifies you if an app starts doing something new/unusual | Baseline-vs-current behavioral diff per app (e.g. app that never touched location starts querying GPS at 3am) |
+| **Live Activity Log** | Show observed network destinations and OS-exposed events with provenance, timestamp, reliable app attribution only, and Normal / technical-detail views. | **Partial.** Optional local DNS events exist. General syscall, sensor, clipboard and cross-app API interception is unavailable to an ordinary app. |
+| **Pre-install Privacy Label** | Analyze user-selected APKs before installation: manifest/permission declarations, exported components, signer and hash evidence, known SDK indicators, and capability-versus-observation explanations. | **Partial implementation exists.** Static APK inspection and comparison are implemented; static indicators are not runtime proof. |
+| **Per-app Permission Toggles** | Link to OS-owned controls on stock devices. Any elevated/AppOps integration must be an explicit root/system tier with verified results and rollback. | **Stock settings/audit only.** Cross-app mutation and fake-data injection are not implemented. |
+| **Network Kill Switch (per-app)** | Build a tested full-egress policy engine before offering per-app network isolation; separate DNS blocking from all-traffic blocking and provide recovery. | **Not implemented as a full-egress kill switch.** The existing VPN routes only virtual DNS endpoints and has protocol blind spots. |
+| **Tracker Database** | Maintain evidence-linked, versioned domain/SDK indicators, provenance, review freshness, diffing, and human-reviewed promotion. | **Working foundation.** 25 bundled indicators; the list is not comprehensive and is not silently refreshed/auto-enforced. |
+| **Data Deletion Request Generator** | Prepare jurisdiction-aware requests with user approval, official sources, deadline tracking, receipts, and user-reported status. Any send action needs separate consent and verifiable evidence. | **Local drafts only.** No automatic request sending; legal review is required. |
+| **Consent Receipt Ledger** | Record observable user-approved policy/permission changes and create redacted, exportable, tamper-evident records without claiming invisible events. | **Partial.** Signed, hash-chained DNS-history checkpoints exist; there is no universal permission grant/revoke feed. |
+| **Panic Mode** | Apply only supported user-confirmed emergency policies, show per-action success/failure, and offer a recovery path. | **Not implemented.** |
+| **Anomaly Alerts** | Compare available evidence against local baselines and explain why an event is unusual without claiming that novelty proves malicious behavior. | **Not implemented as a general app-behavior detector.** |
 
 ---
 
-## Architecture
+## Target architecture (not a claim that each component is shipped)
+
+The following diagram records the desired data flow. Current implementation details and platform boundaries are documented in docs/architecture.md.
 
 ```mermaid
 flowchart TD
@@ -63,7 +91,9 @@ flowchart TD
 
 ---
 
-## Repo Structure
+## Original proposed repo structure (historical design reference)
+
+The tree below preserves the original concept, but several paths and frameworks no longer match the actual repository. Check README.md's repository map before creating files; the current Android project is android-app/, the shared Kotlin/JVM engine is android-core/, the web client is web/, and the Rust API is web-backend/.
 
 ```
 privacage/
@@ -135,9 +165,9 @@ privacage/
 
 ---
 
-## Onboarding Flow
+## Target onboarding flow (not yet shipped as specified)
 
-First launch walks the user through a two-path setup, then ends on a **Recommended Apps** page.
+The desired first-launch experience offers a recommended setup and an advanced setup, then an app-alternatives page. This is a product requirement, not a description of the current main screen.
 
 ```
 Welcome Screen
@@ -237,7 +267,9 @@ Implementation-wise this page is just a static/community-updatable JSON (`shared
 
 ---
 
-## Core Modules
+## Core Modules — target modules and implementation state
+
+The module names below describe desired responsibilities and include historical paths. They are not proof that every named module or screen exists in the current tree. See the status table above and the current repository map before implementing changes.
 
 ### 1. Permission Scanner
 Parses an APK's manifest + bytecode before install. Cross-references against the tracker signature DB. Outputs a structured "privacy label": what it *can* access, what SDKs are embedded, what domains it talks to.
@@ -256,7 +288,9 @@ Not a magic deletion button — it **drafts and sends** a properly formatted leg
 
 ---
 
-## The Live Log System (Normal & CS mode)
+## The Live Log System (Normal & CS mode) — target design
+
+The Normal/CS two-mode live log is a future product requirement. The current optional DNS event history has narrower coverage and must not be described as a general device activity log.
 
 This is the centerpiece feature you asked about — a real-time feed of what every app is doing, in two toggleable verbosity modes.
 
@@ -298,7 +332,7 @@ Both modes write to the same underlying structured event store; the formatters a
 
 ---
 
-## Data Flow
+## Data Flow — target pipeline, not current end-to-end coverage
 
 1. App does something (network call, permission check, sensor read)
 2. VPN interceptor or AppOps shim catches it
@@ -310,7 +344,9 @@ Both modes write to the same underlying structured event store; the formatters a
 
 ---
 
-## Tech Stack
+## Target Tech Stack (verify against the current implementation before adding modules)
+
+The existing Android main screen currently uses Android Views, not the Compose screens proposed below. Shared implementation uses Kotlin/JVM, Rust and Go tools; the web workspace uses Svelte/TypeScript with a Rust/Axum API. iOS is not yet an executable target. Prefer real repository modules over recreating this earlier proposal.
 
 | Layer | Android | iOS |
 |---|---|---|
@@ -324,20 +360,26 @@ Both modes write to the same underlying structured event store; the formatters a
 
 ---
 
-## Legal Request Engine (GDPR/CCPA)
+## Legal Request Engine (GDPR/CCPA) — target specification
 
-This module **drafts and sends**, it does **not force**:
+The current Android workflow prepares local, user-reviewed drafts and a user-guided DROP checklist; it does not send requests. Do not assume a generic deadline or citation is current for every jurisdiction and request type. Each template needs up-to-date official sources and qualified legal review.
 
-- Maps company → jurisdiction → applicable statute
-- Auto-fills a formal deletion/access request using the correct legal citation (e.g., GDPR Art. 17 "right to erasure", CCPA §1798.105 "right to delete")
-- Sends via the company's registered privacy contact (email, webform API where available)
-- Tracks the statutory response window (30 days under GDPR, 45 under CCPA) and reminds the user to escalate to a regulator (ICO, state AG, etc.) if ignored
-- **Never claims deletion has happened** — only that the request was sent and what the company's legal obligation/deadline is
+The intended module should:
+
+- Map the company/controller, jurisdiction, request type, and applicability to current official guidance.
+- Draft an access, deletion, correction, portability, or opt-out request with source links and clear eligibility/exception notes.
+- Let the user review and explicitly approve the exact recipient, identity details, and outbound content before any submission integration.
+- Track only metadata needed for follow-up: request type, recipient, sent/receipt date if user-confirmed, deadline calculated from verified law, and user-reported outcome. Do not store document contents or identity data by default.
+- Never claim that a request was sent without verifiable send/receipt evidence, or that a company deleted data without reliable confirmation.
+- Include opt-out automation only where a supported, documented, user-authorized flow exists; maintain a human fallback for CAPTCHA, identity proof, and ambiguous eligibility.
 
 ---
 
 ## Limitations (read this first)
 
+- **Manufacturer/OEM/carrier telemetry** (baseband firmware, bundled system apps, Google Play services on stock Android) is outside an ordinary app's authority. PrivaCage can inspect a few exposed settings and hand off to OS-owned controls; it cannot force-disable protected services, replace the operating system, or promise that changing a setting removes all telemetry.
+- **Google service status is not traffic evidence.** Package presence/version/enabled state does not prove collection or data transfer. App-info handoff only opens Android-owned UI; Android decides which controls are available. Core service changes can break device and app functionality.
+- **DNS filtering is not a universal firewall.** A DNS-only VPN does not inspect arbitrary HTTPS or automatically block DoH/DoQ, direct IPs, other tunnels, or every application network path. IPv6 handling is confined to the implemented virtual-DNS path.
 - **Manufacturer/OEM/carrier-level telemetry** (baseband firmware, bundled system apps, Google Play Services on stock Android) runs at a privilege level this app cannot touch without root + a custom ROM (GrapheneOS, CalyxOS, etc.). PrivaCage can advise you to switch ROMs — it can't do it for you.
 - **iOS is fundamentally more locked down.** No app can inspect another app's binary, intercept its syscalls, or override its permissions beyond Apple's own Settings toggles. The iOS build is mostly a dashboard over Apple's existing Privacy Report + the legal request engine.
 - **Deletion requests are legal instruments, not technical ones.** This app cannot reach into a company's database and delete rows — compliance is the company's legal obligation, enforced by regulators, not by this app.
@@ -345,20 +387,60 @@ This module **drafts and sends**, it does **not force**:
 
 ---
 
-## Roadmap
+## Roadmap — desired outcomes, not implementation claims
 
-- [ ] Onboarding flow (Recommended vs Advanced setup wizard)
-- [ ] Recommended Apps directory page + `recommended-apps.json` pipeline
-- [ ] MVP: Android VPN interceptor + Normal-mode log
-- [ ] CS-mode verbose log renderer
-- [ ] Pre-install static scanner + privacy label
-- [ ] Per-app permission shim (non-root)
-- [ ] Root-extension module (Magisk)
-- [ ] Legal request engine v1 (GDPR only)
-- [ ] CCPA + additional jurisdictions
-- [ ] iOS companion app (Privacy Report dashboard + legal engine only)
-- [ ] Community tracker-signature DB + contribution pipeline
-- [ ] Anomaly detection v1 (rule-based) → v2 (lightweight on-device ML)
+This list is the next delivery queue, not a promise that a milestone can bypass its required platform/legal check.
+
+- [ ] Recommended/advanced setup wizard that previews every rule and leaves the user in control.
+- [x] App-alternative directory and local sequential source queue. **Remaining:** per-entry source review and improved onboarding.
+- [ ] Full-egress network protection only after protocol coverage, lifecycle, leak behavior, consent, fail-closed behavior, and recovery can be verified. The current tunnel is DNS-only.
+- [ ] Normal/CS log UI from typed, real observations; each item must say whether evidence is OS-observed, DNS-observed, static, user-reported, inferred, or unavailable.
+- [x] User-selected APK static inspection and comparison. **Remaining:** more hostile-input tests and better explanation; no execution/runtime claim.
+- [ ] Stock permission-control handoffs and, separately, a researched root/system integration with verified results and rollback.
+- [ ] Optional root/system extension as an isolated project with threat model, device compatibility, uninstall/recovery, and reproducible tests.
+- [x] Local UK GDPR / California CCPA request drafts and a user-guided DROP checklist. **Remaining:** qualified legal review, current template sources, and any separately authorized submission integration.
+- [ ] Add jurisdictions only after official-source verification and legal review of exemptions, identity verification, deadlines, and appeals.
+- [ ] iOS target only after the exact public-API/NetworkExtension approach and entitlement/distribution requirements are feasible.
+- [x] Evidence-backed tracker catalogue and review workflow. **Remaining:** wider evidence-backed coverage, per-entry freshness, source/license governance, and human review before promotion.
+- [ ] Anomaly alerts from observable local evidence only; distinguish novelty from wrongdoing and show the reason for each alert.
+- [ ] Device privacy change timeline from exposed settings and user-confirmed changes, not facts outside app visibility.
+- [ ] Stalkerware/coercive-monitoring checks based on OS-exposed indicators, with safety review and false-positive handling.
+- [ ] Offline breach-exposure matching using a trusted, versioned local dataset without uploading the user's identifier.
+- [ ] Data-broker opt-out checklists, source-backed forms, and reminders with user control of identity details and submission.
+- [ ] PDF/Office metadata cleaning after bounded parser implementation, format-specific regression fixtures and output verification.
+- [ ] IoT/router evidence import with explicit authorization, rather than implying a phone-only VPN sees an entire local network.
+- [ ] Release gate for telemetry inventory, input bounds, secret scanning, rollback, source provenance, accessibility, and claim-vs-code documentation parity.
+
+Status vocabulary: **Planned** means no implementation claim; **partial** means a bounded slice exists; **implemented, verification pending** means source/tests exist but required checks have not passed on the exact head; **verified** means the named checks/platform evidence passed on that exact commit; **blocked externally** means required device, entitlement, operator, or legal review is unavailable.
+
+---
+
+## Additional privacy-focused ideas
+
+These extend the original vision. Each is a separate, evidence-gated feature; none should be advertised until its own implementation and tests exist.
+
+| Idea | Feasibility | Minimum honest implementation |
+|---|---|---|
+| **Stalkerware / coercive-monitoring checks** | Partial checks are possible on stock Android; comprehensive detection is not. | Audit user-visible accessibility services, device-admin apps, notification-listener access and active VPN role only where Android exposes them. Explain each observation and confidence; never label a person or app abusive based on one signal. Keep root-only indicators separate. |
+| **Offline breach exposure check** | Buildable if a trusted, versioned dataset can be distributed safely. | Prefer local hash matching or a k-anonymity-compatible hash-prefix protocol. Do not send full emails or identifiers to an arbitrary breach API. Include dataset date/provenance and explain that no match proves nothing about unlisted breaches. |
+| **Data-broker opt-out helper** | Partially buildable; individual broker flows and identity checks vary. | Add official opt-out links, a user-reviewed checklist and local reminders to the rights-request engine. No automated submission without a documented, user-authorized mechanism; avoid storing identity documents. |
+| **Photo/document metadata protection** | Buildable per format with bounded parsers and output verification. | Continue JPEG/PNG/WebP, then add PDF/Office metadata only after format-specific parsing tests. Preserve originals and explain unsupported fields; visible pixels/text can still reveal identity or location. |
+| **Ad-ID and permission hygiene** | Reminders and OS settings handoffs are buildable; automatic rotation/revocation is platform-dependent. | Show only OS-exposed state, link to official controls, and offer local reminders. Never claim to reset an ID or revoke another app's permissions without a real OS-confirmed result. |
+| **Cross-app SDK and tracker dependency review** | Static APK comparison is buildable; live cross-app runtime proof is not available on stock devices. | Compare APK hashes and catalogue revisions, explain each SDK/domain indicator, and keep static strings distinct from observed traffic. |
+| **Local network / IoT inventory** | Needs explicit local-network authorization; traffic attribution requires router/resolver evidence. | Start with a consented inventory and vendor-identification uncertainty. Do not scan networks without authorization or claim a phone-only VPN observes every LAN device's traffic. |
+| **Browser fingerprinting privacy** | Limited from a companion app. | Offer browser-specific configuration guidance and explain that blocking cookies does not defeat fingerprinting. Randomization would belong inside a controlled browser/WebView and requires measurement for breakage; PrivaCage cannot change unrelated browsers. |
+| **Smart-TV / IoT telemetry review** | Requires vendor documentation or authorized network evidence. | Provide sourced per-vendor settings checklists and optional local import of user-provided router logs. Do not imply the phone can inspect every TV/IoT connection. |
+| **Privacy evidence and change alerts** | Buildable for facts PrivaCage owns or OS APIs expose. | Compare local permission baselines, selected APK versions, DNS rule changes and signed checkpoints. Each alert states before/after values, source and confidence; no opaque universal privacy score. |
+
+### More privacy by default
+
+- Keep network activity local; product telemetry, analytics SDKs, remote fonts and automatic report upload stay absent unless the user explicitly opts into a documented feature.
+- Default logs to off or minimum detail, use bounded retention, encrypt retained sensitive history, redact hostnames and app attribution in exports, and include clear delete/export/reset controls.
+- Prefer local-first processing. Any remote lookup discloses exactly what is sent, to whom, and retention before the user consents.
+- Use signed, versioned catalogue updates with provenance and reproducible diffs. Downloaded candidates never become active rules without review.
+- Maintain an explicit capability matrix for stock Android, root/system Android, custom OS, iOS, web, and Windows. Each UI action reports success or the precise error from its real backend/OS.
+- Threat-model stalker/coercive-control risk: avoid unsafe notifications and never promise safe removal without considering the user's circumstances.
+- Add release checks for accidental telemetry, broad package visibility, plaintext sensitive logs, unbounded inputs, unsafe external URLs, missing rollback, and misleading capability claims.
 
 ---
 
