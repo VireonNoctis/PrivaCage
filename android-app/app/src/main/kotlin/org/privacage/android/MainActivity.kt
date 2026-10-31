@@ -49,6 +49,11 @@ import java.nio.charset.StandardCharsets
 import java.time.LocalDate
 import java.security.MessageDigest
 
+internal object DnsVpnDisclosure {
+    const val COVERAGE =
+        "Coverage is deliberately narrow: only supported IPv4 UDP DNS packets and constrained IPv6 UDP-DNS packets addressed to PrivaCage's virtual DNS endpoints are routed here. This is not a full-device VPN. Client-initiated DNS-over-TCP, app-owned DNS-over-HTTPS and DNS-over-QUIC, arbitrary DNS-over-TLS endpoints, direct-IP connections, general IPv6 traffic, HTTPS contents, and OS/OEM telemetry are outside this implementation. IPv6 extension headers, fragments, and jumbograms are rejected; oversized responses are dropped. Other DNS paths may bypass these rules."
+}
+
 class MainActivity : Activity() {
     private lateinit var resolverInput: EditText
     private lateinit var resolverHostnameInput: EditText
@@ -3510,7 +3515,7 @@ class MainActivity : Activity() {
         }
         val message = buildString {
             append("Starting PrivaCage may disconnect the VPN you currently use. Android allows only one active VPN service per user/profile.\n\n")
-            append("Coverage is deliberately narrow: only IPv4 UDP DNS packets addressed to PrivaCage's virtual DNS endpoint are routed here. This is not a full-device VPN. DNS-over-TCP from apps, IPv6 DNS, DNS-over-HTTPS, DNS-over-QUIC, HTTPS contents, and OS/OEM telemetry are outside this implementation. Other DNS paths may bypass these rules.\n\n")
+            append(DnsVpnDisclosure.COVERAGE).append("\n\n")
             append(upstreamDescription)
             append("\n\nContinue to Android's VPN permission step?")
         }
