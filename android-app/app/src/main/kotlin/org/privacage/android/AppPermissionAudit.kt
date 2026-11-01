@@ -10,6 +10,8 @@ import org.json.JSONObject
 import org.privacage.audit.PermissionChangeKind
 import org.privacage.audit.PermissionGrantSnapshot
 import java.io.IOException
+import java.time.Instant
+import java.time.format.DateTimeParseException
 
 /**
  * Local audit of dangerous permissions declared by launcher-visible applications.
@@ -40,7 +42,7 @@ internal object AppPermissionAudit {
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
     private const val KEY_BASELINE = "dangerous_permission_baseline_v1"
-    private const val BASELINE_SCHEMA_VERSION = 1
+    private const val BASELINE_SCHEMA_VERSION = 2
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
     private const val MAX_BASELINE_PACKAGES = 2_000
     private const val MAX_PERMISSIONS_PER_PACKAGE = 256
@@ -149,6 +151,7 @@ internal object AppPermissionAudit {
         }
 
         val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
+        val scanCapturedAt = Instant.now()
         output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
         if (skipped > 0) {
             output.append("Comparison was not run and the saved baseline was not changed because ")
@@ -159,11 +162,11 @@ internal object AppPermissionAudit {
             val rawBaseline = baselineRead.value
             var baselineWarning: String? = baselineRead.warning
             var preserveUnreadableBaseline = baselineRead.unreadable
-            val previousSnapshot = if (rawBaseline == null) {
+            val previousRecord = if (rawBaseline == null) {
                 null
             } else {
                 try {
-                    decodeBaseline(rawBaseline)
+                    decodeBaselineRecord(rawBaseline)
                 } catch (exception: Exception) {
                     preserveUnreadableBaseline = true
                     baselineWarning = "The saved baseline is unreadable and has been preserved: " +
@@ -171,15 +174,21 @@ internal object AppPermissionAudit {
                     null
                 }
             }
+            val previousSnapshot = previousRecord?.snapshot
 
             if (previousSnapshot == null) {
                 if (preserveUnreadableBaseline) {
                     output.append("Comparison was not run because the saved baseline is unreadable; the current scan was not saved as a replacement baseline.")
                 } else {
-                    output.append("No usable previous snapshot was available; this completed scan establishes the next comparison baseline.")
+                    output.append("No usable previous snapshot was available; this scan completed at ")
+                        .append(scanCapturedAt).append(" (device clock).")
                 }
                 if (baselineWarning != null) output.append("\n").append(baselineWarning)
             } else {
+                output.append("Baseline captured at ")
+                    .append(previousRecord?.capturedAt?.toString() ?: "unknown (legacy schema v1)")
+                    .append("; current scan completed at ").append(scanCapturedAt)
+                    .append(" (device clock). The exact time of any change is unknown.\n")
                 val diff = currentSnapshot.compare(previousSnapshot)
                 if (diff.changes.isEmpty() &&
                     diff.newlyObservedPackages.isEmpty() &&
@@ -238,12 +247,14 @@ internal object AppPermissionAudit {
             } else {
                 try {
                     val saved = preferences.edit()
-                        .putString(KEY_BASELINE, encodeBaseline(currentSnapshot))
+                        .putString(KEY_BASELINE, encodeBaseline(currentSnapshot, scanCapturedAt))
                         .commit()
                     if (!saved) {
                         output.append("\nBaseline write failed: Android did not confirm the local preference write.")
+                    } else {
+                        output.append("\nSaved this completed scan as the next comparison baseline.")
                     }
-                } catch (exception: RuntimeException) {
+                } catch (exception: Exception) {
                     output.append("\nBaseline write failed: ")
                         .append(exception.message ?: exception.javaClass.simpleName)
                 }
@@ -257,22 +268,75 @@ internal object AppPermissionAudit {
         return output.toString()
     }
 
-    private fun encodeBaseline(snapshot: PermissionGrantSnapshot): String {
+    internal data class DecodedBaseline(
+        val snapshot: PermissionGrantSnapshot,
+        val capturedAt: Instant?
+    )
+
+    internal fun encodeBaseline(snapshot: PermissionGrantSnapshot, capturedAt: Instant): String {
+        val sortedPackages = snapshot.packages.toSortedMap()
+        if (sortedPackages.size > MAX_BASELINE_PACKAGES) {
+            throw IOException("Baseline package count exceeds the supported limit")
+        }
+
+        // Validate and estimate the compact JSON size before allocating JSONObject trees.
+        // Package and permission keys are restricted to ASCII-safe characters, so this estimate
+        // is exact for the serialized representation below.
+        val prefix = """{"schema_version":$BASELINE_SCHEMA_VERSION,"captured_at":"$capturedAt","packages":{"""
+        var estimatedBytes = prefix.length.toLong() + 2L
+        sortedPackages.entries.forEachIndexed { packageIndex, (packageName, permissions) ->
+            if (packageName.isBlank() || packageName.length > 255 ||
+                !PACKAGE_NAME_PATTERN.matches(packageName)
+            ) {
+                throw IOException("Snapshot contains an invalid package name")
+            }
+            if (permissions.size > MAX_PERMISSIONS_PER_PACKAGE) {
+                throw IOException("Baseline permission count exceeds the supported limit for $packageName")
+            }
+
+            if (packageIndex > 0) estimatedBytes++
+            estimatedBytes += packageName.length.toLong() + 5L
+            permissions.toSortedMap().entries.forEachIndexed { permissionIndex, (permission, granted) ->
+                if (permission.isBlank() || permission.length > 255 ||
+                    !PERMISSION_NAME_PATTERN.matches(permission)
+                ) {
+                    throw IOException("Snapshot contains an invalid permission name for $packageName")
+                }
+                if (permissionIndex > 0) estimatedBytes++
+                estimatedBytes += permission.length.toLong() + if (granted) 7L else 8L
+                if (estimatedBytes > MAX_BASELINE_BYTES) {
+                    throw IOException("Permission baseline exceeds the 4 MiB safety limit")
+                }
+            }
+            estimatedBytes++
+            if (estimatedBytes > MAX_BASELINE_BYTES) {
+                throw IOException("Permission baseline exceeds the 4 MiB safety limit")
+            }
+        }
+
         val packages = JSONObject()
-        snapshot.packages.toSortedMap().forEach { (packageName, permissions) ->
+        sortedPackages.forEach { (packageName, permissions) ->
             val permissionObject = JSONObject()
             permissions.toSortedMap().forEach { (permission, granted) ->
                 permissionObject.put(permission, granted)
             }
             packages.put(packageName, permissionObject)
         }
-        return JSONObject()
+        val encoded = JSONObject()
             .put("schema_version", BASELINE_SCHEMA_VERSION)
+            .put("captured_at", capturedAt.toString())
             .put("packages", packages)
             .toString()
+        if (encoded.toByteArray(Charsets.UTF_8).size > MAX_BASELINE_BYTES) {
+            throw IOException("Permission baseline exceeds the 4 MiB safety limit")
+        }
+        return encoded
     }
 
-    internal fun decodeBaseline(text: String): PermissionGrantSnapshot {
+    internal fun decodeBaseline(text: String): PermissionGrantSnapshot =
+        decodeBaselineRecord(text).snapshot
+
+    internal fun decodeBaselineRecord(text: String): DecodedBaseline {
         if (text.length > MAX_BASELINE_BYTES ||
             text.toByteArray(Charsets.UTF_8).size > MAX_BASELINE_BYTES
         ) {
@@ -284,15 +348,39 @@ internal object AppPermissionAudit {
         } catch (exception: JSONException) {
             throw IOException("Baseline is not valid JSON", exception)
         }
+        val schemaVersion = root.opt("schema_version")
+        if (schemaVersion !is Int || schemaVersion !in 1..BASELINE_SCHEMA_VERSION) {
+            throw IOException("Baseline schema version is invalid or unsupported")
+        }
+        val expectedKeys = if (schemaVersion == 1) {
+            setOf("schema_version", "packages")
+        } else {
+            setOf("schema_version", "captured_at", "packages")
+        }
         val rootKeys = root.keys().asSequence().toSet()
-        if (rootKeys != setOf("schema_version", "packages")) {
+        if (rootKeys != expectedKeys) {
             throw IOException("Baseline contains missing or unsupported top-level fields")
         }
-        val schemaVersion = root.opt("schema_version")
-        if (schemaVersion !is Int || schemaVersion != BASELINE_SCHEMA_VERSION ||
-            root.opt("packages") !is JSONObject) {
-            throw IOException("Baseline schema version or package map is invalid")
+        if (root.opt("packages") !is JSONObject) {
+            throw IOException("Baseline package map is invalid")
         }
+
+        val capturedAt = if (schemaVersion == 1) {
+            null
+        } else {
+            val rawTimestamp = root.opt("captured_at") as? String
+                ?: throw IOException("Baseline capture timestamp is invalid")
+            val parsedTimestamp = try {
+                Instant.parse(rawTimestamp)
+            } catch (exception: DateTimeParseException) {
+                throw IOException("Baseline capture timestamp is invalid", exception)
+            }
+            if (parsedTimestamp.toString() != rawTimestamp) {
+                throw IOException("Baseline capture timestamp is not in canonical UTC form")
+            }
+            parsedTimestamp
+        }
+
         val packagesObject = root.getJSONObject("packages")
         if (packagesObject.length() > MAX_BASELINE_PACKAGES) {
             throw IOException("Baseline package count exceeds the supported limit")
@@ -325,6 +413,6 @@ internal object AppPermissionAudit {
             }
             packages[packageName] = permissions
         }
-        return PermissionGrantSnapshot(packages)
+        return DecodedBaseline(PermissionGrantSnapshot(packages), capturedAt)
     }
 }
