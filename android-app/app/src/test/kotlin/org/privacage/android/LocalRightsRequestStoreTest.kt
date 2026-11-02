@@ -68,10 +68,10 @@ class LocalRightsRequestStoreTest {
         assertEquals(null, decoded.extendedResponseDueOn)
 
         val legacyDropRecord = dropRecord
-            .replace("\\"controller_name\\":null,", "")
-            .replace(",\\"received_on\\":null", "")
-            .replace(",\\"standard_due_on\\":null", "")
-            .replace(",\\"extended_due_on\\":null", "")
+            .replace("\"controller_name\":null,", "")
+            .replace(",\"received_on\":null", "")
+            .replace(",\"standard_due_on\":null", "")
+            .replace(",\"extended_due_on\":null", "")
         val legacyDrop = LocalRightsRequestStore.decodeRecords("[$legacyDropRecord]").single()
         assertEquals(null, legacyDrop.controllerName)
         assertEquals(null, legacyDrop.receivedOn)
@@ -130,12 +130,12 @@ class LocalRightsRequestStoreTest {
 
     @Test
     fun rejectsDeadlinesWithoutReceiptAndDropDeadlines() {
-        val noReceiptDeadline = record().replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
+            .replace(",\"standard_due_on\":null", "")
         val dropDeadline = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
             guidanceUrl = "https://cppa.ca.gov/data_brokers/"
-        ).replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
+            .replace(",\"standard_due_on\":null", "")
 
         assertThrows(IllegalStateException::class.java) {
             LocalRightsRequestStore.decodeRecords("[$noReceiptDeadline]")
