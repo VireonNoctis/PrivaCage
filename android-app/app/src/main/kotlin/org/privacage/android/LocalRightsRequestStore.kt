@@ -158,7 +158,36 @@ internal object LocalRightsRequestStore {
         return updated
     }
 
-    private fun save(context: Context, records: List<StoredRightsRequest>) {
+    internal fun encodeRecords(records: List<StoredRightsRequest>): String {
+        require(records.size <= MAX_RECORDS) {
+            "The local rights-request tracker is full (100 records)."
+        }
+        val ids = HashSet<String>(records.size)
+        records.forEach { record ->
+            require(record.id.length == 36) { "Local tracker record ID is invalid." }
+            val parsedId = try {
+                UUID.fromString(record.id)
+            } catch (exception: IllegalArgumentException) {
+                throw IllegalArgumentException("Local tracker record ID is invalid.", exception)
+            }
+            require(parsedId.toString() == record.id && ids.add(record.id)) {
+                "Local tracker record IDs must be canonical and unique."
+            }
+            val controller = record.controllerName
+            require(controller == null || (
+                controller.isNotBlank() &&
+                controller.length <= MAX_CONTROLLER_LENGTH &&
+                controller == controller.trim() &&
+                controller.none(Char::isISOControl)
+            )) { "Local tracker controller name is invalid." }
+            require(record.jurisdiction == RightsJurisdiction.CALIFORNIA_DROP || !controller.isNullOrBlank()) {
+                "A direct rights request must retain its controller name."
+            }
+            require(record.officialGuidanceUrl == record.jurisdiction.officialGuidanceUrl) {
+                "Local tracker guidance URL does not match the selected jurisdiction."
+            }
+        }
+
         val array = JSONArray()
         records.forEach { record ->
             array.put(JSONObject()
@@ -174,8 +203,19 @@ internal object LocalRightsRequestStore {
                 .put("status", record.status.name)
                 .put("official_guidance_url", record.officialGuidanceUrl))
         }
+        val encoded = array.toString()
+        require(encoded.toByteArray(Charsets.UTF_8).size <= MAX_STORE_BYTES) {
+            "The local rights-request tracker exceeds its 512 KiB safety limit."
+        }
+        // Reuse the strict reader so writes and reads enforce the same record invariants.
+        decodeRecords(encoded)
+        return encoded
+    }
+
+    private fun save(context: Context, records: List<StoredRightsRequest>) {
+        val encoded = encodeRecords(records)
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        check(preferences.edit().putString(KEY_RECORDS, array.toString()).commit()) {
+        check(preferences.edit().putString(KEY_RECORDS, encoded).commit()) {
             "Could not persist the local rights-request tracker."
         }
     }
@@ -256,11 +296,25 @@ internal object LocalRightsRequestStore {
                     "The DROP checklist must not contain an individual response deadline."
                 }
             } else if (receivedOn != null) {
-                require(standardDueOn != null) {
-                    "A received direct request must contain its standard planning date."
+                val expectedStandardDueOn = when (jurisdiction) {
+                    RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(1)
+                    RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn.plusDays(45)
+                    RightsJurisdiction.CALIFORNIA_DROP -> null
                 }
-                require((extendedDueOn != null) == extensionNoticeRecorded) {
-                    "The extension date must match the recorded extension-notice flag."
+                val expectedExtendedDueOn = if (!extensionNoticeRecorded) {
+                    null
+                } else {
+                    when (jurisdiction) {
+                        RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
+                        RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn.plusDays(90)
+                        RightsJurisdiction.CALIFORNIA_DROP -> null
+                    }
+                }
+                require(standardDueOn == expectedStandardDueOn) {
+                    "The standard planning date does not match the configured jurisdiction calculation."
+                }
+                require(extendedDueOn == expectedExtendedDueOn) {
+                    "The extended planning date does not match the recorded extension notice and jurisdiction calculation."
                 }
             }
 

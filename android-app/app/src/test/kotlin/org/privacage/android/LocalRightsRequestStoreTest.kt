@@ -15,8 +15,12 @@ class LocalRightsRequestStoreTest {
         jurisdiction: String = "UK_GDPR",
         controller: String = "\"Example Controller\"",
         guidanceUrl: String = "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/",
+        receivedOn: String? = null,
+        standardDueOn: String? = null,
+        extendedDueOn: String? = null,
+        extensionNoticeRecorded: Boolean = false,
         extra: String = ""
-    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"ERASURE","controller_name":$controller,"prepared_on":"2026-10-27","received_on":null,"standard_due_on":null,"extended_due_on":null,"extension_notice_recorded":false,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
+    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"ERASURE","controller_name":$controller,"prepared_on":"2026-10-27","received_on":\${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":\${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":\${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
 
     @Test
     fun readsCanonicalLocalDraftMetadata() {
@@ -102,6 +106,81 @@ class LocalRightsRequestStoreTest {
         }
         assertThrows(IllegalStateException::class.java) {
             LocalRightsRequestStore.decodeRecords("[$dropDeadline]")
+        }
+    }
+
+    @Test
+    fun validatesJurisdictionSpecificPlanningDates() {
+        val uk = LocalRightsRequestStore.decodeRecords(
+            "[\${record(
+                receivedOn = "2026-10-27",
+                standardDueOn = "2026-11-27",
+                extendedDueOn = "2027-01-27",
+                extensionNoticeRecorded = true
+            )}]"
+        ).single()
+        assertEquals("2026-11-27", uk.standardResponseDueOn.toString())
+        assertEquals("2027-01-27", uk.extendedResponseDueOn.toString())
+
+        val california = LocalRightsRequestStore.decodeRecords(
+            "[\${record(
+                jurisdiction = "CALIFORNIA_CCPA",
+                guidanceUrl = "https://cppa.ca.gov/faq/",
+                receivedOn = "2026-10-27",
+                standardDueOn = "2026-12-11",
+                extendedDueOn = "2027-01-25",
+                extensionNoticeRecorded = true
+            )}]"
+        ).single()
+        assertEquals("2026-12-11", california.standardResponseDueOn.toString())
+        assertEquals("2027-01-25", california.extendedResponseDueOn.toString())
+    }
+
+    @Test
+    fun rejectsPlanningDatesThatDoNotMatchTheConfiguredCalculation() {
+        val incorrectStandard = record(
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-11-26"
+        )
+        val incorrectExtension = record(
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-11-27",
+            extendedDueOn = "2027-01-26",
+            extensionNoticeRecorded = true
+        )
+        val incorrectCalifornia = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-12-10"
+        )
+
+        listOf(incorrectStandard, incorrectExtension, incorrectCalifornia).forEach { raw ->
+            assertThrows(IllegalStateException::class.java) {
+                LocalRightsRequestStore.decodeRecords("[$raw]")
+            }
+        }
+    }
+
+    @Test
+    fun validatesWritesBeforeReturningPersistableJson() {
+        val valid = LocalRightsRequestStore.decodeRecords("[\${record()}]").single()
+        val encoded = LocalRightsRequestStore.encodeRecords(listOf(valid))
+        assertEquals(listOf(valid), LocalRightsRequestStore.decodeRecords(encoded))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            LocalRightsRequestStore.encodeRecords(listOf(valid.copy(controllerName = " Example Controller ")))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LocalRightsRequestStore.encodeRecords(listOf(valid.copy(controllerName = "x".repeat(257))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LocalRightsRequestStore.encodeRecords(listOf(valid, valid))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LocalRightsRequestStore.encodeRecords((0..100).map { index ->
+                valid.copy(id = UUID(1L, index.toLong()).toString())
+            })
         }
     }
 
