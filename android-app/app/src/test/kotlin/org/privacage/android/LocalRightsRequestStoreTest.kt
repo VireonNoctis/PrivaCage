@@ -20,7 +20,7 @@ class LocalRightsRequestStoreTest {
         extendedDueOn: String? = null,
         extensionNoticeRecorded: Boolean = false,
         extra: String = ""
-    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"ERASURE","controller_name":$controller,"prepared_on":"2026-10-27","received_on":\${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":\${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":\${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
+    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"ERASURE","controller_name":$controller,"prepared_on":"2026-10-27","received_on":${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
 
     @Test
     fun readsCanonicalLocalDraftMetadata() {
@@ -112,7 +112,7 @@ class LocalRightsRequestStoreTest {
     @Test
     fun validatesJurisdictionSpecificPlanningDates() {
         val uk = LocalRightsRequestStore.decodeRecords(
-            "[\${record(
+            "[${record(
                 receivedOn = "2026-10-27",
                 standardDueOn = "2026-11-27",
                 extendedDueOn = "2027-01-27",
@@ -123,7 +123,7 @@ class LocalRightsRequestStoreTest {
         assertEquals("2027-01-27", uk.extendedResponseDueOn.toString())
 
         val california = LocalRightsRequestStore.decodeRecords(
-            "[\${record(
+            "[${record(
                 jurisdiction = "CALIFORNIA_CCPA",
                 guidanceUrl = "https://cppa.ca.gov/faq/",
                 receivedOn = "2026-10-27",
@@ -164,7 +164,7 @@ class LocalRightsRequestStoreTest {
 
     @Test
     fun validatesWritesBeforeReturningPersistableJson() {
-        val valid = LocalRightsRequestStore.decodeRecords("[\${record()}]").single()
+        val valid = LocalRightsRequestStore.decodeRecords("[${record()}]").single()
         val encoded = LocalRightsRequestStore.encodeRecords(listOf(valid))
         assertEquals(listOf(valid), LocalRightsRequestStore.decodeRecords(encoded))
 
