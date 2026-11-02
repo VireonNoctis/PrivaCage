@@ -34,6 +34,26 @@ class LocalRightsRequestStoreTest {
     }
 
     @Test
+    fun readsLegacyRecordsWithOmittedNullableFields() {
+        val legacy = record()
+            .replace(",\"received_on\":null", "")
+            .replace(",\"standard_due_on\":null", "")
+            .replace(",\"extended_due_on\":null", "")
+
+        val decoded = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
+
+        assertEquals(null, decoded.receivedOn)
+        assertEquals(null, decoded.standardResponseDueOn)
+        assertEquals(null, decoded.extendedResponseDueOn)
+        assertEquals("Example Controller", decoded.controllerName)
+        // Re-encoding upgrades old omitted-null fields to the canonical explicit-null form.
+        val roundTrip = LocalRightsRequestStore.decodeRecords(
+            LocalRightsRequestStore.encodeRecords(listOf(decoded))
+        ).single()
+        assertEquals(decoded, roundTrip)
+    }
+
+    @Test
     fun acceptsDropChecklistWithoutControllerOrIndividualDeadline() {
         val dropRecord = record(
             jurisdiction = "CALIFORNIA_DROP",

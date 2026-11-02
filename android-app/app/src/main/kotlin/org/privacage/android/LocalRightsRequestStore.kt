@@ -227,7 +227,14 @@ internal object LocalRightsRequestStore {
                 "standard_due_on", "extended_due_on", "extension_notice_recorded",
                 "status", "official_guidance_url"
             )
-            require(item.keys().asSequence().toSet() == expectedKeys) {
+            val legacyNullableKeys = setOf(
+                "controller_name", "received_on", "standard_due_on", "extended_due_on"
+            )
+            val actualKeys = item.keys().asSequence().toSet()
+            require(
+                actualKeys.all { it in expectedKeys } &&
+                    expectedKeys.minus(actualKeys).all { it in legacyNullableKeys }
+            ) {
                 "Local tracker record fields are missing or unsupported."
             }
 
@@ -235,12 +242,16 @@ internal object LocalRightsRequestStore {
                 item.opt(key) as? String
                     ?: throw IllegalArgumentException("Local tracker field $key must be a string.")
 
-            fun optionalString(key: String): String? =
-                when (val value = item.opt(key)) {
+            fun optionalString(key: String): String? {
+                // Before explicit JSON null serialization, Android JSONObject.put(key, null)
+                // omitted nullable keys. Continue reading those existing records.
+                if (!item.has(key)) return null
+                return when (val value = item.opt(key)) {
                     JSONObject.NULL -> null
                     is String -> value
                     else -> throw IllegalArgumentException("Local tracker field $key must be a string or null.")
                 }
+            }
 
             fun optionalDate(key: String): LocalDate? = optionalString(key)?.let { raw ->
                 val parsed = try {
