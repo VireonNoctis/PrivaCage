@@ -47,6 +47,10 @@ internal object LocalRightsRequestStore {
     fun list(context: Context): List<StoredRightsRequest> {
         val raw = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getString(KEY_RECORDS, "[]") ?: "[]"
+        return decodeRecords(raw)
+    }
+
+    internal fun decodeRecords(raw: String): List<StoredRightsRequest> {
         if (raw.length > MAX_STORE_BYTES ||
             raw.toByteArray(Charsets.UTF_8).size > MAX_STORE_BYTES
         ) {
@@ -61,11 +65,16 @@ internal object LocalRightsRequestStore {
         if (array.length() > MAX_RECORDS) {
             throw IllegalStateException("The local rights-request tracker exceeds its supported record limit; existing data was not overwritten.")
         }
-        return (0 until array.length()).map { index ->
+        val records = (0 until array.length()).map { index ->
             val item = array.optJSONObject(index)
                 ?: throw IllegalStateException("The local rights-request tracker contains an invalid record; existing data was not overwritten.")
             decode(item)
         }
+        val ids = HashSet<String>(records.size)
+        if (records.any { !ids.add(it.id) }) {
+            throw IllegalStateException("The local rights-request tracker contains duplicate record IDs; existing data was not overwritten.")
+        }
+        return records
     }
 
     fun add(context: Context, draft: org.privacage.rights.RightsRequestDraft): StoredRightsRequest {
@@ -173,34 +182,91 @@ internal object LocalRightsRequestStore {
 
     private fun decode(item: JSONObject): StoredRightsRequest {
         return try {
-            val keys = setOf(
+            val expectedKeys = setOf(
                 "id", "jurisdiction", "right", "controller_name", "prepared_on", "received_on",
                 "standard_due_on", "extended_due_on", "extension_notice_recorded",
                 "status", "official_guidance_url"
             )
-            val iterator = item.keys()
-            while (iterator.hasNext()) {
-                val key = iterator.next()
-                require(key in keys) { "Unknown local tracker field: $key" }
+            require(item.keys().asSequence().toSet() == expectedKeys) {
+                "Local tracker record fields are missing or unsupported."
             }
-            val id = item.getString("id")
-            require(id.length <= 64)
-            val jurisdiction = RightsJurisdiction.valueOf(item.getString("jurisdiction"))
-            val right = PrivacyRight.valueOf(item.getString("right"))
-            val controller = if (item.isNull("controller_name")) null else item.getString("controller_name")
-            require(controller == null || controller.length <= MAX_CONTROLLER_LENGTH)
-            val preparedOn = LocalDate.parse(item.getString("prepared_on"))
-            fun optionalDate(key: String): LocalDate? =
-                if (item.isNull(key)) null else LocalDate.parse(item.getString(key))
+
+            fun requiredString(key: String): String =
+                item.opt(key) as? String
+                    ?: throw IllegalArgumentException("Local tracker field $key must be a string.")
+
+            fun optionalString(key: String): String? =
+                when (val value = item.opt(key)) {
+                    JSONObject.NULL -> null
+                    is String -> value
+                    else -> throw IllegalArgumentException("Local tracker field $key must be a string or null.")
+                }
+
+            fun optionalDate(key: String): LocalDate? = optionalString(key)?.let { raw ->
+                val parsed = try {
+                    LocalDate.parse(raw)
+                } catch (exception: Exception) {
+                    throw IllegalArgumentException("Local tracker date $key is invalid.", exception)
+                }
+                require(parsed.toString() == raw) { "Local tracker date $key is not canonical." }
+                parsed
+            }
+
+            val id = requiredString("id")
+            val parsedId = try {
+                UUID.fromString(id)
+            } catch (exception: IllegalArgumentException) {
+                throw IllegalArgumentException("Local tracker record ID is invalid.", exception)
+            }
+            require(parsedId.toString() == id) { "Local tracker record ID is not canonical." }
+
+            val jurisdiction = RightsJurisdiction.valueOf(requiredString("jurisdiction"))
+            val right = PrivacyRight.valueOf(requiredString("right"))
+            val controller = optionalString("controller_name")
+            require(controller == null || (
+                controller.isNotBlank() &&
+                controller.length <= MAX_CONTROLLER_LENGTH &&
+                controller == controller.trim() &&
+                controller.none(Char::isISOControl)
+            )) { "Local tracker controller name is invalid." }
+            require(jurisdiction == RightsJurisdiction.CALIFORNIA_DROP || !controller.isNullOrBlank()) {
+                "A direct rights request must retain its controller name."
+            }
+
+            val preparedOn = optionalDate("prepared_on")
+                ?: throw IllegalArgumentException("Local tracker preparation date is required.")
             val receivedOn = optionalDate("received_on")
             val standardDueOn = optionalDate("standard_due_on")
             val extendedDueOn = optionalDate("extended_due_on")
-            val status = RightsRequestStatus.valueOf(item.getString("status"))
-            val guidanceUrl = item.getString("official_guidance_url")
-            require(guidanceUrl.startsWith("https://") && guidanceUrl.length <= 2048)
+            val extensionNoticeRecorded = item.opt("extension_notice_recorded") as? Boolean
+                ?: throw IllegalArgumentException("Local tracker extension flag must be a boolean.")
+            val status = RightsRequestStatus.valueOf(requiredString("status"))
+            val guidanceUrl = requiredString("official_guidance_url")
+            require(guidanceUrl == jurisdiction.officialGuidanceUrl) {
+                "Local tracker guidance URL does not match the selected jurisdiction."
+            }
+
+            if (receivedOn == null) {
+                require(standardDueOn == null && extendedDueOn == null && !extensionNoticeRecorded) {
+                    "Local tracker deadlines require a recorded receipt date."
+                }
+            }
+            if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) {
+                require(standardDueOn == null && extendedDueOn == null) {
+                    "The DROP checklist must not contain an individual response deadline."
+                }
+            } else if (receivedOn != null) {
+                require(standardDueOn != null) {
+                    "A received direct request must contain its standard planning date."
+                }
+                require((extendedDueOn != null) == extensionNoticeRecorded) {
+                    "The extension date must match the recorded extension-notice flag."
+                }
+            }
+
             StoredRightsRequest(
                 id, jurisdiction, right, controller, preparedOn, receivedOn, standardDueOn,
-                extendedDueOn, item.optBoolean("extension_notice_recorded", false), status, guidanceUrl
+                extendedDueOn, extensionNoticeRecorded, status, guidanceUrl
             )
         } catch (exception: Exception) {
             throw IllegalStateException("The local rights-request tracker contains a malformed record; existing data was not overwritten.", exception)
