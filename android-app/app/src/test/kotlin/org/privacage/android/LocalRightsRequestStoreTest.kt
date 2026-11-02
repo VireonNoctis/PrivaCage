@@ -46,6 +46,11 @@ class LocalRightsRequestStoreTest {
         assertEquals(null, decoded.controllerName)
         assertEquals(null, decoded.standardResponseDueOn)
         assertEquals(null, decoded.extendedResponseDueOn)
+
+        val roundTrip = LocalRightsRequestStore.decodeRecords(
+            LocalRightsRequestStore.encodeRecords(listOf(decoded))
+        ).single()
+        assertEquals(decoded, roundTrip)
     }
 
     @Test
