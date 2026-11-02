@@ -130,12 +130,12 @@ class LocalRightsRequestStoreTest {
 
     @Test
     fun rejectsDeadlinesWithoutReceiptAndDropDeadlines() {
-            .replace(",\"standard_due_on\":null", "")
+        val noReceiptDeadline = record().replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
         val dropDeadline = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
             guidanceUrl = "https://cppa.ca.gov/data_brokers/"
-            .replace(",\"standard_due_on\":null", "")
+        ).replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
 
         assertThrows(IllegalStateException::class.java) {
             LocalRightsRequestStore.decodeRecords("[$noReceiptDeadline]")
@@ -144,7 +144,6 @@ class LocalRightsRequestStoreTest {
             LocalRightsRequestStore.decodeRecords("[$dropDeadline]")
         }
     }
-
     @Test
     fun validatesJurisdictionSpecificPlanningDates() {
         val uk = LocalRightsRequestStore.decodeRecords(
