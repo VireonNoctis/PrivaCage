@@ -67,6 +67,17 @@ class LocalRightsRequestStoreTest {
         assertEquals(null, decoded.standardResponseDueOn)
         assertEquals(null, decoded.extendedResponseDueOn)
 
+        val legacyDropRecord = dropRecord
+            .replace("\\"controller_name\\":null,", "")
+            .replace(",\\"received_on\\":null", "")
+            .replace(",\\"standard_due_on\\":null", "")
+            .replace(",\\"extended_due_on\\":null", "")
+        val legacyDrop = LocalRightsRequestStore.decodeRecords("[$legacyDropRecord]").single()
+        assertEquals(null, legacyDrop.controllerName)
+        assertEquals(null, legacyDrop.receivedOn)
+        assertEquals(null, legacyDrop.standardResponseDueOn)
+        assertEquals(null, legacyDrop.extendedResponseDueOn)
+
         val roundTrip = LocalRightsRequestStore.decodeRecords(
             LocalRightsRequestStore.encodeRecords(listOf(decoded))
         ).single()
