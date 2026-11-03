@@ -572,11 +572,28 @@ internal object AppPolicyReviewMonitor {
         false
     }
 
+    internal fun validateLauncherInventory(
+        packageNames: Set<String>,
+        ownPackageName: String
+    ): Set<String> {
+        if (ownPackageName.isBlank() || ownPackageName !in packageNames) {
+            throw IOException(
+                "Android did not return PrivaCage in the launcher inventory; existing review data was preserved."
+            )
+        }
+        val visiblePackages = packageNames - ownPackageName
+        if (visiblePackages.isEmpty()) {
+            throw IOException(
+                "Android returned no other launcher-visible packages; existing review data was preserved."
+            )
+        }
+        return visiblePackages
+    }
+
     private fun launcherPackages(context: Context): Set<String> {
         val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val entries = context.packageManager.queryIntentActivities(launcherIntent, 0)
-        return entries.mapNotNull { it.activityInfo?.packageName }
-            .filter { it != context.packageName }
-            .toSet()
+        val packageNames = entries.mapNotNull { it.activityInfo?.packageName }.toSet()
+        return validateLauncherInventory(packageNames, context.packageName)
     }
 }

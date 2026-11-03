@@ -25,7 +25,7 @@ The Android adapter may send only user-pasted text as user content to a fixed, a
 
 ## Android app policy review observations
 
-A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis. App labels and package IDs are not appended to provider requests.
+A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. A scan fails closed and preserves the prior queue if Android omits PrivaCage's own launcher entry or returns no other launcher-visible packages; an empty result is not treated as mass-uninstall evidence. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis. App labels and package IDs are not appended to provider requests.
 
 ## Proposed layers
 

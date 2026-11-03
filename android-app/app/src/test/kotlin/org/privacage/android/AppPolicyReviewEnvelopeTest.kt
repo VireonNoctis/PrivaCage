@@ -114,3 +114,40 @@ class AppPolicyReviewStateTest {
         }
     }
 }
+
+class AppPolicyReviewInventoryTest {
+    private val ownPackage = "org.privacage.android"
+
+    @Test
+    fun excludesPrivaCageOnlyAfterAUsableLauncherInventoryIsConfirmed() {
+        assertEquals(
+            setOf("org.example.reader", "org.example.notes"),
+            AppPolicyReviewMonitor.validateLauncherInventory(
+                setOf(ownPackage, "org.example.reader", "org.example.notes"),
+                ownPackage
+            )
+        )
+    }
+
+    @Test
+    fun rejectsMissingSelfOrAnEmptyVisibleInventoryInsteadOfReturningMassRemovalEvidence() {
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewMonitor.validateLauncherInventory(
+                setOf("org.example.reader"),
+                ownPackage
+            )
+        }
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewMonitor.validateLauncherInventory(
+                setOf(ownPackage),
+                ownPackage
+            )
+        }
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewMonitor.validateLauncherInventory(
+                emptySet(),
+                ownPackage
+            )
+        }
+    }
+}
