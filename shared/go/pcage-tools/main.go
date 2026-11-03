@@ -70,7 +70,7 @@ var (
 		"io.segment",
 		"posthog",
 		"com.posthog",
-		"com.google.android.gms.permission.AD_ID",
+		"com.google.android.gms.permission.ad_id",
 	}
 )
 

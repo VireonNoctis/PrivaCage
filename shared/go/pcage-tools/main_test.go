@@ -495,7 +495,7 @@ func TestAndroidPrivacyManifestAndGradleMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	errorsFound = validateAndroidDependencies(sourceDirectory)
-	if len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "permission.AD_ID") {
+	if len(errorsFound) == 0 || !strings.Contains(strings.Join(errorsFound, "\n"), "com.google.android.gms.permission.ad_id") {
 		t.Fatalf("advertising identifier permission in the application manifest was not rejected: %v", errorsFound)
 	}
 	if errorsFound = validateAndroidDependencies(filepath.Join(directory, "does-not-exist")); len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "does not exist") {
