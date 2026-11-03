@@ -75,5 +75,7 @@ class PrivacyAutomationClientTest {
         )
         assertFalse(request.body.contains("\"tools\""))
         assertTrue(request.body.contains("Do not call tools"))
+        assertTrue(request.body.contains("Only this supplied text"))
+        assertFalse(request.body.contains("Review text explicitly supplied by the user"))
     }
 }

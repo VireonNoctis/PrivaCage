@@ -33,6 +33,9 @@ class ApiTokenEnvelopeTest {
         assertThrows(java.io.IOException::class.java) {
             ApiTokenEnvelope.decrypt(org.json.JSONObject(envelope).put("unexpected", true).toString(), key(3))
         }
+        assertThrows(java.io.IOException::class.java) {
+            ApiTokenEnvelope.decrypt(envelope.replace("\"version\":1", "\"version\":1,\"version\":1"), key(3))
+        }
     }
 
     @Test
@@ -85,6 +88,21 @@ class ApiCredentialSchemaTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             ApiTokenVault.validateCredential(credential.copy(model = "../untrusted"))
+        }
+    }
+
+    @Test
+    fun rejectsDuplicateJsonKeysAndCoercedCredentialTypes() {
+        val encoded = ApiTokenVault.encodeCredentials(listOf(credential))
+        assertThrows(java.io.IOException::class.java) {
+            ApiTokenVault.decodeCredentials(
+                encoded.replace("\"schema_version\":1", "\"schema_version\":1,\"schema_version\":1")
+            )
+        }
+        assertThrows(java.io.IOException::class.java) {
+            ApiTokenVault.decodeCredentials(
+                encoded.replace("\"model\":\"gpt-4.1-mini\"", "\"model\":42")
+            )
         }
     }
 }

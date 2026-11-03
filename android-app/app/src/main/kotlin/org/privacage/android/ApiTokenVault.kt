@@ -160,6 +160,7 @@ internal object ApiTokenEnvelope {
             throw IOException("The encrypted API credential vault has an invalid size.")
         }
         val wrapper = try {
+            StrictJsonKeyScanner.validate(envelope, "Encrypted API credential envelope")
             JSONObject(envelope)
         } catch (exception: Exception) {
             throw IOException("The encrypted API credential vault is malformed.", exception)
@@ -381,6 +382,7 @@ internal class ApiTokenVault(context: Context) {
                 throw IOException("The API credential vault exceeds its safety limit.")
             }
             val root = try {
+                StrictJsonKeyScanner.validate(serialized, "Decrypted API credential vault")
                 JSONObject(serialized)
             } catch (exception: Exception) {
                 throw IOException("The decrypted API credential vault is malformed.", exception)
@@ -404,7 +406,15 @@ internal class ApiTokenVault(context: Context) {
                 ) {
                     throw IOException("The API credential vault contains missing or unsupported fields.")
                 }
-                val provider = ApiProvider.fromId(item.optString("provider"))
+                val providerId = item.opt("provider") as? String
+                    ?: throw IOException("The API credential provider ID must be a string.")
+                val model = item.opt("model") as? String
+                    ?: throw IOException("The API credential model ID must be a string.")
+                val apiKey = item.opt("api_key") as? String
+                    ?: throw IOException("The API credential token must be a string.")
+                val purpose = item.opt("purpose") as? String
+                    ?: throw IOException("The API credential purpose note must be a string.")
+                val provider = ApiProvider.fromId(providerId)
                 val scopes = item.optJSONArray("allowed_tasks")
                     ?: throw IOException("The API credential permissions are invalid.")
                 val allowed = linkedSetOf<PrivacyAutomationTask>()
@@ -417,9 +427,9 @@ internal class ApiTokenVault(context: Context) {
                 }
                 val credential = StoredApiCredential(
                     provider = provider,
-                    model = item.optString("model"),
-                    apiKey = item.optString("api_key"),
-                    purpose = item.optString("purpose"),
+                    model = model,
+                    apiKey = apiKey,
+                    purpose = purpose,
                     allowedTasks = allowed
                 )
                 try {

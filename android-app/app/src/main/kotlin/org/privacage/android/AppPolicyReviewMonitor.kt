@@ -103,6 +103,7 @@ internal object AppPolicyReviewEnvelope {
             throw IOException("The encrypted app policy review queue has an invalid size.")
         }
         val wrapper = try {
+            StrictJsonKeyScanner.validate(envelope, "Encrypted app policy review envelope")
             JSONObject(envelope)
         } catch (exception: Exception) {
             throw IOException("The encrypted app policy review queue is malformed.", exception)
@@ -256,6 +257,8 @@ internal class AppPolicyReviewStore(context: Context) {
             require(state.reviewedPackages.size <= MAX_PACKAGES)
             require(state.pending.size <= MAX_PENDING)
             require(state.lastUsageScanAt >= 0L)
+            require(state.reviewedPackages.all { it in state.knownPackages })
+            require(state.pending.keys.all { it in state.knownPackages && it !in state.reviewedPackages })
             val known = JSONArray()
             state.knownPackages.sorted().forEach { packageName ->
                 require(isValidPackageName(packageName))
@@ -300,6 +303,7 @@ internal class AppPolicyReviewStore(context: Context) {
                 throw IOException("The app policy review queue exceeds its safety limit.")
             }
             val root = try {
+                StrictJsonKeyScanner.validate(serialized, "Decrypted app policy review queue")
                 JSONObject(serialized)
             } catch (exception: Exception) {
                 throw IOException("The app policy review queue is malformed.", exception)
@@ -311,7 +315,7 @@ internal class AppPolicyReviewStore(context: Context) {
                 root.opt("inventory_initialized") !is Boolean ||
                 root.opt("known_packages") !is JSONArray ||
                 root.opt("reviewed_packages") !is JSONArray ||
-                root.opt("last_usage_scan_at") !is Number ||
+                (root.opt("last_usage_scan_at") !is Int && root.opt("last_usage_scan_at") !is Long) ||
                 root.opt("pending") !is JSONArray
             ) {
                 throw IOException("The app policy review queue has an unsupported schema.")
@@ -336,7 +340,11 @@ internal class AppPolicyReviewStore(context: Context) {
                     throw IOException("The reviewed app inventory contains an invalid or duplicate package name.")
                 }
             }
-            val lastUsage = root.getLong("last_usage_scan_at")
+            val lastUsage = when (val raw = root.opt("last_usage_scan_at")) {
+                is Int -> raw.toLong()
+                is Long -> raw
+                else -> throw IOException("The app usage scan timestamp must be an integer.")
+            }
             if (lastUsage < 0L) throw IOException("The app usage scan timestamp is invalid.")
             val pendingArray = root.getJSONArray("pending")
             if (pendingArray.length() > MAX_PENDING) throw IOException("The pending app review queue is full.")
@@ -349,13 +357,21 @@ internal class AppPolicyReviewStore(context: Context) {
                         "terms_url", "privacy_url", "other_url"
                     )
                 ) throw IOException("The app review queue item has missing or unsupported fields.")
-                val packageName = item.optString("package_name")
-                val trigger = item.optString("trigger")
-                val firstSeen = item.optLong("first_seen_at", -1L)
-                val lastSeen = item.optLong("last_seen_at", -1L)
-                val terms = item.optString("terms_url")
-                val privacy = item.optString("privacy_url")
-                val other = item.optString("other_url")
+                fun requiredString(key: String): String =
+                    item.opt(key) as? String
+                        ?: throw IOException("The app review queue field '$key' must be a string.")
+                fun requiredLong(key: String): Long = when (val raw = item.opt(key)) {
+                    is Int -> raw.toLong()
+                    is Long -> raw
+                    else -> throw IOException("The app review queue field '$key' must be an integer.")
+                }
+                val packageName = requiredString("package_name")
+                val trigger = requiredString("trigger")
+                val firstSeen = requiredLong("first_seen_at")
+                val lastSeen = requiredLong("last_seen_at")
+                val terms = requiredString("terms_url")
+                val privacy = requiredString("privacy_url")
+                val other = requiredString("other_url")
                 if (!isValidPackageName(packageName) || trigger !in setOf("installed", "opened") ||
                     firstSeen <= 0L || lastSeen < firstSeen
                 ) throw IOException("The app review queue contains invalid event metadata.")
@@ -371,6 +387,12 @@ internal class AppPolicyReviewStore(context: Context) {
                         PendingAppPolicyReview(packageName, trigger, firstSeen, lastSeen, terms, privacy, other)
                     ) != null
                 ) throw IOException("The app review queue contains duplicate packages.")
+            }
+            if (!known.containsAll(reviewed)) {
+                throw IOException("The reviewed app set contains packages outside the known launcher inventory.")
+            }
+            if (pending.keys.any { it !in known || it in reviewed }) {
+                throw IOException("The pending app queue is inconsistent with the known or reviewed inventory.")
             }
             return AppPolicyReviewState(
                 root.getBoolean("inventory_initialized"),

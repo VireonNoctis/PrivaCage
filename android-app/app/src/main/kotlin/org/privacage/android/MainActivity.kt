@@ -1259,7 +1259,7 @@ class MainActivity : Activity() {
                         .setTitle("App privacy review")
                         .setMessage(
                             capture.newPendingCount.toString() +
-                                " newly observed or opened app(s) are waiting for a Terms and Privacy Policy review. " +
+                                " newly observed apps or recent Usage Access app-open observations are waiting for a Terms and Privacy Policy review. " +
                                 "The prompt appears when you return to PrivaCage; Android does not let an ordinary app safely overlay another app."
                         )
                         .setNegativeButton("Later", null)

@@ -32,12 +32,13 @@ class AppPolicyReviewActivity : Activity() {
         })
         root.addView(body(
             "PrivaCage watches only launcher-visible packages. New installs are detected the next time you return to PrivaCage. " +
-                "App-open detection requires Android's separate Usage Access permission. Any prompt is shown when you return to PrivaCage; " +
-                "ordinary apps cannot safely place an overlay over another app."
+                "App-open detection requires Android's separate Usage Access permission and checks only a bounded recent 24-hour event window. Android retains usage events for only a few days, so this is not a complete usage history. " +
+                "Any prompt is shown when you return to PrivaCage; ordinary apps cannot safely place an overlay over another app."
         ))
         root.addView(body(
             "There is no universal policy URL or reliable way to extract every app's Terms and Privacy Policy. Add official HTTPS links below, " +
-                "open them in your browser, then paste the text you want analysed. PrivaCage does not upload an APK or crawl app content."
+                "open them in your browser, then paste the text you want analysed. PrivaCage does not upload an APK or crawl app content. " +
+                "App labels and package IDs are not added automatically to AI requests; paste any context you want sent."
         ))
         root.addView(Button(this).apply {
             text = "Open Android Usage Access settings"
@@ -134,7 +135,7 @@ class AppPolicyReviewActivity : Activity() {
                         textSize = 14f
                     })
                     card.addView(body(item.packageName + "\n" +
-                        (if (item.trigger == "installed") "New launcher-visible app observed (may be newly installed or newly visible)" else "App opened since the previous review") +
+                        (if (item.trigger == "installed") "New launcher-visible app observed (may be newly installed or newly visible)" else "App open observed in the recent Usage Access window") +
                         "\nLast observed: " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.lastSeenAt))))
                     card.addView(Button(this).apply {
                         text = "Review Terms and Privacy Policy"
@@ -238,7 +239,7 @@ class AppPolicyReviewActivity : Activity() {
                     return@setOnClickListener
                 }
                 if (!saveLinks()) return@setOnClickListener
-                chooseDocumentTask(item.packageName, appLabel, text)
+                chooseDocumentTask(text)
             }
         }, matchWidth())
 
@@ -272,7 +273,7 @@ class AppPolicyReviewActivity : Activity() {
         dialog?.show()
     }
 
-    private fun chooseDocumentTask(packageName: String, appLabel: String, text: String) {
+    private fun chooseDocumentTask(text: String) {
         val tasks = arrayOf(
             PrivacyAutomationTask.TERMS_REVIEW,
             PrivacyAutomationTask.PRIVACY_POLICY_REVIEW,
@@ -281,11 +282,10 @@ class AppPolicyReviewActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Choose document type")
             .setItems(tasks.map { it.label }.toTypedArray()) { _, index ->
-                val source = "App: " + appLabel + " (" + packageName + ")\n\n" + text
                 startActivity(
                     Intent(this, ApiAutomationActivity::class.java)
                         .putExtra(ApiAutomationActivity.EXTRA_TASK_ID, tasks[index].id)
-                        .putExtra(ApiAutomationActivity.EXTRA_SOURCE_TEXT, source)
+                        .putExtra(ApiAutomationActivity.EXTRA_SOURCE_TEXT, text)
                 )
             }
             .setNegativeButton("Cancel", null)

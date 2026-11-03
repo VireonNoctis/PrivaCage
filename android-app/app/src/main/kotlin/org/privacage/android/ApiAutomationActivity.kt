@@ -42,13 +42,14 @@ class ApiAutomationActivity : Activity() {
             textSize = 17f
         })
         root.addView(body(
-            "Optional, bring-your-own-key assistance. PrivaCage sends only the text you paste here, after a separate confirmation. " +
-                "It never gives the model tools to change device settings, install apps, submit legal requests, or execute commands."
+            "Optional, bring-your-own-key assistance. After a separate confirmation, PrivaCage sends only the text you paste as user content, alongside fixed task instructions. " +
+                "Your locally stored intended-use note and device data are not attached. The model receives no tools to change device settings, install apps, submit legal requests, or execute commands."
         ))
         root.addView(body(
             "Security: the key is encrypted at rest with a separate Android Keystore AES-256-GCM key and is not included in device sync or backups. " +
                 "It must be available in app memory to make a request, so encryption cannot protect it from a compromised OS, rooted device, or malicious process. " +
-                "The selected provider receives the text you submit and handles it under its own terms and privacy policy. API usage may incur charges."
+                "The intended-use note is local only. The selected provider receives the pasted text, fixed task instructions, authentication data, and ordinary connection metadata under its own terms. API usage may incur charges. " +
+                "OpenAI's official guidance advises against deploying API keys in mobile apps; this direct BYO-key mode is a personal-use convenience, not production secret management. Check the selected provider's current key guidance."
         ))
 
         root.addView(heading("PROVIDER"))
@@ -80,7 +81,7 @@ class ApiAutomationActivity : Activity() {
 
         root.addView(heading("INTENDED USE"))
         purposeInput = EditText(this).apply {
-            hint = "What should this key be used for? (optional note)"
+            hint = "What should this key be used for? (optional note; stored locally only)"
             minLines = 2
             gravity = android.view.Gravity.TOP
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -288,8 +289,8 @@ class ApiAutomationActivity : Activity() {
             append("Model: ").append(credential.model).append('\n')
             append("Task: ").append(selectedTask.label).append('\n')
             append("Text length: ").append(source.length).append(" characters\n\n")
-            append("Only the text in the input field is sent. No app inventory, files, DNS history, or other device data is attached automatically. ")
-            append("The provider may process the text under its own terms. Usage may incur charges.\n\n")
+            append("Only the pasted text is sent as user content, along with fixed task instructions. The intended-use note stays local; no app inventory, package metadata, files, DNS history, or other device data is attached automatically. ")
+            append("The provider receives ordinary request/authentication metadata and may process the text under its own terms. Usage may incur charges.\n\n")
             append(preview).append(suffix)
         }
         AlertDialog.Builder(this)
