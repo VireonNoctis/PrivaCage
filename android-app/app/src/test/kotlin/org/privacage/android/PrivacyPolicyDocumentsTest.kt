@@ -48,6 +48,19 @@ class PrivacyPolicyDocumentsTest {
     }
 
     @Test
+    fun inAppPolicyReaderLoadsPackagedAssetsWithoutAnHttpClient() {
+        val source = File(
+            repositoryRoot,
+            "android-app/app/src/main/kotlin/org/privacage/android/LegalPrivacyActivity.kt"
+        ).readText(Charsets.UTF_8)
+
+        assertTrue(source.contains("assets.open(name)"))
+        assertFalse(source.contains("HttpURLConnection"))
+        assertFalse(source.contains("openConnection("))
+        assertFalse(source.contains("URL("))
+    }
+
+    @Test
     fun authorityPolicyRejectsVoluntaryDisclosureButDoesNotPromiseImmunityFromLaw() {
         val policy = read("AUTHORITY_REQUESTS.md").lowercase()
         assertTrue(policy.contains("does not voluntarily"))

@@ -55,6 +55,15 @@ The Android client has a strict no-product-telemetry policy. CI scans the manife
 
 The six policy documents under `docs/privacy/` are bundled as Android assets. The Legal & Privacy screen reads them locally without contacting a policy server. They remain draft documents until the responsible controller details, contact address, lawful bases, service operators and effective date are completed and legally reviewed.
 
+
+For the privacy-policy asset and no-telemetry regression tests, run from the repository root:
+
+```sh
+go -C shared/go/pcage-tools test ./...
+```
+
+The Android CI workflow also runs `:app:testDebugUnitTest` and builds the debug APK; a successful Go validator test alone is not an Android build result.
+
 ## Build
 
 Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.
