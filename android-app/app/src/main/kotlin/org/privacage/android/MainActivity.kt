@@ -128,6 +128,28 @@ class MainActivity : Activity() {
             text = "Local-first privacy controls. Android still owns OS-level permissions and system telemetry."
             setPadding(0, dp(8), 0, dp(12))
         })
+        root.addView(TextView(this).apply {
+            text = "APP PRIVACY REVIEW & AI AUTOMATIONS"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Optional provider-powered text analysis and a local queue for app Terms, Privacy Policies, and store disclosures. No API key is required for PrivaCage's existing privacy controls."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Review installed and opened apps' policies"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, AppPolicyReviewActivity::class.java))
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Configure API token and automations"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, ApiAutomationActivity::class.java))
+            }
+        }, matchWidth())
+
         root.addView(TextView(this).apply { text = "ANDROID PRIVACY CONTROLS"; textSize = 16f; setPadding(0, dp(8), 0, dp(4)) })
         root.addView(TextView(this).apply {
             text = "These shortcuts open Android's own settings so you can review access and revoke permissions there. PrivaCage cannot override the OS or secretly revoke permissions for other apps."
@@ -1039,6 +1061,7 @@ class MainActivity : Activity() {
         PrivaCageDesign.apply(this, root, contentScroll, statusText)
         contentScroll.addView(root)
         setContentView(contentScroll)
+        root.post { showApiSetupPromptOnce() }
         Thread({
             val historyAvailable = LocalDnsEventHistory.pruneExpired(this@MainActivity)
             runOnUiThread {
@@ -1097,6 +1120,25 @@ class MainActivity : Activity() {
                 (exception.message ?: "storage error") + " No stored sync record was overwritten."
         }
         refreshDevicePrivacySnapshot()
+    }
+
+    private fun showApiSetupPromptOnce() {
+        val onboarding = getSharedPreferences("privacage_ai_onboarding", MODE_PRIVATE)
+        if (onboarding.getBoolean(KEY_API_SETUP_PROMPT_SHOWN, false)) return
+        if (!onboarding.edit().putBoolean(KEY_API_SETUP_PROMPT_SHOWN, true).commit()) return
+
+        AlertDialog.Builder(this)
+            .setTitle("Optional AI setup")
+            .setMessage(
+                "PrivaCage can use an API token you are authorised to use for opt-in text analysis, such as reviewing an app's Terms of Service or Privacy Policy. " +
+                    "This is optional; the app works without a token. Tokens are encrypted at rest with Android Keystore, but are available in memory while a request runs. " +
+                    "Only text you explicitly submit is sent to the selected provider. Follow the provider's current account, age, privacy, and billing terms."
+            )
+            .setNegativeButton("Skip", null)
+            .setPositiveButton("Set up provider") { _, _ ->
+                startActivity(Intent(this, ApiAutomationActivity::class.java))
+            }
+            .show()
     }
 
     private fun requireTrackerCatalogForApkAudit(): Boolean {
@@ -1171,6 +1213,33 @@ class MainActivity : Activity() {
         if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
         if (::vpnStateText.isInitialized) refreshVpnState()
         if (::dnsDiagnosticText.isInitialized) refreshDnsRouteDiagnostic()
+        Thread({
+            val scan = try {
+                AppPolicyReviewMonitor.capture(this@MainActivity) to null
+            } catch (exception: Exception) {
+                null to (exception.message ?: exception.javaClass.simpleName)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val capture = scan.first
+                if (capture != null && capture.newPendingCount > 0) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("App privacy review")
+                        .setMessage(
+                            capture.newPendingCount.toString() +
+                                " newly observed or opened app(s) are waiting for a Terms and Privacy Policy review. " +
+                                "The prompt appears when you return to PrivaCage; Android does not let an ordinary app safely overlay another app."
+                        )
+                        .setNegativeButton("Later", null)
+                        .setPositiveButton("Review apps") { _, _ ->
+                            startActivity(Intent(this@MainActivity, AppPolicyReviewActivity::class.java))
+                        }
+                        .show()
+                } else if (scan.second != null && ::statusText.isInitialized) {
+                    statusText.text = "App policy monitor could not update its encrypted local queue: " + scan.second
+                }
+            }
+        }, "PrivaCage-app-policy-monitor").start()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -3657,6 +3726,7 @@ class MainActivity : Activity() {
     )
 
     companion object {
+        private const val KEY_API_SETUP_PROMPT_SHOWN = "api_setup_prompt_shown_v1"
         private const val REQUEST_VPN_PERMISSION = 4107
         private const val REQUEST_EXPORT_FILE = 4108
         private const val REQUEST_IMPORT_FILE = 4109

@@ -35,6 +35,16 @@ This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `
 - A foreground notification and explicit handling of tunnel I/O/processing errors.
 - A failed upstream query is dropped without intentionally shutting down the whole VPN tunnel.
 
+## Optional API-backed analysis and app policy review
+
+The Android source includes an opt-in, text-only API integration. Run the Android build and unit-test workflow before treating this as release-ready. Users can save one credential per provider for OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI, and Hugging Face Inference. Model IDs are user-selected because availability changes by provider and account. Provider endpoints and authentication formats are fixed in the client; arbitrary custom endpoints are not accepted.
+
+API credentials are stored in a separate app-private file encrypted with AES-256-GCM using an Android Keystore key. The credential vault is not included in device sync or backups. A user must select task permissions before a key can be used. Supported outputs are text analysis and drafts only; requests have no tools, and cannot execute code, change settings, install apps, or submit rights requests. Each request requires a confirmation showing the provider and submitted text. Redirects are refused, responses are size-bounded, and error handling does not retain provider response bodies.
+
+**Important boundary:** encryption protects the stored file, not the API key while it is in process memory or being sent to a provider. Root access, a compromised OS, or malicious code in the app process can expose it. OpenAI explicitly advises against exposing API keys in client-side apps; direct BYO-key mode is therefore an opt-in convenience with a prominent warning, not a claim of server-grade secret protection. The provider receives the text chosen by the user and applies its own data handling terms. No local app data is attached automatically.
+
+The app-policy queue stores launcher-visible package IDs, install/open trigger times and user-supplied HTTPS policy links in its own Android Keystore-encrypted file. New launcher-visible apps are detected on the next PrivaCage foreground/resume. App-open detection requires the user to grant Android's special Usage Access setting. PrivaCage displays a prompt when the user returns to PrivaCage; it does not overlay other apps. Non-launcher apps and packages hidden by Android package visibility may be missed. Policy URLs are user-supplied, opened in the system browser, and document text must be pasted by the user before analysis; the app does not automatically crawl websites or extract another app's private screens.
+
 ## Build
 
 Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.

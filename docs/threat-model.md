@@ -37,6 +37,18 @@ This is a working threat model, not a security audit. Update it as executable co
 - Require evidence for app recommendations and prohibit paid placement.
 - Track request-submission evidence separately from company responses and confirmed deletion.
 
+- API provider credentials and the text selected for remote analysis.
+- App package names, app-open timestamps, and user-supplied policy links in the local review queue.
+- A provider or model processing submitted text beyond the user's expectation.
+- A malicious or compromised app process reading an API key while it is in memory.
+
+## Additional mitigations
+
+- Encrypt API credentials and the app policy review queue with independent AES-GCM envelopes and Android Keystore keys; keep them out of sync and backup.
+- Keep provider endpoints fixed and HTTPS-only, refuse redirects, bound request/response sizes, avoid logging credentials or provider response bodies, and require per-task permission plus an explicit per-request confirmation.
+- Do not give models tool declarations or an execution bridge; model output is explanatory text or a draft only.
+- Disclose that provider-side processing is outside PrivaCage's local storage controls and that Android Keystore cannot protect secrets against a compromised OS or a malicious process with access to the app's runtime.
+
 ## Non-goals and limits
 
 - Protection against a fully compromised OS, kernel, baseband, or malicious firmware.

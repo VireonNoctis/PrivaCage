@@ -57,6 +57,14 @@ cargo clippy --manifest-path shared/rust/pcage-crypto/Cargo.toml --all-targets -
 
 A green static check is evidence only for the invariant it tests. It does not replace Android emulator/device tests, iOS entitlement approval, independent cryptographic review, or a real interoperability test across every shipping implementation.
 
+## Optional AI provider and app-policy review boundary
+
+| Area | Evidence-backed claim | Boundary |
+|---|---|---|
+| User-supplied AI credentials | Android stores a provider-specific credential set in an AES-256-GCM envelope under an Android Keystore key; provider/task permissions are encrypted in the same file. Credentials are excluded from sync and Android backup. | The key is present in process memory for a request and is sent to the selected fixed HTTPS provider endpoint. Keystore hardware backing varies by device. This is not a protection against root, OS compromise, or malicious app code. OpenAI's official guidance says not to expose API keys in client-side apps. |
+| Text automation | The Android client supports provider-specific text request formats for 12 listed providers. Users explicitly select the permitted task, paste text, and confirm the destination before a request. Redirects, arbitrary hosts, model tool declarations and automatic device actions are not supported. | The provider receives the pasted text and applies its own retention and processing terms. This feature does not independently verify model output, perform a legal submission, or change device state. |
+| App install/open policy reminders | Android encrypts a local review queue and detects newly observed launcher-visible packages on PrivaCage resume. App-open reminders use UsageStatsManager only after the user grants the special Usage Access setting. | The prompt appears after returning to PrivaCage; there is no overlay over another app. Hidden/non-launcher apps may be missed. Terms and privacy URLs are user-supplied, and the user must open and paste document text. No automatic app-policy scraping is claimed. |
+
 ## Security change gate
 
 1. New tracker signatures require evidence that supports the exact indicator and a human review of collateral blocking risk.

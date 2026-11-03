@@ -47,12 +47,20 @@ internal object PrivaCageDesign {
         "PRIVACY AUDIT EXPORT",
         "ENCRYPTED DEVICE SYNC",
         "INSTALL QUEUE",
+        "APP PRIVACY REVIEW & AI AUTOMATIONS",
+        "AI PRIVACY AUTOMATIONS",
+        "APP POLICY REVIEW QUEUE",
         "ALTERNATIVE CATALOG"
     )
 
     private val primaryActionLabels = setOf(
         "save configuration",
-        "enable dns filtering"
+        "enable dns filtering",
+        "configure api token and automations",
+        "review installed and opened apps' policies",
+        "save encrypted api token",
+        "review supplied text",
+        "analyse pasted document with ai"
     )
 
     private data class SectionCard(
@@ -332,6 +340,9 @@ internal object PrivaCageDesign {
         "PRIVACY AUDIT EXPORT" -> "AUDIT"
         "ENCRYPTED DEVICE SYNC" -> "SYNC"
         "INSTALL QUEUE" -> "QUEUE"
+        "APP PRIVACY REVIEW & AI AUTOMATIONS" -> "AI & APPS"
+        "AI PRIVACY AUTOMATIONS" -> "AI"
+        "APP POLICY REVIEW QUEUE" -> "APP POLICIES"
         "ALTERNATIVE CATALOG" -> "CATALOG"
         else -> heading
     }

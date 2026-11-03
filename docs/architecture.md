@@ -19,6 +19,14 @@ Catalogue metrics are not device telemetry. The web client does not invent activ
 
 The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
+## Optional provider-backed text analysis
+
+The Android adapter may send only user-selected text to a fixed, allowlisted API provider after a local task-permission check and explicit confirmation. API credentials and the app-policy review queue use separate Android Keystore-backed encrypted files. The AI client is an output-only text adapter: no tools, device command bridge, network redirects, automatic document fetching, or automatic legal-request submission. Provider-side handling is governed by that provider's terms, not by the local encryption envelope.
+
+## Android app policy review observations
+
+A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis.
+
 ## Proposed layers
 
 1. Platform adapters collect facts exposed by supported OS APIs.
