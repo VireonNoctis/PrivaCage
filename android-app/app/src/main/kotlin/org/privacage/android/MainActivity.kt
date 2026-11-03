@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     private lateinit var domainsInput: EditText
     private lateinit var domainTestInput: EditText
     private lateinit var statsText: TextView
+    private lateinit var dnsMetricViews: List<PrivaCageRollingMetricView>
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
     private lateinit var vpnStateText: TextView
@@ -559,9 +560,46 @@ class MainActivity : Activity() {
             text = "Privacy-preserving DNS counters"
             setPadding(0, dp(16), 0, 0)
         })
+        dnsMetricViews = listOf(
+            PrivaCageRollingMetricView(this, "BLOCKED REPLIES"),
+            PrivaCageRollingMetricView(this, "UPSTREAM REPLIES"),
+            PrivaCageRollingMetricView(this, "UNSUPPORTED PACKETS"),
+            PrivaCageRollingMetricView(this, "UPSTREAM FAILURES")
+        )
+        val metricGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        for (rowStart in dnsMetricViews.indices step 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            row.addView(
+                dnsMetricViews[rowStart],
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = dp(4)
+                }
+            )
+            row.addView(
+                dnsMetricViews[rowStart + 1],
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(4)
+                }
+            )
+            metricGrid.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+        }
+        root.addView(metricGrid, matchWidth())
         statsText = TextView(this).apply {
-            textSize = 13f
-            setPadding(0, dp(4), 0, dp(4))
+            text = "Current/last VPN session aggregate totals, separate from optional local event history. Active-session values update in batches and flush again when the tunnel stops. These counters describe DNS-core outcomes; they do not prove that Android delivered every reply."
+            textSize = 12f
+            setPadding(0, dp(5), 0, dp(4))
         }
         root.addView(statsText, matchWidth())
         root.addView(Button(this).apply {
@@ -3240,19 +3278,10 @@ class MainActivity : Activity() {
 
     private fun refreshDnsStats() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
-        statsText.text = buildString {
-            append("Current/last VPN session aggregate totals (separate from optional local event history):\n")
-            append("Blocked replies prepared: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
-            append("\nUpstream replies prepared: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
-            append("\nUnsupported or malformed packets: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
-            append("\nUpstream failures/timeouts: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
-            append("\nActive-session counts update in batches and flush again when the tunnel stops.")
-            append("\nCounters reflect DNS-core outcomes, not proof that Android delivered every reply.")
-        }
+        dnsMetricViews[0].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
+        dnsMetricViews[1].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
+        dnsMetricViews[2].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
+        dnsMetricViews[3].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
     }
 
     private fun promptExportPassphrase() {
