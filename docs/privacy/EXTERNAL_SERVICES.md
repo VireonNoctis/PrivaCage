@@ -15,6 +15,14 @@ The user-provided token is encrypted locally with Android Keystore-backed AES-25
 
 The list is explicit, not a claim that every AI company shares one protocol. Providers that use different authentication schemes, such as signed regional requests, require a separate adapter.
 
+### API compatibility notes (official documentation checked 3 November 2026)
+
+- Together AI's current Chat Completions example uses `https://api.together.ai/v1/chat/completions`; the Android adapter is pinned to that host and refuses redirects. [Together AI API reference](https://docs.together.ai/reference/chat-completions)
+- The Gemini adapter currently uses the `generateContent` REST surface. Google's current documentation recommends the Interactions API for new projects; migration is a tracked compatibility task, not a claim that the older surface is the preferred new-project API. The adapter sends no tools or function declarations. [Gemini generateContent reference](https://ai.google.dev/api/generate-content) · [Gemini Interactions guide](https://ai.google.dev/gemini-api/docs/interactions)
+- The xAI adapter uses the stateless Chat Completions compatibility surface. xAI now identifies Responses as its primary interface and Chat Completions as its predecessor; migration must preserve the adapter's text-only, no-tools boundary. [xAI Chat API reference](https://docs.x.ai/developers/rest-api-reference/inference/chat)
+- OpenAI Chat Completions remains an explicit compatibility path; the app does not claim to implement every provider's newest API surface. [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+- Provider model IDs and supported request parameters vary. The client sends a bounded, non-streaming text request and does not retry, change model parameters, follow redirects, or fall back to another provider when a model rejects the request. [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create) · [Cohere v2 Chat API](https://docs.cohere.com/v2/reference/chat) · [Mistral API](https://docs.mistral.ai/api) · [Groq API](https://console.groq.com/docs/api-reference) · [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion) · [OpenRouter API](https://openrouter.ai/developers) · [Fireworks Chat Completions](https://docs.fireworks.ai/api-reference/post-chatcompletions) · [Hugging Face Chat Completion](https://huggingface.co/docs/inference-providers/tasks/chat-completion)
+
 ## 2. DNS resolver
 
 The user supplies the resolver address. While DNS filtering is active, supported domain queries are sent to that resolver. The resolver can see the query name, record type and the network source address as observed by the resolver. DNS-over-TLS protects the connection in transit and verifies the certificate hostname but does not hide query contents from the resolver.

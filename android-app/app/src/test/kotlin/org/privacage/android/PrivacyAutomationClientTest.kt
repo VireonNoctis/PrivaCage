@@ -51,7 +51,7 @@ class PrivacyAutomationClientTest {
             ApiProvider.DEEPSEEK to "https://api.deepseek.com/",
             ApiProvider.OPENROUTER to "https://openrouter.ai/",
             ApiProvider.XAI to "https://api.x.ai/",
-            ApiProvider.TOGETHER to "https://api.together.xyz/",
+            ApiProvider.TOGETHER to "https://api.together.ai/",
             ApiProvider.FIREWORKS to "https://api.fireworks.ai/",
             ApiProvider.HUGGING_FACE to "https://router.huggingface.co/"
         )
@@ -64,6 +64,10 @@ class PrivacyAutomationClientTest {
             assertTrue(request.endpoint.startsWith(expectedPrefix))
             assertTrue(request.endpoint.startsWith("https://"))
         }
+        assertEquals(
+            "https://api.together.ai/v1/chat/completions",
+            ApiProvider.TOGETHER.endpoint
+        )
     }
 
     @Test

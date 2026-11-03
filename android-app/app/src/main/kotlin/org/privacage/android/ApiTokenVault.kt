@@ -34,7 +34,7 @@ internal enum class ApiProvider(
     DEEPSEEK("deepseek", "DeepSeek", "https://api.deepseek.com/chat/completions", Protocol.OPENAI_COMPATIBLE),
     OPENROUTER("openrouter", "OpenRouter", "https://openrouter.ai/api/v1/chat/completions", Protocol.OPENAI_COMPATIBLE),
     XAI("xai", "xAI", "https://api.x.ai/v1/chat/completions", Protocol.OPENAI_COMPATIBLE),
-    TOGETHER("together", "Together AI", "https://api.together.xyz/v1/chat/completions", Protocol.OPENAI_COMPATIBLE),
+    TOGETHER("together", "Together AI", "https://api.together.ai/v1/chat/completions", Protocol.OPENAI_COMPATIBLE),
     FIREWORKS("fireworks", "Fireworks AI", "https://api.fireworks.ai/inference/v1/chat/completions", Protocol.OPENAI_COMPATIBLE),
     HUGGING_FACE("huggingface", "Hugging Face Inference", "https://router.huggingface.co/v1/chat/completions", Protocol.OPENAI_COMPATIBLE);
 
