@@ -9,7 +9,7 @@ import android.os.Build
 import android.os.Process
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
+import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -79,8 +79,8 @@ internal object AppPolicyReviewEnvelope {
             }
             val result = JSONObject()
                 .put("version", VERSION)
-                .put("iv", Base64.encodeToString(iv, Base64.NO_WRAP))
-                .put("ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+                .put("iv", Base64.getEncoder().encodeToString(iv))
+                .put("ciphertext", Base64.getEncoder().encodeToString(ciphertext))
                 .toString()
             if (result.toByteArray(StandardCharsets.UTF_8).size > MAX_ENVELOPE_BYTES) {
                 throw IOException("The encrypted app review queue exceeds its safety limit.")
@@ -113,12 +113,12 @@ internal object AppPolicyReviewEnvelope {
             throw IOException("The encrypted app policy review queue has an unsupported envelope.")
         }
         val iv = try {
-            Base64.decode(wrapper.getString("iv"), Base64.NO_WRAP)
+            Base64.getDecoder().decode(wrapper.getString("iv"))
         } catch (exception: Exception) {
             throw IOException("The encrypted app policy review queue has an invalid IV.", exception)
         }
         val ciphertext = try {
-            Base64.decode(wrapper.getString("ciphertext"), Base64.NO_WRAP)
+            Base64.getDecoder().decode(wrapper.getString("ciphertext"))
         } catch (exception: Exception) {
             iv.fill(0)
             throw IOException("The encrypted app policy review queue has invalid ciphertext.", exception)
