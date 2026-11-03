@@ -19,6 +19,7 @@ on:
       - ".github/workflows/validate-android-app.yml"
       - ".github/scripts/prepare-performance-baseline.sh"
       - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/capture-performance-environment.sh"
       - ".github/scripts/compare-performance.py"
       - "docs/performance/**"
   pull_request:
@@ -39,6 +40,7 @@ on:
       - ".github/workflows/validate-android-app.yml"
       - ".github/scripts/prepare-performance-baseline.sh"
       - ".github/scripts/run-performance-comparison.sh"
+      - ".github/scripts/capture-performance-environment.sh"
       - ".github/scripts/compare-performance.py"
       - "docs/performance/**"
   workflow_dispatch:
@@ -125,6 +127,15 @@ jobs:
     timeout-minutes: 90
     env:
       PERFORMANCE_BASELINE_SHA: 7649a85dede79c0decf33426655dc246f9c18cc6
+      PERFORMANCE_EMULATOR_API_LEVEL: "35"
+      PERFORMANCE_EMULATOR_TARGET: google_apis
+      PERFORMANCE_EMULATOR_ARCH: x86_64
+      PERFORMANCE_EMULATOR_PROFILE: pixel_6
+      PERFORMANCE_EMULATOR_CORES: "4"
+      PERFORMANCE_EMULATOR_RAM_SIZE: 4096M
+      PERFORMANCE_EMULATOR_HEAP_SIZE: 512M
+      PERFORMANCE_EMULATOR_BOOT_TIMEOUT_SECONDS: "900"
+      PERFORMANCE_EMULATOR_OPTIONS: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none"
     steps:
       - name: Check out PR head with full history
         uses: actions/checkout@v4
@@ -172,15 +183,34 @@ jobs:
       - name: Prepare the pre-optimization worktree
         run: bash .github/scripts/prepare-performance-baseline.sh
 
+      - name: Capture host and toolchain environment
+        run: bash .github/scripts/capture-performance-environment.sh host
+
+      - name: Enable KVM acceleration for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [[ ! -c /dev/kvm || ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo "KVM is not available to the GitHub runner; refusing to run an unaccelerated benchmark." >&2
+            exit 1
+          fi
+          emulator -accel-check
+
       - name: Run baseline/candidate benchmarks
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
+          api-level: ${{ env.PERFORMANCE_EMULATOR_API_LEVEL }}
+          target: ${{ env.PERFORMANCE_EMULATOR_TARGET }}
+          arch: ${{ env.PERFORMANCE_EMULATOR_ARCH }}
+          profile: ${{ env.PERFORMANCE_EMULATOR_PROFILE }}
+          cores: ${{ env.PERFORMANCE_EMULATOR_CORES }}
+          ram-size: ${{ env.PERFORMANCE_EMULATOR_RAM_SIZE }}
+          heap-size: ${{ env.PERFORMANCE_EMULATOR_HEAP_SIZE }}
+          emulator-boot-timeout: ${{ env.PERFORMANCE_EMULATOR_BOOT_TIMEOUT_SECONDS }}
+          disable-linux-hw-accel: false
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: ${{ env.PERFORMANCE_EMULATOR_OPTIONS }}
           script: bash .github/scripts/run-performance-comparison.sh
 
       - name: Upload benchmark data and comparison

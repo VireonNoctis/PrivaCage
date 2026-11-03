@@ -38,6 +38,14 @@ The automated A/B workflow uses a GitHub-hosted x86_64 Android emulator because 
 
 The DNS and Rust runs are likewise relative measurements for the CI runner. Compare baseline and candidate results from the same workflow run; do not compare absolute numbers across unrelated machines or runner types. The summary defines positive change as faster for latency measurements and higher throughput for throughput measurements. Negative change is a regression in that run. No speedup is claimed until real report values exist.
 
+## Emulator bootstrap and measurement provenance
+
+The GitHub Actions benchmark job explicitly enables and verifies KVM before starting the AVD. If the runner cannot access `/dev/kvm`, the job fails at the preflight step instead of spending the benchmark window waiting for an emulator that cannot use hardware acceleration. The AVD configuration is kept in the job environment: API level, Google APIs x86_64 image, Pixel 6 profile, four virtual CPU cores, 4 GiB RAM, 512 MiB heap, a 900-second boot limit and a clean boot without snapshot restore/save.
+
+The job writes `environment.txt` into the benchmark artifact before emulator startup and appends emulator build properties after the device is ready. It records the runner image/architecture, CPU and memory, baseline/candidate commit IDs, Java/Gradle/Rust/Cargo/Android tool versions, configured AVD values and runtime Android build properties. The host portion is still uploaded when emulator startup fails, making a bootstrap failure distinguishable from a benchmark regression.
+
+A missing emulator, missing measurement report or failed assertion remains a failed job. The workflow does not retry benchmark assertions, suppress boot errors or convert missing measurements into a successful comparison. A failed bootstrap produces no performance conclusion; compare median/p95 values only when both baseline and candidate reports exist from the same run.
+
 ## Benchmark implementation
 
 - DNS performance tests are tagged `performance`, run through `:android-core:performanceTest`, and excluded from the regular `:android-core:test` task to avoid making normal unit tests slower.
