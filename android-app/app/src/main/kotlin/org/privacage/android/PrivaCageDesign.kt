@@ -39,6 +39,7 @@ internal object PrivaCageDesign {
     private val ink = 0xFF080808.toInt()
 
     private val sectionHeadings = setOf(
+        "LEGAL & PRIVACY",
         "ANDROID PRIVACY CONTROLS",
         "DEVICE PRIVACY SNAPSHOT (LOCAL ONLY)",
         "PRIVACY HARDENING",
@@ -332,6 +333,7 @@ internal object PrivaCageDesign {
         text?.toString()?.trim()?.uppercase(Locale.ROOT)?.takeIf { it in sectionHeadings }
 
     internal fun navigationLabel(heading: String): String = when (heading) {
+        "LEGAL & PRIVACY" -> "LEGAL"
         "ANDROID PRIVACY CONTROLS" -> "DEVICE"
         "DEVICE PRIVACY SNAPSHOT (LOCAL ONLY)" -> "SNAPSHOT"
         "PRIVACY HARDENING" -> "HARDENING"

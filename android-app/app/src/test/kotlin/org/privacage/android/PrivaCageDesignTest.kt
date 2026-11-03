@@ -29,6 +29,7 @@ class PrivaCageDesignTest {
             "APP POLICY REVIEW QUEUE",
             PrivaCageDesign.sectionHeading("app policy review queue")
         )
+        assertEquals("LEGAL & PRIVACY", PrivaCageDesign.sectionHeading("legal & privacy"))
         assertNull(PrivaCageDesign.sectionHeading("DNS privacy options"))
         assertNull(PrivaCageDesign.sectionHeading(""))
         assertNull(PrivaCageDesign.sectionHeading(null))

@@ -133,3 +133,12 @@ The Windows workspace exposes two intentionally separate control surfaces:
 - `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
 
 The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.
+
+
+## Strict local privacy controls
+
+The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, API credentials, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys.
+
+The Android release is governed by a strict no-product-telemetry policy. Repository CI scans Android build files, the manifest and main Kotlin/Java/XML source for known analytics, advertising, attribution and remote crash-reporting indicators. The check is deliberately described as static regression coverage rather than proof against platform/OEM diagnostics or unknown hand-written collection.
+
+The `docs/privacy/` Markdown policies are packaged as Android assets and rendered by a local-only policy reader. Reading those documents does not call a remote policy endpoint. The documents are draft templates until the responsible controller identity, contact details, lawful bases, actual deployed operators and effective date are supplied and legally reviewed.

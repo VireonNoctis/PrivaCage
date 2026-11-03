@@ -61,3 +61,16 @@ This is a working threat model, not a security audit. Update it as executable co
 ## Safety considerations
 
 Stalkerware signals must be framed carefully: a hidden icon, unusual accessibility permission, or persistence behavior is a review signal, not conclusive proof of abuse. Safety guidance must be cautious because removing software or changing settings can alert an abuser or put a user at greater risk.
+
+
+## No-telemetry, legal-process and local-encryption risks
+
+| Asset / process | Threat | Mitigation and remaining boundary |
+|---|---|---|
+| Local DNS settings, rights tracker and permission baseline | Device storage inspection or offline file modification | Separate AES-256-GCM encrypted preference envelopes, per-purpose Android Keystore keys and authenticated purpose labels. Authentication failures preserve ciphertext. This does not protect plaintext in memory, a rooted/compromised OS, unlocked-device access, or every operational preference. |
+| Product telemetry | Analytics/crash SDK or custom source code added by a future dependency/change | Strict no-telemetry policy and CI scan across Android Gradle dependencies, main Kotlin/Java/XML source and manifest. Manual review remains necessary for unknown SDKs, hand-written requests, platform/OEM diagnostics and transitive behaviour outside the marker list. |
+| Functional network requests | DNS resolver, AI provider, relay, reverse proxy or host observes information needed for the feature | Explicit destination selection/confirmation where appropriate; DNS and AI content boundaries are documented. Provider/host policies and logs remain outside the local client. Relay content is encrypted, but metadata is visible. |
+| Legal demand | Operator is required by applicable law to provide information it holds | No voluntary disclosure; review validity/jurisdiction/scope, challenge or narrow where legally available, disclose only the minimum held data legally required, and notify when lawful/safe. No claim of immunity from valid legal process. |
+| Local key loss | Keystore key invalidated, removed or unavailable | Never generate a replacement for an existing ciphertext record. Preserve the ciphertext and report the error; independent encrypted export/recovery is required where available. |
+
+The project does not build an authority-access API or maintain a central PrivaCage user-account dataset. A separately hosted relay or public web endpoint may have ordinary connection metadata under its operator's control. Third-party AI providers and DNS resolvers are separate recipients. Their own legal obligations and disclosures cannot be controlled by the PrivaCage client.

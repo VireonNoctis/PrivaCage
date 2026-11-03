@@ -33,20 +33,38 @@ internal data class StoredRightsRequest(
 }
 
 /**
- * Stores only request-tracker metadata in app-private preferences. It deliberately never stores
- * draft message text, a user's name/email, identity documents, or submission receipts.
- * A status is user-reported workflow state, not proof that a controller received or complied.
+ * Stores only request-tracker metadata in an AES-GCM encrypted app-private preference.
+ * It deliberately never stores draft message text, a user's name/email, identity documents,
+ * or submission receipts. A status is user-reported workflow state, not proof that a controller
+ * received or complied.
  */
 internal object LocalRightsRequestStore {
     private const val PREFERENCES = "org.privacage.rights.tracker"
     private const val KEY_RECORDS = "records_json"
+    private const val KEY_RECORDS_ENCRYPTED = "records_encrypted_v1"
+    private const val KEY_ALIAS = "org.privacage.android.rights-tracker.aes-gcm.v1"
+    private const val AAD_LABEL = "rights-request-tracker"
     private const val MAX_RECORDS = 100
     private const val MAX_CONTROLLER_LENGTH = 256
     private const val MAX_STORE_BYTES = 512 * 1024
 
     fun list(context: Context): List<StoredRightsRequest> {
-        val raw = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getString(KEY_RECORDS, "[]") ?: "[]"
+        val raw = AndroidSensitivePreferenceVault.read(
+            context = context,
+            preferencesName = PREFERENCES,
+            encryptedKey = KEY_RECORDS_ENCRYPTED,
+            keyAlias = KEY_ALIAS,
+            aadLabel = AAD_LABEL,
+            defaultValue = "[]",
+            maximumPlaintextBytes = MAX_STORE_BYTES,
+            legacyKeys = setOf(KEY_RECORDS),
+            legacyValue = {
+                context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                    .getString(KEY_RECORDS, null)
+                    ?: throw IllegalStateException("The legacy rights-request tracker has no readable value.")
+            },
+            validateValue = { decodeRecords(it) }
+        ) ?: "[]"
         return decodeRecords(raw)
     }
 
@@ -214,10 +232,17 @@ internal object LocalRightsRequestStore {
 
     private fun save(context: Context, records: List<StoredRightsRequest>) {
         val encoded = encodeRecords(records)
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        check(preferences.edit().putString(KEY_RECORDS, encoded).commit()) {
-            "Could not persist the local rights-request tracker."
-        }
+        AndroidSensitivePreferenceVault.write(
+            context = context,
+            preferencesName = PREFERENCES,
+            encryptedKey = KEY_RECORDS_ENCRYPTED,
+            keyAlias = KEY_ALIAS,
+            aadLabel = AAD_LABEL,
+            plaintext = encoded,
+            maximumPlaintextBytes = MAX_STORE_BYTES,
+            legacyKeys = setOf(KEY_RECORDS),
+            validateValue = { decodeRecords(it) }
+        )
     }
 
     private fun decode(item: JSONObject): StoredRightsRequest {

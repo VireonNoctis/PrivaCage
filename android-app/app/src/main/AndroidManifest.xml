@@ -52,6 +52,7 @@
         <activity android:name=".AppAlternativesActivity" android:exported="false" />
         <activity android:name=".ApiAutomationActivity" android:exported="false" />
         <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
+        <activity android:name=".LegalPrivacyActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

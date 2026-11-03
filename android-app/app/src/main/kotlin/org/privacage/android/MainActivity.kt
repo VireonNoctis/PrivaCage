@@ -116,6 +116,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val storedDnsConfiguration = try {
+            LocalDnsConfigurationStore.read(this)
+        } catch (exception: Exception) {
+            null
+        }
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
         var trackerCatalogLoading = true
@@ -128,6 +133,34 @@ class MainActivity : Activity() {
             text = "Local-first privacy controls. Android still owns OS-level permissions and system telemetry."
             setPadding(0, dp(8), 0, dp(12))
         })
+        if (storedDnsConfiguration == null && (
+                prefs.contains(PrivacyDnsVpnService.KEY_RESOLVER_IP) ||
+                    prefs.contains(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS) ||
+                    prefs.contains("dns_configuration_encrypted_v1")
+            )
+        ) {
+            root.addView(TextView(this).apply {
+                text = "Saved DNS settings could not be authenticated or migrated. Existing data was preserved. Do not assume DNS filtering is configured; review the encrypted settings before starting the VPN."
+                textSize = 12f
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        }
+        root.addView(TextView(this).apply {
+            text = "LEGAL & PRIVACY"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Read the app's Terms, Privacy Policy, strict no-telemetry rules, data retention and authority-disclosure policy. Documents are packaged locally."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Read Terms, Privacy Policy and more"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, LegalPrivacyActivity::class.java))
+            }
+        }, matchWidth())
+
         root.addView(TextView(this).apply {
             text = "APP PRIVACY REVIEW & AI AUTOMATIONS"
             textSize = 16f
@@ -322,12 +355,12 @@ class MainActivity : Activity() {
             hint = "Enter a resolver IP you trust"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             setSingleLine(true)
-            setText(prefs.getString(PrivacyDnsVpnService.KEY_RESOLVER_IP, ""))
+            setText(storedDnsConfiguration?.resolverIpv4.orEmpty())
         }
         root.addView(resolverInput, matchWidth())
         dnsOverTlsInput = CheckBox(this).apply {
             text = "Use DNS-over-TLS (encrypted upstream DNS; fails closed)"
-            isChecked = prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)
+            isChecked = storedDnsConfiguration?.dnsOverTlsEnabled ?: false
         }
         root.addView(dnsOverTlsInput, matchWidth())
         root.addView(TextView(this).apply { text = "TLS certificate hostname (required when DNS-over-TLS is enabled)" })
@@ -335,7 +368,7 @@ class MainActivity : Activity() {
             hint = "e.g. dns.google or cloudflare-dns.com"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
-            setText(prefs.getString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, ""))
+            setText(storedDnsConfiguration?.dnsOverTlsHostname.orEmpty())
         }
         root.addView(resolverHostnameInput, matchWidth())
         root.addView(TextView(this).apply {
@@ -462,8 +495,7 @@ class MainActivity : Activity() {
             gravity = Gravity.TOP
             minLines = 4
             maxLines = 10
-            setText(prefs.getStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, emptySet())
-                .orEmpty().sorted().joinToString("\n"))
+            setText(storedDnsConfiguration?.blockedDomains.orEmpty().sorted().joinToString("\n"))
         }
         root.addView(domainsInput, matchWidth())
         root.addView(TextView(this).apply {
@@ -501,7 +533,7 @@ class MainActivity : Activity() {
         })
         root.addView(Button(this).apply {
             text = "Save configuration"
-            setOnClickListener { if (saveConfiguration()) statusText.text = "Configuration saved locally." }
+            setOnClickListener { saveConfiguration() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Enable DNS filtering"
@@ -1745,12 +1777,21 @@ class MainActivity : Activity() {
             .setTitle("Review received settings")
             .setMessage(message)
             .setPositiveButton("Apply these settings") { _, _ ->
-                getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-                    .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
-                    .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
-                    .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
-                    .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
-                    .apply()
+                try {
+                    LocalDnsConfigurationStore.save(
+                        this@MainActivity,
+                        LocalDnsConfiguration(
+                            imported.resolverIpv4,
+                            imported.blockedDomains.toSet(),
+                            imported.dnsOverTlsEnabled,
+                            imported.dnsOverTlsHostname
+                        )
+                    )
+                } catch (exception: Exception) {
+                    syncStatusText.text = "Received settings were not saved: " +
+                        (exception.message ?: exception.javaClass.simpleName)
+                    return@setPositiveButton
+                }
                 resolverInput.setText(imported.resolverIpv4)
                 domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
                 dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
@@ -3409,12 +3450,21 @@ class MainActivity : Activity() {
                     statusText.text = "Import cancelled; existing settings were kept."
                 }
                 .setPositiveButton("Replace settings") { _, _ ->
-                    getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-                        .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
-                        .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
-                        .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
-                        .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
-                        .apply()
+                    try {
+                        LocalDnsConfigurationStore.save(
+                            this@MainActivity,
+                            LocalDnsConfiguration(
+                                imported.resolverIpv4,
+                                imported.blockedDomains.toSet(),
+                                imported.dnsOverTlsEnabled,
+                                imported.dnsOverTlsHostname
+                            )
+                        )
+                    } catch (exception: Exception) {
+                        statusText.text = "Encrypted DNS settings were not replaced: " +
+                            (exception.message ?: exception.javaClass.simpleName)
+                        return@setPositiveButton
+                    }
                     resolverInput.setText(imported.resolverIpv4)
                     domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
                     dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
@@ -3518,12 +3568,17 @@ class MainActivity : Activity() {
         } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return false
         } else ""
-        getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-            .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, resolver)
-            .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, domains)
-            .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, useDot)
-            .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, tlsHostname)
-            .apply()
+        try {
+            LocalDnsConfigurationStore.save(
+                this,
+                LocalDnsConfiguration(resolver, domains, useDot, tlsHostname)
+            )
+        } catch (exception: Exception) {
+            statusText.text = "Encrypted DNS configuration was not saved: " +
+                (exception.message ?: exception.javaClass.simpleName)
+            return false
+        }
+        statusText.text = "DNS configuration encrypted and saved on this device."
         return true
     }
 
@@ -3579,11 +3634,17 @@ class MainActivity : Activity() {
     }
 
     private fun showVpnPreflight() {
-        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
-        val upstreamDescription = if (prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)) {
-            "DNS-over-TLS is enabled. PrivaCage verifies the configured certificate hostname and drops queries if TLS fails; the selected resolver can still see the DNS names."
-        } else {
-            "Plain upstream DNS is selected. Queries from PrivaCage to the resolver are not encrypted."
+        val upstreamDescription = try {
+            when (val configuration = LocalDnsConfigurationStore.read(this)) {
+                null -> "No encrypted DNS configuration is saved yet. Configure and save a resolver and at least one rule before starting filtering."
+                else -> if (configuration.dnsOverTlsEnabled) {
+                    "DNS-over-TLS is enabled. PrivaCage verifies the configured certificate hostname and drops queries if TLS fails; the selected resolver can still see the DNS names."
+                } else {
+                    "Plain upstream DNS is selected. Queries from PrivaCage to the resolver are not encrypted."
+                }
+            }
+        } catch (exception: Exception) {
+            "The encrypted DNS configuration could not be authenticated or read. Filtering will not be started from an unreadable configuration."
         }
         val message = buildString {
             append("Starting PrivaCage may disconnect the VPN you currently use. Android allows only one active VPN service per user/profile.\n\n")

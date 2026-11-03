@@ -55,16 +55,17 @@ class PrivacyDnsVpnService : VpnService() {
         )
 
         try {
-            val prefs = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
-            val resolverText = prefs.getString(KEY_RESOLVER_IP, "").orEmpty()
-            val domains = prefs.getStringSet(KEY_BLOCKED_DOMAINS, emptySet()).orEmpty()
+            val configuration = LocalDnsConfigurationStore.read(this)
+                ?: throw IOException("No encrypted DNS configuration has been saved.")
+            val resolverText = configuration.resolverIpv4
+            val domains = configuration.blockedDomains
             require(isIpv4Address(resolverText)) { "A numeric IPv4 resolver must be configured" }
             require(domains.isNotEmpty()) { "At least one blocked domain must be configured" }
 
             val policy = DnsPolicyEngine(domains)
             val resolverAddress = InetAddress.getByName(resolverText)
-            val dnsOverTlsEnabled = prefs.getBoolean(KEY_DOT_ENABLED, false)
-            val dnsOverTlsHostname = prefs.getString(KEY_DOT_HOSTNAME, "").orEmpty()
+            val dnsOverTlsEnabled = configuration.dnsOverTlsEnabled
+            val dnsOverTlsHostname = configuration.dnsOverTlsHostname
             val forwarder = createForwarder(
                 resolverAddress,
                 dnsOverTlsEnabled,
@@ -111,7 +112,7 @@ class PrivacyDnsVpnService : VpnService() {
                 start()
             }
         } catch (exception: Exception) {
-            Log.e(TAG, "DNS VPN could not start", exception)
+            Log.e(TAG, "DNS VPN could not start; review the on-device status message.")
             running = false
             diagnosticForwarder = null
             closeTunnel()
@@ -158,7 +159,7 @@ class PrivacyDnsVpnService : VpnService() {
                 } catch (exception: IOException) {
                     if (running) {
                         // An upstream timeout should drop one DNS request, not tear down the VPN.
-                        Log.w(TAG, "Upstream DNS request failed; dropping this query while keeping the tunnel active.", exception)
+                        Log.w(TAG, "Upstream DNS request failed; dropping this query while keeping the tunnel active.")
                     }
                     packetsSinceStatsFlush += 1
                     if (packetsSinceStatsFlush >= STATS_FLUSH_PACKET_INTERVAL) {
@@ -188,7 +189,7 @@ class PrivacyDnsVpnService : VpnService() {
                         output.flush()
                     }
                     is DnsTunnelResult.Drop -> {
-                        Log.w(TAG, "Dropped malformed/unsupported DNS packet: " + result.reason)
+                        Log.w(TAG, "Dropped malformed or unsupported DNS packet.")
                     }
                     is DnsTunnelResult.NotDns -> {
                         // The VPN route is limited to the virtual DNS endpoint.
@@ -203,11 +204,11 @@ class PrivacyDnsVpnService : VpnService() {
         } catch (exception: IOException) {
             if (running) {
                 failureMessage = "DNS filtering stopped after a tunnel I/O error."
-                Log.e(TAG, "DNS packet loop stopped after a tunnel I/O failure", exception)
+                Log.e(TAG, "DNS packet loop stopped after a tunnel I/O failure.")
             }
         } catch (exception: RuntimeException) {
             failureMessage = "DNS filtering stopped after an internal packet-processing error."
-            Log.e(TAG, "DNS packet loop stopped after a processing failure", exception)
+            Log.e(TAG, "DNS packet loop stopped after a processing failure.")
         } finally {
             persistStats(engine.stats.snapshot())
             running = false
@@ -300,7 +301,7 @@ class PrivacyDnsVpnService : VpnService() {
                     .putBoolean(KEY_DIAGNOSTIC_NETWORK_CHANGED, networkChanged)
                     .apply()
             } catch (exception: Exception) {
-                Log.e(TAG, "DNS route diagnostic could not complete", exception)
+                Log.e(TAG, "DNS route diagnostic could not complete.")
                 persistDiagnosticFailure(
                     "DNS route diagnostic could not complete (${exception.javaClass.simpleName})."
                 )
@@ -417,7 +418,7 @@ class PrivacyDnsVpnService : VpnService() {
         try {
             active?.close()
         } catch (exception: IOException) {
-            Log.w(TAG, "Error while closing VPN descriptor", exception)
+            Log.w(TAG, "Error while closing VPN descriptor.")
         }
     }
 

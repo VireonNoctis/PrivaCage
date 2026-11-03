@@ -50,14 +50,27 @@ var (
 	telemetryMarkers = []string{
 		"firebase-analytics",
 		"firebase-crashlytics",
+		"firebase-messaging",
+		"firebase-perf",
 		"play-services-ads",
+		"play-services-measurement",
 		"sentry-android",
+		"io.sentry",
 		"bugsnag",
+		"com.bugsnag",
 		"appsflyer",
+		"com.appsflyer",
 		"adjust-android",
+		"com.adjust.sdk",
 		"mixpanel",
+		"com.mixpanel",
 		"amplitude-android",
+		"com.amplitude",
 		"segment-analytics",
+		"io.segment",
+		"posthog",
+		"com.posthog",
+		"com.google.android.gms.permission.AD_ID",
 	}
 )
 
@@ -234,7 +247,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  app-alternatives-report   Report catalogue freshness and affected record IDs")
 	fmt.Fprintln(w, "  tracker-report           Generate the local evidence review report")
 	fmt.Fprintln(w, "  validate-android-backup  Check the declared Android backup posture")
-	fmt.Fprintln(w, "  validate-android-privacy Check sensitive permissions and known telemetry dependency markers")
+	fmt.Fprintln(w, "  validate-android-privacy Check sensitive permissions and known telemetry SDK/advertising markers in the Android manifest, Gradle files, and app source")
 }
 
 func newFlagSet(name string) *flag.FlagSet {
@@ -412,7 +425,7 @@ func runValidateAndroidPrivacy(args []string) int {
 		}
 		return 1
 	}
-	fmt.Fprintln(os.Stdout, "OK: no unreviewed sensitive permissions or known analytics/ad/crash SDK identifiers were found in the checked Android manifest and Gradle files. This static check does not prove the absence of hand-written telemetry or privileged OS/OEM collection.")
+	fmt.Fprintln(os.Stdout, "OK: no unreviewed sensitive permissions or known analytics/ad/crash SDK identifiers were found in the checked Android manifest, Gradle files, and application source. This static check does not prove the absence of hand-written telemetry or privileged OS/OEM collection.")
 	return 0
 }
 
@@ -939,24 +952,32 @@ func validateAndroidDependencies(androidDir string) []string {
 			return nil
 		}
 		name := strings.ToLower(entry.Name())
-		if !strings.HasSuffix(name, ".gradle") && !strings.HasSuffix(name, ".gradle.kts") {
+		isGradleFile := strings.HasSuffix(name, ".gradle") || strings.HasSuffix(name, ".gradle.kts")
+		relativePath, relativeErr := filepath.Rel(androidDir, path)
+		if relativeErr != nil {
+			errorsFound = append(errorsFound, fmt.Sprintf("cannot resolve Android source path %s: %v", path, relativeErr))
+			return nil
+		}
+		inApplicationSource := strings.Contains(filepath.ToSlash(relativePath), "/src/main/") &&
+			(strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".java") || strings.HasSuffix(name, ".xml"))
+		if !isGradleFile && !inApplicationSource {
 			return nil
 		}
 		content, readErr := os.ReadFile(path)
 		if readErr != nil {
-			errorsFound = append(errorsFound, fmt.Sprintf("cannot read Gradle file %s: %v", path, readErr))
+			errorsFound = append(errorsFound, fmt.Sprintf("cannot read Android build/source file %s: %v", path, readErr))
 			return nil
 		}
 		lowerContent := strings.ToLower(string(content))
 		for _, marker := range telemetryMarkers {
 			if strings.Contains(lowerContent, marker) {
-				errorsFound = append(errorsFound, fmt.Sprintf("known telemetry SDK marker %q found in %s", marker, path))
+				errorsFound = append(errorsFound, fmt.Sprintf("known telemetry SDK or advertising identifier marker %q found in %s", marker, path))
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		errorsFound = append(errorsFound, fmt.Sprintf("cannot scan Android Gradle files under %s: %v", androidDir, err))
+		errorsFound = append(errorsFound, fmt.Sprintf("cannot scan Android build/source files under %s: %v", androidDir, err))
 	}
 	sort.Strings(errorsFound)
 	return errorsFound
