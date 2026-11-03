@@ -48,6 +48,9 @@ Features do not all have the same maturity. A coded path is not the same as a te
 | Metadata inspection/scrubbing | Rust core + Android UI | Handles JPEG, PNG and WebP with bounded parsing and output verification; it is not a universal metadata or visual-content anonymizer. |
 | Signed audit checkpoint comparison | Android + Web, local-only | Verifies both signatures, payload digests and record chains before comparing same-key, same-scope hash sequences. It cannot establish identity, trusted time or event completeness. |
 | Privacy-rights drafts | Android local workflow | Produces user-reviewed UK GDPR / California CCPA drafts and a user-guided DROP checklist. Nothing is sent automatically; legal review is required before release. |
+| Optional AI text analysis | Implemented in PR #24; CI validation pending | User-pasted text plus fixed task instructions only; fixed HTTPS provider endpoints, per-task permissions, explicit confirmation and an encrypted local BYO-key vault. Not production secret management. |
+| App policy review queue | Implemented in PR #24; CI validation pending | New launcher-visible apps detected on resume; app-open observations require Usage Access and are bounded to the recent 24-hour window. Policy text is pasted manually. |
+| Selected sensitive-store encryption | Android implementation; device verification pending | Separate Android Keystore AES-GCM stores protect selected DNS, rights, permission-baseline, AI-token and app-review data; not every operational preference or exported checkpoint is encrypted. |
 | Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
 | Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |
 | Web console | Svelte 5 + TypeScript, Rust/Axum API | Displays tracker intelligence. It is not yet a live-device event ingestion dashboard. |
@@ -63,6 +66,8 @@ Features do not all have the same maturity. A coded path is not the same as a te
 - Optional local DNS event history, disabled by default, encrypted at rest with an AES-GCM key in Android Keystore, with bounded retention controls; recorded events include the hostname, decision, and best-effort socket-owner label.
 - Encrypted profile export/import through Android's document picker.
 - Local metadata inspection and separate cleaned copies for supported image formats.
+- Optional provider-backed text analysis after explicit confirmation; only pasted text and fixed task instructions are sent, not the local intended-use note or app/package metadata.
+- A local encrypted app-policy review queue for launcher-visible package changes; optional app-open observations require Usage Access and use a bounded recent 24-hour window.
 - A read-only, on-device status review for three named Google service/store packages, with handoff to Android's own app-info settings; it does not force-disable packages.
 - Windows baseline reports and policy changes that can be verified and restored.
 
