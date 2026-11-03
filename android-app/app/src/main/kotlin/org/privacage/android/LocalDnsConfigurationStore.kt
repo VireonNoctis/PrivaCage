@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.dns.DnsPolicyEngine
+import org.privacage.dns.DnsOverTlsForwarder
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
