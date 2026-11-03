@@ -23,7 +23,6 @@ For local-only use, the project maintainer does not receive:
 - app-policy review queue contents;
 - rights-request tracker metadata;
 - local APK inspection results or media metadata findings;
-- AI API tokens;
 - sync private keys or readable sync profile payloads; or
 - local audit checkpoint files.
 
@@ -67,11 +66,11 @@ Where a project operator actually operates a public endpoint and holds the relev
 
 The project does not hold a PrivaCage user account list, local DNS history, device app inventory, rights-request tracker, AI token, device private sync key or plaintext sync profile from the default local-only Android installation. The relay's stored packet bytes are encrypted for recipients; a relay operator cannot make them readable using the relay database alone.
 
-This is a description of the intended repository implementation, not a guarantee about a separately configured reverse proxy, cloud host, DNS resolver, AI provider or another operator. Those providers may possess additional records and must be assessed under their own notices and legal obligations.
+This is a description of the intended repository implementation, not a guarantee about a separately configured reverse proxy, cloud host, DNS resolver or another operator. Those providers may possess additional records and must be assessed under their own notices and legal obligations.
 
 ### 2.5 Information submitted to third parties by the user
 
-If the user confirms an AI request, the selected AI provider receives the text and API authentication information needed to process it. If the user uses a DNS resolver, that resolver receives DNS questions. If the user opens an external web page, that destination receives the ordinary connection metadata. Those providers may be subject to their own legal requests.
+If the user uses a DNS resolver, that resolver receives DNS questions. If the user opens an external web page, that destination receives the ordinary connection metadata. Those operators may be subject to their own legal requests.
 
 PrivaCage cannot promise what a separate provider will disclose under its own valid legal process. The user should review that provider's current policy and legal-disclosure transparency before sending sensitive information.
 
@@ -101,7 +100,7 @@ The actual legal result depends on the authority, legal instrument, jurisdiction
 
 ## 5. Our limits
 
-- We cannot protect data that the user has already sent to an AI provider, resolver, browser, store, relay operator or another recipient.
+- We cannot protect data that the user has already sent to a resolver, browser, store, relay operator or another recipient.
 - We cannot control a user's device being seized or accessed while unlocked.
 - We cannot promise that Android, an OEM, a carrier, a network operator or a hosting provider has no logs.
 - We cannot provide plaintext sync data from ciphertext stored by the relay if the relevant private keys are not held by that operator.

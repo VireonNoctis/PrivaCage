@@ -13,6 +13,7 @@ import android.view.animation.Animation
 import android.view.animation.AnimationSet
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.TranslateAnimation
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextSwitcher
 import android.widget.TextView
@@ -36,6 +37,11 @@ internal class PrivaCageRollingMetricView(
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
+    private val digitScroller = HorizontalScrollView(context).apply {
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
     private val slots = mutableListOf<DigitSlot>()
     private var currentText: String? = null
     private var currentValue: Long? = null
@@ -45,16 +51,16 @@ internal class PrivaCageRollingMetricView(
         minimumHeight = dp(84)
         setPadding(dp(13), dp(11), dp(13), dp(10))
         background = GradientDrawable().apply {
-            setColor(0xFF151515.toInt())
-            cornerRadius = dp(15).toFloat()
-            setStroke(dp(1), 0xFF303030.toInt())
+            setColor(Color.BLACK)
+            cornerRadius = dp(6).toFloat()
+            setStroke(dp(1), Color.WHITE)
         }
 
         addView(TextView(context).apply {
             text = label
             textSize = 9f
             letterSpacing = 0.075f
-            setTextColor(0xFF898989.toInt())
+            setTextColor(Color.WHITE)
             typeface = Typeface.create("monospace", Typeface.BOLD)
             includeFontPadding = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -63,7 +69,11 @@ internal class PrivaCageRollingMetricView(
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        addView(digitRow, LayoutParams(
+        digitScroller.addView(digitRow, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        addView(digitScroller, LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(42)
         ).apply {
@@ -80,6 +90,7 @@ internal class PrivaCageRollingMetricView(
 
         if (previous == null || previous.length != formatted.length) {
             rebuildDigits(formatted)
+            digitScroller.post { digitScroller.fullScroll(View.FOCUS_RIGHT) }
         } else if (previous != formatted) {
             val positionsMatch = previous.indices.all { index ->
                 previous[index].isDigit() == formatted[index].isDigit()
@@ -97,7 +108,7 @@ internal class PrivaCageRollingMetricView(
                     }
                     switcher.inAnimation = digitAnimation(entering = true, increasing = increasing)
                     switcher.outAnimation = digitAnimation(entering = false, increasing = increasing)
-                    switcher.setText(nextCharacter.toString())
+                    switcher.setText(brailleDigit(nextCharacter))
                 }
             }
         }
@@ -110,6 +121,15 @@ internal class PrivaCageRollingMetricView(
     private fun rebuildDigits(formatted: String) {
         digitRow.removeAllViews()
         slots.clear()
+        digitRow.addView(TextView(context).apply {
+            text = "⠼"
+            textSize = 25f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LayoutParams(dp(22), dp(42)))
 
         formatted.forEach { character ->
             if (character.isDigit()) {
@@ -126,20 +146,20 @@ internal class PrivaCageRollingMetricView(
                     }
                     inAnimation = digitAnimation(entering = true, increasing = true)
                     outAnimation = digitAnimation(entering = false, increasing = true)
-                    setCurrentText(character.toString())
+                    setCurrentText(brailleDigit(character))
                 }
-                digitRow.addView(switcher, LayoutParams(dp(21), dp(42)))
+                digitRow.addView(switcher, LayoutParams(dp(26), dp(42)))
                 slots += DigitSlot(switcher)
             } else {
                 digitRow.addView(TextView(context).apply {
-                    text = character.toString()
-                    textSize = 23f
+                    text = if (character == ',') "⠂" else character.toString()
+                    textSize = 21f
                     gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
                     typeface = Typeface.create("monospace", Typeface.NORMAL)
                     includeFontPadding = false
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }, LayoutParams(dp(12), dp(42)))
+                }, LayoutParams(dp(20), dp(42)))
                 slots += DigitSlot(null)
             }
         }
@@ -169,6 +189,22 @@ internal class PrivaCageRollingMetricView(
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
+}
+
+internal fun brailleDigit(character: Char): String {
+    require(character in '0'..'9') { "Braille digit formatting accepts decimal digits only." }
+    return listOf("⠚", "⠁", "⠃", "⠉", "⠙", "⠑", "⠋", "⠛", "⠓", "⠊")[character.digitToInt()]
+}
+
+internal fun formatBrailleCounterValue(value: Long): String {
+    val formatted = formatCounterValue(value)
+    return "⠼" + formatted.map { character ->
+        when {
+            character in '0'..'9' -> brailleDigit(character)
+            character == ',' -> "⠂"
+            else -> character.toString()
+        }
+    }.joinToString("")
 }
 
 internal fun formatCounterValue(value: Long): String {

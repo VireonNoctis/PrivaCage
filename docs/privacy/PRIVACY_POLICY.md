@@ -20,7 +20,7 @@ A person who independently hosts a PrivaCage relay, website, reverse proxy or ot
 
 PrivaCage is designed to operate locally by default. The Android app does not require a PrivaCage account. The project does not intentionally collect a user's name, email address, telephone number, contacts, advertising ID, location history or identity documents through an account system.
 
-The Android client has no product analytics, advertising, session-replay or remote crash-reporting SDK. It does not silently upload local privacy reports, app inventories, permission snapshots, DNS history, rights-request metadata, API credentials or sync private keys to a PrivaCage analytics service.
+The Android client has no product analytics, advertising, session-replay or remote crash-reporting SDK. It does not silently upload local privacy reports, app inventories, permission snapshots, DNS history, rights-request metadata, local policy links or sync private keys to a PrivaCage analytics service.
 
 This is not a claim that the whole device or all network activity is invisible. Android, device manufacturers, mobile operators, Wi-Fi/network operators and the external services the user selects may process their own data. Some app features intentionally send specific requests to destinations chosen or confirmed by the user.
 
@@ -33,7 +33,6 @@ The current Android implementation can store the following information locally:
 - **Permission-audit baseline:** launcher-visible package identifiers, dangerous permission names and boolean grant states, with a device-clock capture timestamp. The comparison baseline is encrypted at rest. This is not a complete device inventory and does not record actual sensor use.
 - **App policy review queue:** launcher-visible package identifiers, observed install/open trigger and timestamps, plus policy URLs entered by the user. This queue is encrypted at rest. App-open observation requires the user's separate Android Usage Access grant and checks only a bounded recent 24-hour event window; it is not a complete usage history.
 - **Rights-request tracker:** jurisdiction, the right being tracked, controller name entered by the user, preparation/receipt/deadline dates and a user-managed status. The draft request text, user's name/email, identity documents and submission receipts are not stored by this tracker. Its metadata store is encrypted at rest.
-- **AI provider credentials:** a user-supplied API token, selected model, purpose note and permitted task list. Tokens are encrypted at rest and are not included in PrivaCage sync or Android backup. A token must be present in app memory and sent to the selected provider when the user makes a request.
 - **Encrypted sync identity:** local identity keys and relay configuration are held in an Android Keystore-protected encrypted record. The protocol's device private keys are not uploaded in readable form.
 - **Other operational preferences:** aggregate DNS counters, feature toggles, lifecycle status and diagnostic UI state may be stored in app-private preferences. These are not uploaded by PrivaCage, but not every operational preference is currently covered by the dedicated AES-GCM stores.
 
@@ -49,13 +48,7 @@ When the user starts DNS filtering, the supported DNS queries are forwarded to t
 
 The app's DNS route is limited to supported DNS traffic addressed to its virtual endpoints. It does not cover every app-owned DoH/DoQ request, arbitrary tunnel, direct-IP connection, or general device packet. The resolver is selected/configured by the user and is not automatically operated by PrivaCage.
 
-### 4.2 AI provider
-
-If the user saves a supported provider API token, selects an allowed task, pastes text and confirms a request, PrivaCage sends only that pasted text as user content, together with fixed task instructions, to the chosen provider's fixed HTTPS API endpoint. The provider receives the text, API credential/authentication information and ordinary network connection metadata such as the source IP address. The locally stored intended-use note and app label/package ID are not attached automatically.
-
-No installed-app inventory, DNS history, rights tracker, files or other device state is attached automatically. The provider applies its own privacy notice, terms, retention, account and billing rules. The user should not paste information they are not authorised to share. OpenAI's official guidance advises against deploying API keys in mobile apps; direct BYO-key use is a personal-use convenience, not recommended production key management. See the [OpenAI API key safety guidance](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety), checked 3 November 2026.
-
-### 4.3 Optional encrypted sync relay
+### 4.2 Optional encrypted sync relay
 
 If the user configures and uses a relay, the Android client sends signed, recipient-encrypted packets to that relay. The relay stores opaque packet bytes and does not decrypt the payload.
 
@@ -63,11 +56,11 @@ The relay can still see operational metadata, including space ID, message ID, ti
 
 The repository relay defaults to loopback. It is not a central PrivaCage account service. A public relay is independently deployed and operated by whoever configures it.
 
-### 4.4 External links and distribution
+### 4.3 External links and distribution
 
 When the user opens a policy link, official source, app store or other external website, the destination and the browser/OS receive the ordinary information needed to make that connection. Those destinations are not controlled by PrivaCage.
 
-### 4.5 Web workspace
+### 4.4 Web workspace
 
 The repository web workspace is a static catalogue console and a separate Rust/Axum API. The API binds to loopback by default and serves the embedded tracker catalogue and derived catalogue summaries/capabilities. It is not connected to an Android device or a live telemetry stream. If someone publicly deploys it, that operator's host, reverse proxy and network infrastructure may process connection logs under their own configuration.
 
@@ -79,7 +72,7 @@ CI scans the Android manifest, Gradle files and application source for known ana
 
 ## 6. Purposes and legal bases
 
-The feature purposes are described above: local privacy auditing, user-configured DNS filtering, local app-policy reminders, local rights-request tracking, user-requested AI text analysis, and user-configured encrypted sync.
+The feature purposes are described above: local privacy auditing, user-configured DNS filtering, local app-policy reminders, local rights-request tracking, and user-configured encrypted sync.
 
 **The controller must complete this section before publication.** The exact Article 6 GDPR lawful basis (and, if applicable, any Article 9 condition) must be determined for each operation based on who controls the released service and what processing actually occurs. Do not assume that every optional feature relies on consent or that a local-only operation necessarily creates a controller relationship with the project maintainer.
 
@@ -89,7 +82,6 @@ PrivaCage does not sell personal data or share it with data brokers. The app doe
 
 Recipients may include only the external destination selected for a feature:
 - the DNS resolver configured by the user;
-- the AI provider selected by the user;
 - the relay host configured by the user;
 - an external browser, app store or source website opened by the user; and
 - the host/reverse-proxy operator of any public web or relay deployment.
@@ -100,7 +92,7 @@ Those operators may be located outside the EEA. The relevant operator must expla
 
 Local records remain on the device until their feature-specific deletion, expiry or replacement rule runs, or the user clears/uninstalls the app. See Data Retention and Encryption for the detailed limits and exceptions.
 
-PrivaCage cannot delete a DNS provider's query logs, AI provider's request records, an external website's access logs, or relay-host logs on the user's behalf. Users must use the relevant operator's own controls or contact that operator.
+PrivaCage cannot delete a DNS provider's query logs, an external website's access logs, or relay-host logs on the user's behalf. Users must use the relevant operator's own controls or contact that operator.
 
 ## 9. Security
 

@@ -47,10 +47,9 @@
         <package android:name="com.android.vending" />
     </queries>
     <application android:allowBackup="false" android:label="PrivaCage" android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/PrivaCageTheme">
         <profileable android:shell="true" tools:targetApi="29" />
         <activity android:name=".AppAlternativesActivity" android:exported="false" />
-        <activity android:name=".ApiAutomationActivity" android:exported="false" />
         <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
         <activity android:name=".LegalPrivacyActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">

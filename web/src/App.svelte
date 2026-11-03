@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import RollingNumber from './lib/RollingNumber.svelte';
+  import BrailleSpinner from './lib/BrailleSpinner.svelte';
   import AuditCheckpointComparison from './lib/AuditCheckpointComparison.svelte';
   import { verifyAuditCheckpoint, type AuditCheckpointReport } from './lib/audit-checkpoint';
   import {
@@ -328,7 +329,11 @@
         </div>
         <div class="device-pill"><span class="device-pill-dot"></span> DEVICE NOT LINKED</div>
         <button class="icon-button refresh-button" type="button" onclick={refreshWorkspace} disabled={loading} aria-label="Refresh workspace">
-          <span class:spin={loading} class="refresh-glyph" aria-hidden="true">↻</span>
+          {#if loading}
+            <BrailleSpinner label="Checking workspace" />
+          {:else}
+            <span class="refresh-glyph" aria-hidden="true">↻</span>
+          {/if}
           <span class="refresh-text">{loading ? 'Checking' : 'Refresh'}</span>
         </button>
       </div>
@@ -431,7 +436,7 @@
                 {/each}
               </div>
             {:else if loading}
-              <div class="loading-state"><span class="braille-loader" aria-hidden="true">⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏</span><span>Reading canonical catalogue…</span></div>
+              <div class="loading-state"><BrailleSpinner label="Reading canonical catalogue" /><span>Reading canonical catalogue…</span></div>
             {:else}
               <div class="inline-empty">Catalogue counts are unavailable until the Rust API responds.</div>
             {/if}
@@ -523,7 +528,7 @@
         <div class="directory-meta"><span>{catalog ? filteredEntries.length + ' MATCHING RECORDS' : 'CATALOGUE UNAVAILABLE'}</span><span>ACTIVE ≠ CONFIRMED TRACKING</span></div>
 
         {#if loading && !catalog}
-          <div class="empty-state"><span class="braille-loader" aria-hidden="true">⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏</span><h2>Loading source catalogue</h2><p>Reading tracker intelligence from the Rust API.</p></div>
+          <div class="empty-state"><BrailleSpinner label="Loading source catalogue" /><h2>Loading source catalogue</h2><p>Reading tracker intelligence from the Rust API.</p></div>
         {:else if !catalog}
           <div class="empty-state"><span class="empty-glyph" aria-hidden="true">⠿</span><h2>Catalogue unavailable</h2><p>The source data did not load. Retry the API connection; no local demo entries were substituted.</p><button class="button button--light" type="button" onclick={refreshWorkspace}>Retry connection ↻</button></div>
         {:else if filteredEntries.length === 0}

@@ -19,13 +19,9 @@ Catalogue metrics are not device telemetry. The web client does not invent activ
 
 The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
-## Optional provider-backed text analysis
-
-The Android adapter may send only user-pasted text as user content to a fixed, allowlisted API provider after a local task-permission check and explicit confirmation; fixed task instructions accompany it. The locally stored intended-use note and app label/package metadata are not attached automatically. API credentials and the app-policy review queue use separate Android Keystore-backed encrypted files. The AI client is an output-only text adapter: no tools, device command bridge, network redirects, automatic document fetching, or automatic legal-request submission. Provider-side handling is governed by that provider's terms, not by the local encryption envelope.
-
 ## Android app policy review observations
 
-A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. A scan fails closed and preserves the prior queue if Android omits PrivaCage's own launcher entry or returns no other launcher-visible packages; an empty result is not treated as mass-uninstall evidence. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis. App labels and package IDs are not appended to provider requests.
+A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. A scan fails closed and preserves the prior queue if Android omits PrivaCage's own launcher entry or returns no other launcher-visible packages; an empty result is not treated as mass-uninstall evidence. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. The user supplies HTTPS policy URLs, saves them locally, and opens them in the system browser. PrivaCage does not fetch, store, extract or upload policy text. The encrypted queue contains package identifiers, observation metadata, URLs and review status only.
 
 ## Proposed layers
 
@@ -137,7 +133,7 @@ The `pcage-audit debloat` command only launches the upstream entry point. It doe
 
 ## Strict local privacy controls
 
-The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, API credentials, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys.
+The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys.
 
 The Android release is governed by a strict no-product-telemetry policy. Repository CI scans Android build files, the manifest and main Kotlin/Java/XML source for known analytics, advertising, attribution and remote crash-reporting indicators. The check is deliberately described as static regression coverage rather than proof against platform/OEM diagnostics or unknown hand-written collection.
 

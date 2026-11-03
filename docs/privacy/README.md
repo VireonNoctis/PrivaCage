@@ -14,7 +14,7 @@ Do not publish these documents as the final legal terms until the project owner 
 - **Contact:** replace [PRIVACY CONTACT EMAIL] and [POSTAL ADDRESS] with monitored, valid contact details.
 - **DPO / representative:** determine whether a Data Protection Officer or EU/EEA representative is legally required. Do not invent an appointment or say that one exists unless it does.
 - **Lawful bases:** have the controller document a lawful basis for each processing operation. Do not assume consent, contract, or legitimate interests without analysing the actual facts.
-- **Service inventory:** identify any production website host, reverse proxy, relay operator, AI providers recommended or preconfigured in the app, support channels, app-store distribution, and any other actual recipient. The current Android BYO-key model sends requests directly to the provider selected by the user.
+- **Service inventory:** identify any production website host, reverse proxy, relay operator, support channels, app-store distribution, and any other actual recipient. The Android app does not include remote AI-provider integrations; policy links are opened by the user in the system browser.
 - **Deployment:** state which relay endpoints, if any, are operated by the project owner. The repository relay defaults to loopback and is not itself a centrally operated PrivaCage user-account service.
 - **Effective date and version:** set a real effective date and publish a change history before treating the documents as binding.
 
@@ -31,7 +31,7 @@ The Android app reads these files from its packaged assets. They are not fetched
 
 ## Implementation boundary
 
-Current code can enforce local encryption for particular stores and can prevent certain analytics/crash-reporting SDKs from being added unnoticed. It cannot guarantee that Android, an OEM, a network provider, a third-party AI provider, a user-configured relay host, or an externally opened website collects nothing. The policy documents explain these boundaries rather than using an absolute “zero data ever leaves the device” claim.
+Current code can enforce local encryption for particular stores and can prevent certain analytics/crash-reporting SDKs from being added unnoticed. It cannot guarantee that Android, an OEM, a network provider, a user-configured relay host, or an externally opened website collects nothing. The policy documents explain these boundaries rather than using an absolute “zero data ever leaves the device” claim.
 
 ## Change control
 

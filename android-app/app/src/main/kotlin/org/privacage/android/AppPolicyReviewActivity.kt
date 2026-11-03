@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
-import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -36,9 +35,8 @@ class AppPolicyReviewActivity : Activity() {
                 "Any prompt is shown when you return to PrivaCage; ordinary apps cannot safely place an overlay over another app."
         ))
         root.addView(body(
-            "There is no universal policy URL or reliable way to extract every app's Terms and Privacy Policy. Add official HTTPS links below, " +
-                "open them in your browser, then paste the text you want analysed. PrivaCage does not upload an APK or crawl app content. " +
-                "App labels and package IDs are not added automatically to AI requests; paste any context you want sent."
+            "There is no universal policy URL or reliable way to extract every app's Terms and Privacy Policy. Add official HTTPS links below and open them in your browser. " +
+                "PrivaCage does not fetch, crawl, store or upload policy text; the encrypted queue keeps only URLs, observation metadata and your review status."
         ))
         root.addView(Button(this).apply {
             text = "Open Android Usage Access settings"
@@ -168,21 +166,12 @@ class AppPolicyReviewActivity : Activity() {
         val termsInput = urlInput("Terms of Service URL", item.termsUrl)
         val privacyInput = urlInput("Privacy Policy URL", item.privacyUrl)
         val otherInput = urlInput("Other disclosure URL (optional)", item.otherUrl)
-        val policyTextInput = EditText(this).apply {
-            hint = "Paste policy or app-store disclosure text here"
-            minLines = 6
-            gravity = Gravity.TOP
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            filters = arrayOf(InputFilter.LengthFilter(48 * 1024))
-        }
         fields.addView(body(
-            "Save official links, open them in your browser, and paste only the document text you choose to analyse. " +
-                "The policy text is not saved in this queue."
+            "Save official links and open them in your browser. PrivaCage does not fetch, retain or upload policy text."
         ))
         fields.addView(termsInput, matchWidth())
         fields.addView(privacyInput, matchWidth())
         fields.addView(otherInput, matchWidth())
-        fields.addView(policyTextInput, matchWidth())
 
         fun saveLinks(): Boolean = try {
             AppPolicyReviewMonitor.savePolicyLinks(
@@ -230,19 +219,6 @@ class AppPolicyReviewActivity : Activity() {
             text = "Open other disclosure"
             setOnClickListener { openLink(otherInput.text.toString(), "disclosure") }
         }, matchWidth())
-        fields.addView(Button(this).apply {
-            text = "Analyse pasted document with AI"
-            setOnClickListener {
-                val text = policyTextInput.text.toString()
-                if (text.isBlank()) {
-                    statusText.text = "Paste the policy text you want analysed first."
-                    return@setOnClickListener
-                }
-                if (!saveLinks()) return@setOnClickListener
-                chooseDocumentTask(text)
-            }
-        }, matchWidth())
-
         var dialog: AlertDialog? = null
         fields.addView(Button(this).apply {
             text = "Mark review complete"
@@ -271,25 +247,6 @@ class AppPolicyReviewActivity : Activity() {
             .setNegativeButton("Close", null)
             .create()
         dialog?.show()
-    }
-
-    private fun chooseDocumentTask(text: String) {
-        val tasks = arrayOf(
-            PrivacyAutomationTask.TERMS_REVIEW,
-            PrivacyAutomationTask.PRIVACY_POLICY_REVIEW,
-            PrivacyAutomationTask.APP_DISCLOSURE_REVIEW
-        )
-        AlertDialog.Builder(this)
-            .setTitle("Choose document type")
-            .setItems(tasks.map { it.label }.toTypedArray()) { _, index ->
-                startActivity(
-                    Intent(this, ApiAutomationActivity::class.java)
-                        .putExtra(ApiAutomationActivity.EXTRA_TASK_ID, tasks[index].id)
-                        .putExtra(ApiAutomationActivity.EXTRA_SOURCE_TEXT, text)
-                )
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun urlInput(hintText: String, value: String) = EditText(this).apply {

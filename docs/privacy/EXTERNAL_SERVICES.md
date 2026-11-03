@@ -5,31 +5,13 @@
 
 This inventory separates requests made for a user-requested feature from product telemetry. The app must not add a new external recipient without updating this document and the Privacy Policy.
 
-## 1. AI API providers
-
-The Android client currently has a provider-specific, opt-in text adapter for OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI and Hugging Face Inference.
-
-The user must save a provider API token, allow the task, paste text and separately confirm each request. The request contains only the pasted text as user content plus fixed task instructions. The locally stored intended-use note and the app label/package ID from the review queue are not attached automatically; users must paste any app context they want the provider to receive. No app inventory, DNS history, rights tracker, files or device settings are attached automatically.
-
-The user-provided token is encrypted locally with Android Keystore-backed AES-256-GCM at rest, but it is present in application memory and is sent to the provider as authentication. The provider can see the pasted text, fixed task instructions and ordinary connection metadata. The provider's own terms, retention, training, billing and transfer settings apply. OpenAI's official key-safety guidance advises against deploying API keys in mobile apps; this direct BYO-key path is an opt-in personal-use convenience, not a recommended production secret-management design. Source checked 3 November 2026: [OpenAI API key safety guidance](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety).
-
-The list is explicit, not a claim that every AI company shares one protocol. Providers that use different authentication schemes, such as signed regional requests, require a separate adapter.
-
-### API compatibility notes (official documentation checked 3 November 2026)
-
-- Together AI's current Chat Completions example uses `https://api.together.ai/v1/chat/completions`; the Android adapter is pinned to that host and refuses redirects. [Together AI API reference](https://docs.together.ai/reference/chat-completions)
-- The Gemini adapter currently uses the `generateContent` REST surface. Google's current documentation recommends the Interactions API for new projects; migration is a tracked compatibility task, not a claim that the older surface is the preferred new-project API. The adapter sends no tools or function declarations. [Gemini generateContent reference](https://ai.google.dev/api/generate-content) · [Gemini Interactions guide](https://ai.google.dev/gemini-api/docs/interactions)
-- The xAI adapter uses the stateless Chat Completions compatibility surface. xAI now identifies Responses as its primary interface and Chat Completions as its predecessor; migration must preserve the adapter's text-only, no-tools boundary. [xAI Chat API reference](https://docs.x.ai/developers/rest-api-reference/inference/chat)
-- OpenAI Chat Completions remains an explicit compatibility path; the app does not claim to implement every provider's newest API surface. [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
-- Provider model IDs and supported request parameters vary. The client sends a bounded, non-streaming text request and does not retry, change model parameters, follow redirects, or fall back to another provider when a model rejects the request. [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create) · [Cohere v2 Chat API](https://docs.cohere.com/v2/reference/chat) · [Mistral API](https://docs.mistral.ai/api) · [Groq API](https://console.groq.com/docs/api-reference) · [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion) · [OpenRouter API](https://openrouter.ai/developers) · [Fireworks Chat Completions](https://docs.fireworks.ai/api-reference/post-chatcompletions) · [Hugging Face Chat Completion](https://huggingface.co/docs/inference-providers/tasks/chat-completion)
-
-## 2. DNS resolver
+## 1. DNS resolver
 
 The user supplies the resolver address. While DNS filtering is active, supported domain queries are sent to that resolver. The resolver can see the query name, record type and the network source address as observed by the resolver. DNS-over-TLS protects the connection in transit and verifies the certificate hostname but does not hide query contents from the resolver.
 
 The feature is DNS-only and does not capture arbitrary HTTPS, app-owned DoH/DoQ, direct-IP or all IPv6 traffic. This is not a full-device VPN.
 
-## 3. Sync relay
+## 2. Sync relay
 
 The user configures a relay URL, space and capability. Device messages are signed and recipient-encrypted before upload. The relay transports and stores opaque packets, not readable profile contents.
 
@@ -37,14 +19,14 @@ The relay nevertheless sees message IDs, space IDs, public device cards/fingerpr
 
 The repository relay defaults to loopback. It does not create a central user-account service. Anyone who deploys it publicly is responsible for securing the host, TLS termination, administrator credentials, access controls, backups, logging and its own privacy notice.
 
-## 4. Browser, app store and source links
+## 3. Browser, app store and source links
 
-App-policy URLs, source evidence, legal references and app-store pages open through Android's system browser or an installed app. The destination receives the ordinary connection metadata and any information the user supplies there. PrivaCage does not intercept the browser session or automatically crawl private app screens.
+App-policy URLs, source evidence, legal references and app-store pages open through Android's system browser or an installed app. The destination receives the ordinary connection metadata and any information the user supplies there. PrivaCage does not intercept the browser session, fetch policy contents or crawl private app screens. Only policy URLs and review status are retained in the local encrypted review queue.
 
-## 5. Web workspace
+## 4. Web workspace
 
 The Svelte web workspace presents the embedded tracker catalogue and derived catalogue information through a Rust/Axum API. The API defaults to 127.0.0.1 and does not ingest live device activity. It contains no product analytics SDK. A public deployment changes the exposure: the deployment operator must assess authentication, TLS, rate limits, host logging and access to any reverse-proxy logs.
 
-## 6. No third-party telemetry vendors
+## 5. No third-party telemetry vendors
 
 No analytics, advertising, attribution, session-replay or remote crash-reporting vendor is intentionally integrated into the Android client. The Go validate-android-privacy command scans Android build files, manifests and app source for known SDK and advertising-ID markers. This is a static regression check, not proof against every possible hand-written telemetry implementation or platform-level diagnostic.

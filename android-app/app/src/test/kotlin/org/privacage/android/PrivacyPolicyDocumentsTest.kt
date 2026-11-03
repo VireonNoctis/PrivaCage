@@ -77,9 +77,38 @@ class PrivacyPolicyDocumentsTest {
         assertTrue(policy.contains("product telemetry"))
         assertTrue(policy.contains("product analytics"))
         assertTrue(policy.contains("dns filtering"))
-        assertTrue(policy.contains("ai analysis"))
+        assertTrue(policy.contains("app-policy"))
+        assertFalse(policy.contains("ai provider"))
         assertTrue(policy.contains("encrypted sync"))
         assertTrue(policy.contains("platform/oem"))
+    }
+
+    @Test
+    fun appPolicyReviewRemainsLocalAndHasNoProviderAutomationEntryPoint() {
+        val appRoot = File(repositoryRoot, "android-app/app/src/main")
+        val main = File(
+            appRoot,
+            "kotlin/org/privacage/android/MainActivity.kt"
+        ).readText(Charsets.UTF_8)
+        val policyQueue = File(
+            appRoot,
+            "kotlin/org/privacage/android/AppPolicyReviewActivity.kt"
+        ).readText(Charsets.UTF_8)
+        val manifest = File(appRoot, "AndroidManifest.xml").readText(Charsets.UTF_8)
+        val androidPackage = File(
+            appRoot,
+            "kotlin/org/privacage/android"
+        )
+
+        assertFalse(main.contains("ApiAutomationActivity"))
+        assertFalse(main.contains("showApiSetupPromptOnce"))
+        assertFalse(policyQueue.contains("PrivacyAutomationTask"))
+        assertFalse(policyQueue.contains("ApiAutomationActivity"))
+        assertFalse(policyQueue.contains("Analyse pasted document"))
+        assertFalse(manifest.contains("ApiAutomationActivity"))
+        assertFalse(File(androidPackage, "ApiAutomationActivity.kt").exists())
+        assertFalse(File(androidPackage, "ApiTokenVault.kt").exists())
+        assertFalse(File(androidPackage, "PrivacyAutomationClient.kt").exists())
     }
 
     @Test
@@ -88,7 +117,7 @@ class PrivacyPolicyDocumentsTest {
         assertTrue(policy.contains("[CONTROLLER LEGAL NAME / ENTITY]"))
         assertTrue(policy.contains("[PRIVACY CONTACT EMAIL]"))
         assertTrue(policy.contains("DNS resolver"))
-        assertTrue(policy.contains("AI provider"))
+        assertFalse(policy.contains("AI provider"))
         assertTrue(policy.contains("relay"))
         assertTrue(policy.contains("international"))
         assertTrue(policy.contains("Keystore"))

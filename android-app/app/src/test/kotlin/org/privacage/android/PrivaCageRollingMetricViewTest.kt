@@ -16,6 +16,12 @@ class PrivaCageRollingMetricViewTest {
     }
 
     @Test
+    fun formatsCountersAsBrailleNumericNotation() {
+        assertEquals("⠼⠚", formatBrailleCounterValue(0L))
+        assertEquals("⠼⠁⠂⠃⠉⠙", formatBrailleCounterValue(1_234L))
+    }
+
+    @Test
     fun rejectsNegativeValuesInsteadOfDisplayingAnInvalidCounter() {
         assertThrows(IllegalArgumentException::class.java) {
             formatCounterValue(-1L)

@@ -14,7 +14,6 @@ This document describes the current Android implementation. It does not claim th
 | Permission-audit comparison baseline | Launcher-visible package names, dangerous permission names, grant booleans and capture timestamp | AES-256-GCM encrypted app-private preference with a separate Keystore key. At most 2,000 packages, 256 permissions per package and 4 MiB. Replaced only after a complete successful scan; user can clear it. |
 | Optional DNS history | Domain, timestamp, allow/block decision and best-effort socket-owner label | Off by default. When enabled, AES-GCM encrypted using Android Keystore. Up to 100 events. User-selected retention is 1, 7 or 30 days (default 7 days); user can clear it. Exported reports are plaintext if the user chooses to export them. |
 | App-policy review queue | Launcher-visible package names, install/open trigger timestamps and user-entered policy URLs | AES-256-GCM encrypted local file with a separate Keystore key. Up to 100 pending apps. App-open observations require Usage Access and inspect at most the recent 24-hour window; Android retains events for only a few days. Items remain until marked reviewed or the package disappears from the visible inventory; reviewed-package suppression remains while the app remains installed. App data removal deletes local history. |
-| AI provider credentials | Provider token, model ID, intended-use note and permitted task set | AES-256-GCM encrypted local file with a separate Keystore key. Not included in PrivaCage sync or Android backup. The intended-use note stays local and is not sent. Persists until the user forgets the provider token, clears app data or uninstalls. Token exists in memory and is sent to the provider during a confirmed request. |
 | Sync identity and local relay configuration | Device identity bundle, local recovery metadata, relay/capability settings, roster state and cursors | Encrypted at rest in an Android Keystore-protected AES-GCM envelope. The identity bundle itself uses its own recovery/passphrase protection. |
 | Other operational preferences | Aggregate DNS counters, history-enabled/retention flags, lifecycle status and diagnostic UI state | App-private preferences. These are not uploaded by PrivaCage, but the current implementation does not encrypt every non-secret operational value with a dedicated AES-GCM envelope. |
 
@@ -39,7 +38,7 @@ The relay can observe message sizes, message timing, routing identifiers and acc
 
 ## 4. Third-party retention
 
-A DNS resolver may retain DNS queries and connection metadata. An AI provider may retain submitted prompts, API request metadata and account/billing records under its own terms. A public relay host/reverse proxy may retain connection logs. External browser destinations and app stores apply their own policies. PrivaCage cannot delete those records unless the relevant operator provides and honours a deletion mechanism.
+A DNS resolver may retain DNS queries and connection metadata. A public relay host/reverse proxy may retain connection logs. External browser destinations and app stores apply their own policies. PrivaCage cannot delete those records unless the relevant operator provides and honours a deletion mechanism.
 
 ## 5. Key loss and recovery
 

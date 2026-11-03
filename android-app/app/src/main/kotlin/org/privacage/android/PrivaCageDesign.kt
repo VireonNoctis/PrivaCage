@@ -29,14 +29,14 @@ import java.util.Locale
  * listeners, state, and privacy operations remain connected to their real services.
  */
 internal object PrivaCageDesign {
-    private val pageBackground = 0xFF080808.toInt()
-    private val surfaceBackground = 0xFF111111.toInt()
-    private val inputSurfaceColor = 0xFF0D0D0D.toInt()
-    private val border = 0xFF303030.toInt()
-    private val textPrimary = 0xFFF6F6F6.toInt()
-    private val textSecondary = 0xFFB1B1B1.toInt()
-    private val textMuted = 0xFF7C7C7C.toInt()
-    private val ink = 0xFF080808.toInt()
+    private val pageBackground = Color.BLACK
+    private val surfaceBackground = Color.BLACK
+    private val inputSurfaceColor = Color.BLACK
+    private val border = Color.WHITE
+    private val textPrimary = Color.WHITE
+    private val textSecondary = Color.WHITE
+    private val textMuted = Color.WHITE
+    private val ink = Color.BLACK
 
     private val sectionHeadings = setOf(
         "LEGAL & PRIVACY",
@@ -48,8 +48,7 @@ internal object PrivaCageDesign {
         "PRIVACY AUDIT EXPORT",
         "ENCRYPTED DEVICE SYNC",
         "INSTALL QUEUE",
-        "APP PRIVACY REVIEW & AI AUTOMATIONS",
-        "AI PRIVACY AUTOMATIONS",
+        "APP POLICY REVIEW",
         "APP POLICY REVIEW QUEUE",
         "ALTERNATIVE CATALOG"
     )
@@ -57,11 +56,7 @@ internal object PrivaCageDesign {
     private val primaryActionLabels = setOf(
         "save configuration",
         "enable dns filtering",
-        "configure api token and automations",
-        "review installed and opened apps' policies",
-        "save encrypted api token",
-        "review supplied text",
-        "analyse pasted document with ai"
+        "review installed and opened apps' policies"
     )
 
     private data class SectionCard(
@@ -119,7 +114,7 @@ internal object PrivaCageDesign {
         if (title != null) {
             title.textSize = 30f
             title.setTextColor(textPrimary)
-            title.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            title.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             title.setPadding(0, 0, 0, 0)
             title.includeFontPadding = false
             brandRow.addView(title, LinearLayout.LayoutParams(
@@ -133,7 +128,7 @@ internal object PrivaCageDesign {
         if (subtitle != null) {
             subtitle.textSize = 13f
             subtitle.setTextColor(textSecondary)
-            subtitle.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            subtitle.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             subtitle.setLineSpacing(dp(activity, 2).toFloat(), 1f)
             subtitle.setPadding(0, dp(activity, 9), 0, dp(activity, 12))
             hero.addView(subtitle, matchWidth())
@@ -164,7 +159,7 @@ internal object PrivaCageDesign {
                         activity,
                         surfaceBackground,
                         border,
-                        18
+                        6
                     )
                     setPadding(
                         dp(activity, 16),
@@ -179,7 +174,7 @@ internal object PrivaCageDesign {
                     gravity = Gravity.CENTER_VERTICAL
                 }
                 val number = TextView(activity).apply {
-                    text = sectionNumber.toString().padStart(2, '0')
+                    text = formatBrailleNumber(sectionNumber.toString().padStart(2, '0'))
                     textSize = 11f
                     setTextColor(textMuted)
                     typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -254,7 +249,7 @@ internal object PrivaCageDesign {
 
         val statusCard = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundedBackground(activity, surfaceBackground, border, 16)
+            background = roundedBackground(activity, surfaceBackground, border, 6)
             setPadding(dp(activity, 15), dp(activity, 13), dp(activity, 15), dp(activity, 13))
         }
         val statusHeading = TextView(activity).apply {
@@ -305,8 +300,8 @@ internal object PrivaCageDesign {
                 minimumHeight = dp(context, 48)
                 contentDescription = "Jump to $label section"
                 background = rippleBackground(
-                    roundedBackground(context, Color.rgb(21, 21, 21), border, 12),
-                    Color.rgb(70, 70, 70)
+                    roundedBackground(context, Color.BLACK, border, 6),
+                    Color.WHITE
                 )
                 setOnClickListener {
                     scrollView.post {
@@ -342,8 +337,7 @@ internal object PrivaCageDesign {
         "PRIVACY AUDIT EXPORT" -> "AUDIT"
         "ENCRYPTED DEVICE SYNC" -> "SYNC"
         "INSTALL QUEUE" -> "QUEUE"
-        "APP PRIVACY REVIEW & AI AUTOMATIONS" -> "AI & APPS"
-        "AI PRIVACY AUTOMATIONS" -> "AI"
+        "APP POLICY REVIEW" -> "APP POLICIES"
         "APP POLICY REVIEW QUEUE" -> "APP POLICIES"
         "ALTERNATIVE CATALOG" -> "CATALOG"
         else -> heading
@@ -355,7 +349,7 @@ internal object PrivaCageDesign {
                 view.setTextColor(textPrimary)
                 view.setHintTextColor(textMuted)
                 view.textSize = 14f
-                view.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
                 view.setPadding(
                     dp(context, 13),
                     dp(context, 12),
@@ -368,7 +362,7 @@ internal object PrivaCageDesign {
             is CheckBox -> {
                 view.setTextColor(textSecondary)
                 view.textSize = 13f
-                view.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
                 view.buttonTintList = ColorStateList(
                     arrayOf(
                         intArrayOf(android.R.attr.state_checked),
@@ -390,12 +384,12 @@ internal object PrivaCageDesign {
         if (content.length > 72 || content.contains('\n')) {
             view.setTextColor(textSecondary)
             view.textSize = 13f
-            view.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
             view.setLineSpacing(dp(context, 2).toFloat(), 1f)
         } else {
             view.setTextColor(textPrimary)
             view.textSize = 14f
-            view.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         }
         view.setLinkTextColor(textPrimary)
     }
@@ -406,24 +400,23 @@ internal object PrivaCageDesign {
     private fun styleButton(context: Context, view: Button) {
         val primary = isPrimaryAction(view.text)
         view.isAllCaps = false
-        view.textSize = 13f
-        view.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        view.textSize = 12f
+        view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         view.setTextColor(if (primary) ink else textPrimary)
         view.gravity = Gravity.CENTER
         view.setPadding(dp(context, 14), dp(context, 11), dp(context, 14), dp(context, 11))
         view.minimumHeight = dp(context, 48)
         view.elevation = 0f
-        val fill = if (primary) Color.WHITE else Color.rgb(23, 23, 23)
-        val stroke = if (primary) Color.WHITE else border
+        val fill = if (primary) Color.WHITE else Color.BLACK
         view.background = rippleBackground(
-            roundedBackground(context, fill, stroke, 12),
-            if (primary) Color.rgb(220, 220, 220) else Color.rgb(62, 62, 62)
+            roundedBackground(context, fill, Color.WHITE, 6),
+            Color.WHITE
         )
     }
 
     private fun inputBackground(context: Context): StateListDrawable {
-        val focused = roundedBackground(context, Color.rgb(18, 18, 18), textSecondary, 11)
-        val normal = roundedBackground(context, inputSurfaceColor, border, 11)
+        val focused = roundedBackground(context, Color.BLACK, Color.WHITE, 6)
+        val normal = roundedBackground(context, inputSurfaceColor, border, 6)
         return StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_focused), focused)
             addState(intArrayOf(), normal)
@@ -458,4 +451,13 @@ internal object PrivaCageDesign {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+}
+
+private val BRAILLE_DIGITS = listOf("⠚", "⠁", "⠃", "⠉", "⠙", "⠑", "⠋", "⠛", "⠓", "⠊")
+
+internal fun formatBrailleNumber(value: String): String {
+    require(value.isNotEmpty() && value.all { it.isDigit() }) {
+        "Braille number formatting accepts decimal digits only."
+    }
+    return "⠼" + value.map { BRAILLE_DIGITS[it.digitToInt()] }.joinToString("")
 }

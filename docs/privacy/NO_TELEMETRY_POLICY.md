@@ -16,7 +16,7 @@ The following are prohibited unless the product owner changes this policy, docum
 - remote crash reporting, ANR upload, stack-trace upload or automatic diagnostic dumps;
 - automatic device/app inventory uploads;
 - automatic DNS-history, domain, permission-audit, APK-report or rights-tracker uploads;
-- automatic AI requests or background document submissions;
+- automatic third-party document submissions;
 - silent remote configuration that changes privacy behaviour;
 - hidden background requests to project-operated collection endpoints; and
 - collection of account identity, contacts, precise location, microphone/camera content or advertising IDs for analytics or product measurement.
@@ -28,10 +28,9 @@ No analytics, advertising, session-replay or remote crash-reporting SDK may be a
 A strict no-telemetry rule does not mean that every network packet is prohibited. The following are functional requests explicitly initiated/configured by the user:
 
 1. **DNS filtering:** while the user has started the DNS feature, supported DNS queries are sent to the resolver the user configured. The resolver can see queried names. DNS-over-TLS encrypts the transport to the resolver but does not hide the names from that resolver.
-2. **AI analysis:** a request is sent only after the user chooses an allowed task, pastes text and confirms the selected provider. Only the pasted text is sent as user content, alongside fixed task instructions; the local intended-use note and app label/package ID are not attached automatically.
-3. **Encrypted sync:** a request is sent when the user configures and invokes sync. The relay receives encrypted packets and routing metadata; it cannot decrypt packet content using the relay database alone.
-4. **External links:** when the user opens a policy, app-store page or source link, the browser/OS connects to that destination.
-5. **Self-hosted web/relay use:** a user or operator may run a separate backend or relay. Their network and hosting logs are governed by that operator's configuration and notice.
+2. **Encrypted sync:** a request is sent when the user configures and invokes sync. The relay receives encrypted packets and routing metadata; it cannot decrypt packet content using the relay database alone.
+3. **External links:** when the user opens a policy, app-store page or source link, the browser/OS connects to that destination.
+4. **Self-hosted web/relay use:** a user or operator may run a separate backend or relay. Their network and hosting logs are governed by that operator's configuration and notice.
 
 These are user-requested service functions, not hidden analytics. They still disclose the information described in the Privacy Policy and External Services document.
 
@@ -63,6 +62,6 @@ A feature that genuinely requires remote diagnostics must be proposed as a polic
 
 ## 6. Platform boundary
 
-This policy governs PrivaCage code. It cannot promise that Android, an OEM, carrier, DNS resolver, browser, app store, AI provider or hosting provider collects no information. The app's DNS path is not a whole-device VPN and cannot suppress traffic outside its documented coverage.
+This policy governs PrivaCage code. It cannot promise that Android, an OEM, carrier, DNS resolver, browser, app store or hosting provider collects no information. The app's DNS path is not a whole-device VPN and cannot suppress traffic outside its documented coverage.
 
 The Windows local CLI and any future iOS application require their own platform-specific audits before this Android policy can be claimed as enforced there.
