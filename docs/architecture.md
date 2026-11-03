@@ -21,11 +21,11 @@ The Rust API binds to loopback by default. Production deployment should serve th
 
 ## Optional provider-backed text analysis
 
-The Android adapter may send only user-selected text to a fixed, allowlisted API provider after a local task-permission check and explicit confirmation. API credentials and the app-policy review queue use separate Android Keystore-backed encrypted files. The AI client is an output-only text adapter: no tools, device command bridge, network redirects, automatic document fetching, or automatic legal-request submission. Provider-side handling is governed by that provider's terms, not by the local encryption envelope.
+The Android adapter may send only user-pasted text as user content to a fixed, allowlisted API provider after a local task-permission check and explicit confirmation; fixed task instructions accompany it. The locally stored intended-use note and app label/package metadata are not attached automatically. API credentials and the app-policy review queue use separate Android Keystore-backed encrypted files. The AI client is an output-only text adapter: no tools, device command bridge, network redirects, automatic document fetching, or automatic legal-request submission. Provider-side handling is governed by that provider's terms, not by the local encryption envelope.
 
 ## Android app policy review observations
 
-A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis.
+A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. Policy URLs are user-entered and the user supplies text for analysis. App labels and package IDs are not appended to provider requests.
 
 ## Proposed layers
 

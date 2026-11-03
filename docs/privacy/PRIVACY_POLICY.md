@@ -31,7 +31,7 @@ The current Android implementation can store the following information locally:
 - **DNS configuration:** a numeric resolver address, blocked-domain rules, and whether DNS-over-TLS is enabled plus its certificate hostname. This configuration is encrypted in an app-private AES-256-GCM envelope using an Android Keystore key.
 - **Optional DNS history:** when the user enables it, a bounded history can contain domain names, timestamps, allow/block decisions and best-effort socket-owner labels. Recording is off by default. The history is encrypted at rest.
 - **Permission-audit baseline:** launcher-visible package identifiers, dangerous permission names and boolean grant states, with a device-clock capture timestamp. The comparison baseline is encrypted at rest. This is not a complete device inventory and does not record actual sensor use.
-- **App policy review queue:** launcher-visible package identifiers, observed install/open trigger and timestamps, plus policy URLs entered by the user. This queue is encrypted at rest. App-open observation requires the user's separate Android Usage Access grant.
+- **App policy review queue:** launcher-visible package identifiers, observed install/open trigger and timestamps, plus policy URLs entered by the user. This queue is encrypted at rest. App-open observation requires the user's separate Android Usage Access grant and checks only a bounded recent 24-hour event window; it is not a complete usage history.
 - **Rights-request tracker:** jurisdiction, the right being tracked, controller name entered by the user, preparation/receipt/deadline dates and a user-managed status. The draft request text, user's name/email, identity documents and submission receipts are not stored by this tracker. Its metadata store is encrypted at rest.
 - **AI provider credentials:** a user-supplied API token, selected model, purpose note and permitted task list. Tokens are encrypted at rest and are not included in PrivaCage sync or Android backup. A token must be present in app memory and sent to the selected provider when the user makes a request.
 - **Encrypted sync identity:** local identity keys and relay configuration are held in an Android Keystore-protected encrypted record. The protocol's device private keys are not uploaded in readable form.
@@ -51,9 +51,9 @@ The app's DNS route is limited to supported DNS traffic addressed to its virtual
 
 ### 4.2 AI provider
 
-If the user saves a supported provider API token, selects an allowed task, pastes text and confirms a request, PrivaCage sends that text to the chosen provider's fixed HTTPS API endpoint. The provider receives the submitted text, API credential/authentication information and ordinary network connection metadata such as the source IP address.
+If the user saves a supported provider API token, selects an allowed task, pastes text and confirms a request, PrivaCage sends only that pasted text as user content, together with fixed task instructions, to the chosen provider's fixed HTTPS API endpoint. The provider receives the text, API credential/authentication information and ordinary network connection metadata such as the source IP address. The locally stored intended-use note and app label/package ID are not attached automatically.
 
-No installed-app inventory, DNS history, rights tracker, files or other device state is attached automatically. The provider applies its own privacy notice, terms, retention, account and billing rules. The user should not paste information they are not authorised to share.
+No installed-app inventory, DNS history, rights tracker, files or other device state is attached automatically. The provider applies its own privacy notice, terms, retention, account and billing rules. The user should not paste information they are not authorised to share. OpenAI's official guidance advises against deploying API keys in mobile apps; direct BYO-key use is a personal-use convenience, not recommended production key management. See the [OpenAI API key safety guidance](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety), checked 3 November 2026.
 
 ### 4.3 Optional encrypted sync relay
 

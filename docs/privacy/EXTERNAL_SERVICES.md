@@ -9,9 +9,9 @@ This inventory separates requests made for a user-requested feature from product
 
 The Android client currently has a provider-specific, opt-in text adapter for OpenAI, Anthropic, Google Gemini, Cohere, Mistral, Groq, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI and Hugging Face Inference.
 
-The user must save a provider API token, allow the task, paste text and separately confirm each request. The request contains the chosen text and task instructions. No app inventory, DNS history, rights tracker, files or device settings are attached automatically.
+The user must save a provider API token, allow the task, paste text and separately confirm each request. The request contains only the pasted text as user content plus fixed task instructions. The locally stored intended-use note and the app label/package ID from the review queue are not attached automatically; users must paste any app context they want the provider to receive. No app inventory, DNS history, rights tracker, files or device settings are attached automatically.
 
-The user-provided token is encrypted locally with Android Keystore-backed AES-256-GCM at rest, but it is present in application memory and is sent to the provider as authentication. The provider can see the prompt and ordinary connection metadata. The provider's own terms, retention, training, billing and transfer settings apply.
+The user-provided token is encrypted locally with Android Keystore-backed AES-256-GCM at rest, but it is present in application memory and is sent to the provider as authentication. The provider can see the pasted text, fixed task instructions and ordinary connection metadata. The provider's own terms, retention, training, billing and transfer settings apply. OpenAI's official key-safety guidance advises against deploying API keys in mobile apps; this direct BYO-key path is an opt-in personal-use convenience, not a recommended production secret-management design. Source checked 3 November 2026: [OpenAI API key safety guidance](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety).
 
 The list is explicit, not a claim that every AI company shares one protocol. Providers that use different authentication schemes, such as signed regional requests, require a separate adapter.
 

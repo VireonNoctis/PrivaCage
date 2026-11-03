@@ -28,7 +28,7 @@ No analytics, advertising, session-replay or remote crash-reporting SDK may be a
 A strict no-telemetry rule does not mean that every network packet is prohibited. The following are functional requests explicitly initiated/configured by the user:
 
 1. **DNS filtering:** while the user has started the DNS feature, supported DNS queries are sent to the resolver the user configured. The resolver can see queried names. DNS-over-TLS encrypts the transport to the resolver but does not hide the names from that resolver.
-2. **AI analysis:** a request is sent only after the user chooses an allowed task, pastes text and confirms the selected provider. Only the supplied text is attached automatically.
+2. **AI analysis:** a request is sent only after the user chooses an allowed task, pastes text and confirms the selected provider. Only the pasted text is sent as user content, alongside fixed task instructions; the local intended-use note and app label/package ID are not attached automatically.
 3. **Encrypted sync:** a request is sent when the user configures and invokes sync. The relay receives encrypted packets and routing metadata; it cannot decrypt packet content using the relay database alone.
 4. **External links:** when the user opens a policy, app-store page or source link, the browser/OS connects to that destination.
 5. **Self-hosted web/relay use:** a user or operator may run a separate backend or relay. Their network and hosting logs are governed by that operator's configuration and notice.

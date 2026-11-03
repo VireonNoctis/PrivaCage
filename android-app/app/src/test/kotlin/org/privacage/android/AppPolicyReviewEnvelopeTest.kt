@@ -34,6 +34,12 @@ class AppPolicyReviewEnvelopeTest {
                 key
             )
         }
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewEnvelope.decrypt(
+                encrypted.replace("\"version\":1", "\"version\":1,\"version\":1"),
+                key
+            )
+        }
     }
 }
 
@@ -85,6 +91,26 @@ class AppPolicyReviewStateTest {
                     .put("unexpected", true)
                     .toString()
             )
+        }
+    }
+
+    @Test
+    fun rejectsDuplicateKeysCoercedTimestampsAndInconsistentInventory() {
+        val state = AppPolicyReviewState(true, setOf("org.example.reader"), emptySet(), 0L, emptyMap())
+        val encoded = AppPolicyReviewStore.encodeState(state)
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewStore.decodeState(
+                encoded.replace("\"inventory_initialized\":true", "\"inventory_initialized\":true,\"inventory_initialized\":false")
+            )
+        }
+        assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewStore.decodeState(
+                encoded.replace("\"last_usage_scan_at\":0", "\"last_usage_scan_at\":\"0\"")
+            )
+        }
+        val inconsistent = state.copy(reviewedPackages = setOf("org.example.other"))
+        assertThrows(IllegalArgumentException::class.java) {
+            AppPolicyReviewStore.encodeState(inconsistent)
         }
     }
 }
