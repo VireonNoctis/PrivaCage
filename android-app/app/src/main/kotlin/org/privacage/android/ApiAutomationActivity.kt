@@ -62,7 +62,7 @@ class ApiAutomationActivity : Activity() {
         root.addView(heading("MODEL"))
         modelInput = EditText(this).apply {
             hint = "Provider model ID"
-            singleLine = true
+            setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             filters = arrayOf(InputFilter.LengthFilter(128))
         }
@@ -71,7 +71,7 @@ class ApiAutomationActivity : Activity() {
         root.addView(heading("API TOKEN"))
         apiKeyInput = EditText(this).apply {
             hint = "Paste provider API token"
-            singleLine = true
+            setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             filters = arrayOf(InputFilter.LengthFilter(4096))
         }

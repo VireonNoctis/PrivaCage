@@ -295,7 +295,7 @@ class AppPolicyReviewActivity : Activity() {
     private fun urlInput(hintText: String, value: String) = EditText(this).apply {
         hint = hintText
         setText(value)
-        singleLine = true
+        setSingleLine(true)
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         filters = arrayOf(InputFilter.LengthFilter(2048))
     }
