@@ -149,11 +149,15 @@ class AppPolicyReviewActivity : Activity() {
             ))
         }
         if (::statusText.isInitialized) {
-            val access = AppPolicyReviewMonitor.hasUsageAccess(this)
-            if (!access) {
-                statusText.text = "Install review is available. App-open review is disabled until you grant Usage Access in Android Settings."
-            } else if (statusText.text.isNullOrBlank()) {
-                statusText.text = "App-open review is enabled. Events are read locally and queued for review when you return to PrivaCage."
+            val access = AppPolicyReviewMonitor.inspectUsageAccess(this)
+            when {
+                access.warning != null -> statusText.text = access.warning
+                !access.available -> {
+                    statusText.text = "Install review is available. App-open review is disabled until you grant Usage Access in Android Settings."
+                }
+                statusText.text.isNullOrBlank() -> {
+                    statusText.text = "App-open review is enabled. Events are read locally and queued for review when you return to PrivaCage."
+                }
             }
         }
     }
