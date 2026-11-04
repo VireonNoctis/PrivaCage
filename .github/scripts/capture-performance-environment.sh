@@ -4,20 +4,24 @@ set -euo pipefail
 MODE="${1:-host}"
 RESULTS="${PERFORMANCE_RESULTS_DIR:?PERFORMANCE_RESULTS_DIR must be set}"
 OUTPUT="$RESULTS/environment.txt"
+ANDROID_SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+if [[ -n "$ANDROID_SDK_DIR" ]]; then
+    export PATH="$ANDROID_SDK_DIR/emulator:$ANDROID_SDK_DIR/platform-tools:$PATH"
+fi
 mkdir -p "$RESULTS"
 
 record() {
     local key="$1"
     local value="${2:-unavailable}"
-    value="${value//$'\\r'/ }"
-    value="${value//$'\\n'/ }"
-    printf '%s=%s\\n' "$key" "$value" >> "$OUTPUT"
+    value="${value//$'\r'/ }"
+    value="${value//$'\n'/ }"
+    printf '%s=%s\n' "$key" "$value" >> "$OUTPUT"
 }
 
 first_line() {
     local output
     if output="$("$@" 2>&1)"; then
-        printf '%s\\n' "$output" | sed -n '1p'
+        printf '%s\n' "$output" | sed -n '1p'
     else
         printf 'unavailable'
     fi
@@ -27,7 +31,7 @@ capture_adb_property() {
     local property="$1"
     local value
     if value="$(adb shell getprop "$property" 2>&1)"; then
-        record "emulator.$property" "$(printf '%s' "$value" | tr -d '\\r')"
+        record "emulator.$property" "$(printf '%s' "$value" | tr -d '\r')"
     else
         record "emulator.$property" "unavailable"
     fi
@@ -69,9 +73,9 @@ case "$MODE" in
         ;;
     emulator)
         if [[ ! -s "$OUTPUT" ]]; then
-            printf 'Host environment capture was not completed before emulator capture.\\n' > "$OUTPUT"
+            printf 'Host environment capture was not completed before emulator capture.\n' > "$OUTPUT"
         fi
-        printf '\\n[emulator]\\n' >> "$OUTPUT"
+        printf '\n[emulator]\n' >> "$OUTPUT"
         capture_adb_property ro.build.version.sdk
         capture_adb_property ro.build.version.release
         capture_adb_property ro.build.fingerprint
@@ -84,7 +88,7 @@ case "$MODE" in
         record "emulator.screen_density" "$(first_line adb shell wm density)"
         ;;
     *)
-        printf 'Usage: %s [host|emulator]\\n' "$0" >&2
+        printf 'Usage: %s [host|emulator]\n' "$0" >&2
         exit 2
         ;;
 esac
