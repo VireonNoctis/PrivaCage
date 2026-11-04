@@ -20,6 +20,7 @@ on:
       - ".github/scripts/prepare-performance-baseline.sh"
       - ".github/scripts/run-performance-comparison.sh"
       - ".github/scripts/capture-performance-environment.sh"
+      - ".github/scripts/test-capture-performance-environment.sh"
       - ".github/scripts/compare-performance.py"
       - "docs/performance/**"
   pull_request:
@@ -41,6 +42,7 @@ on:
       - ".github/scripts/prepare-performance-baseline.sh"
       - ".github/scripts/run-performance-comparison.sh"
       - ".github/scripts/capture-performance-environment.sh"
+      - ".github/scripts/test-capture-performance-environment.sh"
       - ".github/scripts/compare-performance.py"
       - "docs/performance/**"
   workflow_dispatch:
@@ -185,6 +187,8 @@ jobs:
 
       - name: Capture host and toolchain environment
         run: bash .github/scripts/capture-performance-environment.sh host
+      - name: Test performance environment capture
+        run: bash .github/scripts/test-capture-performance-environment.sh
 
       - name: Enable KVM acceleration for Android emulator
         run: |
@@ -195,7 +199,13 @@ jobs:
             echo "KVM is not available to the GitHub runner; refusing to run an unaccelerated benchmark." >&2
             exit 1
           fi
-          emulator -accel-check
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          EMULATOR_BIN="$SDK_ROOT/emulator/emulator"
+          if [[ -z "$SDK_ROOT" || ! -x "$EMULATOR_BIN" ]]; then
+            echo "Android Emulator executable was not found under the installed SDK." >&2
+            exit 1
+          fi
+          "$EMULATOR_BIN" -accel-check
 
       - name: Run baseline/candidate benchmarks
         uses: ReactiveCircus/android-emulator-runner@v2
