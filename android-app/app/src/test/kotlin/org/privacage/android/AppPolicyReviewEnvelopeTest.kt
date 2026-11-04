@@ -151,3 +151,60 @@ class AppPolicyReviewInventoryTest {
         }
     }
 }
+
+
+class AppPolicyReviewStateTransitionTest {
+    @Test
+    fun markingAStaleQueueItemFailsInsteadOfReportingFalseSuccess() {
+        val state = AppPolicyReviewState(
+            inventoryInitialized = true,
+            knownPackages = setOf("org.example.reader"),
+            reviewedPackages = emptySet(),
+            lastUsageScanAt = 0L,
+            pending = emptyMap()
+        )
+
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            AppPolicyReviewMonitor.markReviewedState(state, "org.example.reader")
+        }
+    }
+
+    @Test
+    fun markingPendingReviewMovesItToReviewedExactlyOnce() {
+        val item = PendingAppPolicyReview(
+            packageName = "org.example.reader",
+            trigger = "installed",
+            firstSeenAt = 10L,
+            lastSeenAt = 20L
+        )
+        val state = AppPolicyReviewState(
+            inventoryInitialized = true,
+            knownPackages = setOf("org.example.reader"),
+            reviewedPackages = emptySet(),
+            lastUsageScanAt = 0L,
+            pending = mapOf(item.packageName to item)
+        )
+
+        val updated = AppPolicyReviewMonitor.markReviewedState(state, item.packageName)
+
+        org.junit.Assert.assertTrue(updated.pending.isEmpty())
+        org.junit.Assert.assertEquals(setOf(item.packageName), updated.reviewedPackages)
+        org.junit.Assert.assertEquals(setOf(item.packageName), state.pending.keys)
+    }
+
+    @Test
+    fun deniedUsageAccessIsDifferentFromAnAccessCheckFailure() {
+        val denied = AppPolicyReviewMonitor.evaluateUsageAccess {
+            android.app.AppOpsManager.MODE_IGNORED
+        }
+        val failed = AppPolicyReviewMonitor.evaluateUsageAccess {
+            throw IllegalStateException("AppOps service unavailable")
+        }
+
+        org.junit.Assert.assertFalse(denied.available)
+        org.junit.Assert.assertNull(denied.warning)
+        org.junit.Assert.assertFalse(failed.available)
+        org.junit.Assert.assertTrue(failed.warning.orEmpty().contains("AppOps service unavailable"))
+        org.junit.Assert.assertTrue(failed.warning.orEmpty().contains("Install review remains available"))
+    }
+}
