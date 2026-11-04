@@ -43,6 +43,11 @@ internal data class AppPolicyReviewCapture(
     val warning: String?
 )
 
+internal data class AppPolicyUsageAccess(
+    val available: Boolean,
+    val warning: String? = null
+)
+
 internal data class AppPolicyReviewState(
     val inventoryInitialized: Boolean,
     val knownPackages: Set<String>,
@@ -469,9 +474,10 @@ internal object AppPolicyReviewMonitor {
             enqueue(packageName, "installed", now)
         }
 
-        val usageAvailable = hasUsageAccess(appContext)
+        val usageAccess = inspectUsageAccess(appContext)
+        val usageAvailable = usageAccess.available
         var lastUsageScan = previous.lastUsageScanAt
-        var warning: String? = null
+        var warning: String? = usageAccess.warning
         if (usageAvailable) {
             if (lastUsageScan <= 0L) {
                 // Start a fresh observation window after the user grants special access.
@@ -552,25 +558,43 @@ internal object AppPolicyReviewMonitor {
     fun markReviewed(context: Context, packageName: String) {
         val store = AppPolicyReviewStore(context)
         val state = store.load()
-        if (packageName !in state.pending) return
-        store.save(
-            state.copy(
-                pending = state.pending - packageName,
-                reviewedPackages = state.reviewedPackages + packageName
-            )
+        store.save(markReviewedState(state, packageName))
+    }
+
+    internal fun markReviewedState(
+        state: AppPolicyReviewState,
+        packageName: String
+    ): AppPolicyReviewState {
+        if (packageName !in state.pending) {
+            throw IOException("This app is no longer in the pending review queue.")
+        }
+        return state.copy(
+            pending = state.pending - packageName,
+            reviewedPackages = state.reviewedPackages + packageName
         )
     }
 
-    fun hasUsageAccess(context: Context): Boolean = try {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        appOps.checkOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            context.packageName
-        ) == AppOpsManager.MODE_ALLOWED
-    } catch (_: Exception) {
-        false
+    internal fun evaluateUsageAccess(readMode: () -> Int): AppPolicyUsageAccess = try {
+        AppPolicyUsageAccess(available = readMode() == AppOpsManager.MODE_ALLOWED)
+    } catch (exception: Exception) {
+        AppPolicyUsageAccess(
+            available = false,
+            warning = "Usage Access status could not be checked: " +
+                (exception.message ?: exception.javaClass.simpleName) +
+                ". Install review remains available."
+        )
     }
+
+    fun inspectUsageAccess(context: Context): AppPolicyUsageAccess =
+        evaluateUsageAccess {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+                ?: throw IllegalStateException("Android did not expose the AppOps service.")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        }
 
     internal fun validateLauncherInventory(
         packageNames: Set<String>,
