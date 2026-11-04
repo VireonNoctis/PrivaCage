@@ -467,7 +467,8 @@ internal object AppPolicyReviewMonitor {
 
         if (!previous.inventoryInitialized) {
             store.save(previous.copy(inventoryInitialized = true, knownPackages = currentPackages, lastUsageScanAt = now))
-            return AppPolicyReviewCapture(0, queue.size, hasUsageAccess(appContext), null)
+            val usageAccess = inspectUsageAccess(appContext)
+            return AppPolicyReviewCapture(0, queue.size, usageAccess.available, usageAccess.warning)
         }
 
         (currentPackages - previous.knownPackages).forEach { packageName ->
