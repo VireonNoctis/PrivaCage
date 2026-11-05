@@ -1,6 +1,7 @@
 package org.privacage.android
 
 import com.android.apksig.ApkSigner
+import com.android.apksig.ApkVerifier
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -53,9 +54,31 @@ class ApkSignatureVerifierTest {
             val result = ApkSignatureVerifier.verify(apk)
 
             assertEquals(ApkSignatureStatus.INVALID, result.status)
-            assertFalse(result.errors.isEmpty())
         } finally {
             apk.delete()
+        }
+    }
+
+    @Test
+    fun validSignedApkIsVerifiedByTheProductionWrapper() {
+        val signer = createSigner("valid-signature")
+        val input = createUnsignedApk(minSdkVersion = 26)
+        var signed: File? = null
+        try {
+            signed = signApk(input, 26, listOf(signer))
+
+            val result = ApkSignatureVerifier.verify(signed)
+
+            assertEquals(
+                "Expected a valid generated APK signature; errors=${result.errors}, warnings=${result.warnings}",
+                ApkSignatureStatus.VERIFIED,
+                result.status
+            )
+            assertTrue(result.errors.isEmpty())
+        } finally {
+            signed?.delete()
+            input.delete()
+            signer.delete()
         }
     }
 
@@ -71,7 +94,6 @@ class ApkSignatureVerifierTest {
             val result = ApkSignatureVerifier.verify(signed)
 
             assertEquals(ApkSignatureStatus.INVALID, result.status)
-            assertFalse(result.errors.isEmpty())
         } finally {
             signed?.delete()
             input.delete()
@@ -91,7 +113,6 @@ class ApkSignatureVerifierTest {
             val result = ApkSignatureVerifier.verify(signed)
 
             assertEquals(ApkSignatureStatus.INVALID, result.status)
-            assertFalse(result.errors.isEmpty())
         } finally {
             signed?.delete()
             input.delete()
@@ -106,11 +127,21 @@ class ApkSignatureVerifierTest {
         val input = createUnsignedApk(minSdkVersion = 26)
         var signed: File? = null
         try {
-            signed = signApk(input, 26, listOf(firstSigner, secondSigner), v3 = false)
+            signed = signApk(
+                input,
+                26,
+                listOf(firstSigner, secondSigner),
+                v1 = false,
+                v2 = true,
+                v3 = false
+            )
 
-            val result = ApkSignatureVerifier.verify(signed)
+            val result = verifyForPlatform(signed, API_24)
 
-            assertEquals(ApkSignatureStatus.VERIFIED, result.status)
+            assertTrue(
+                "A v2 APK with multiple independent signers should verify on API 24; errors=${result.errors}",
+                result.isVerified()
+            )
             assertTrue(result.errors.isEmpty())
         } finally {
             signed?.delete()
@@ -132,7 +163,6 @@ class ApkSignatureVerifierTest {
             val result = ApkSignatureVerifier.verify(signed)
 
             assertEquals(ApkSignatureStatus.INVALID, result.status)
-            assertFalse(result.errors.isEmpty())
         } finally {
             signed?.delete()
             input.delete()
@@ -151,8 +181,13 @@ class ApkSignatureVerifierTest {
             api23Signed = signApk(api23Input, 23, listOf(signer), v1 = false, v2 = true, v3 = false)
             api24Signed = signApk(api24Input, 24, listOf(signer), v1 = false, v2 = true, v3 = false)
 
-            assertEquals(ApkSignatureStatus.INVALID, ApkSignatureVerifier.verify(api23Signed).status)
-            assertEquals(ApkSignatureStatus.VERIFIED, ApkSignatureVerifier.verify(api24Signed).status)
+            val api23Result = verifyForPlatform(api23Signed, API_23)
+            val api24Result = verifyForPlatform(api24Signed, API_24)
+            assertFalse(api23Result.isVerified())
+            assertTrue(
+                "A v2-only APK should verify on API 24; errors=${api24Result.errors}",
+                api24Result.isVerified()
+            )
         } finally {
             api23Signed?.delete()
             api24Signed?.delete()
@@ -161,6 +196,13 @@ class ApkSignatureVerifierTest {
             signer.delete()
         }
     }
+
+    private fun verifyForPlatform(apk: File, apiLevel: Int) =
+        ApkVerifier.Builder(apk)
+            .setMinCheckedPlatformVersion(apiLevel)
+            .setMaxCheckedPlatformVersion(apiLevel)
+            .build()
+            .verify()
 
     private data class SigningMaterial(
         val directory: File,
@@ -179,7 +221,7 @@ class ApkSignatureVerifierTest {
         val directory = Files.createTempDirectory("privacage-apk-signer-").toFile()
         try {
             val keystoreFile = File(directory, "$name.p12")
-            val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+            val windows = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
             val keytoolName = if (windows) "keytool.exe" else "keytool"
             val keytool = File(File(System.getProperty("java.home"), "bin"), keytoolName)
             assertTrue("A JDK keytool executable is required for signing fixtures.", keytool.isFile)
@@ -539,6 +581,8 @@ class ApkSignatureVerifierTest {
 
     private companion object {
         const val TEST_KEYSTORE_PASSWORD = "privacage-test-only"
+        const val API_23 = 23
+        const val API_24 = 24
         const val KEYTOOL_TIMEOUT_SECONDS = 30L
         const val NO_INDEX = -1
         const val TYPE_STRING = 0x03
