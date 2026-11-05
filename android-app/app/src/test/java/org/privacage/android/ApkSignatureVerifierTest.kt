@@ -329,6 +329,12 @@ class ApkSignatureVerifierTest {
         val indexes = strings.withIndex().associate { it.value to it.index }
         val chunks = ByteArrayOutputStream()
         chunks.write(stringPoolChunk(strings))
+        chunks.write(
+            resourceMapChunk(
+                strings.size,
+                mapOf(indexes.getValue("minSdkVersion") to MIN_SDK_VERSION_ATTR_ID)
+            )
+        )
         writeNamespace(chunks, RES_XML_START_NAMESPACE_TYPE, indexes.getValue("android"),
             indexes.getValue("http://schemas.android.com/apk/res/android"))
         writeStartElement(
@@ -400,6 +406,17 @@ class ApkSignatureVerifierTest {
         writeInt(output, 0)
         offsets.forEach { writeInt(output, it) }
         stringData.writeTo(output)
+        return output.toByteArray()
+    }
+
+    private fun resourceMapChunk(stringCount: Int, resourceIds: Map<Int, Int>): ByteArray {
+        val output = ByteArrayOutputStream()
+        writeShort(output, RES_XML_RESOURCE_MAP_TYPE)
+        writeShort(output, RES_XML_HEADER_SIZE)
+        writeInt(output, RES_XML_HEADER_SIZE + stringCount * INT_BYTES)
+        repeat(stringCount) { index ->
+            writeInt(output, resourceIds[index] ?: 0)
+        }
         return output.toByteArray()
     }
 
@@ -593,6 +610,8 @@ class ApkSignatureVerifierTest {
         const val RES_XML_TYPE = 0x0003
         const val RES_XML_HEADER_SIZE = 8
         const val RES_STRING_POOL_TYPE = 0x0001
+        const val RES_XML_RESOURCE_MAP_TYPE = 0x0180
+        const val MIN_SDK_VERSION_ATTR_ID = 0x0101020c
         const val STRING_POOL_HEADER_SIZE = 28
         const val UTF8_FLAG = 0x100
         const val RES_XML_START_NAMESPACE_TYPE = 0x0100
