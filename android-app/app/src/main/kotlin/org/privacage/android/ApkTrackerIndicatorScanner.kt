@@ -105,18 +105,6 @@ internal class ApkTrackerIndicatorScanner {
             }
         }
 
-        if (patterns.isEmpty()) {
-            warnings += "The bundled catalog did not provide any scannable literal indicators."
-            return ApkTrackerScanReport(
-                status = ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS,
-                indicatorsConsidered = 0,
-                dexFilesScanned = 0,
-                dexBytesScanned = 0L,
-                findings = emptyList(),
-                warnings = warnings.toList()
-            )
-        }
-
         val hitsByMarker = linkedMapOf<String, MutableSet<String>>()
         var dexFilesScanned = 0
         var dexBytesScanned = 0L
@@ -151,7 +139,19 @@ internal class ApkTrackerIndicatorScanner {
                 warnings += "No DEX entries were found; bytecode string scanning did not run."
             }
 
-            val matcher = AsciiMultiPatternMatcher(patterns)
+            if (patterns.isEmpty()) {
+            warnings += "The bundled catalog did not provide any scannable literal indicators."
+            return ApkTrackerScanReport(
+                status = ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS,
+                indicatorsConsidered = 0,
+                dexFilesScanned = 0,
+                dexBytesScanned = 0L,
+                findings = emptyList(),
+                warnings = warnings.toList()
+            )
+        }
+
+        val matcher = AsciiMultiPatternMatcher(patterns)
             for (entry in dexEntries) {
                 val remainingTotalBudget = MAX_TOTAL_DEX_BYTES - dexBytesScanned
                 if (entry.size < 0L || entry.compressedSize < 0L) {

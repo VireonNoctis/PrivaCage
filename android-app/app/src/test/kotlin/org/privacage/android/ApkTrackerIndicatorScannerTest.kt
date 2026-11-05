@@ -161,6 +161,14 @@ class ApkTrackerIndicatorScannerTest {
             )
             val error = runCatching { ApkTrackerIndicatorScanner().scan(apk, listOf(record)) }.exceptionOrNull()
             assertTrue("Malformed archive must surface an error", error is java.io.IOException)
+
+            val withoutCatalog = runCatching {
+                ApkTrackerIndicatorScanner().scan(apk, emptyList())
+            }.exceptionOrNull()
+            assertTrue(
+                "Malformed ZIP input must not be reported as a no-catalog scan.",
+                withoutCatalog is java.io.IOException
+            )
         } finally {
             apk.delete()
         }
