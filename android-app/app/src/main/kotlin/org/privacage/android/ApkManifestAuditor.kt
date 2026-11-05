@@ -27,7 +27,8 @@ internal enum class ApkSigningCertificateHistoryStatus {
     AVAILABLE,
     MULTIPLE_SIGNERS,
     PLATFORM_UNSUPPORTED,
-    METADATA_UNAVAILABLE
+    METADATA_UNAVAILABLE,
+    SIGNATURE_NOT_VERIFIED
 }
 
 internal data class ApkManifestAuditReport(
@@ -102,7 +103,16 @@ internal class ApkManifestAuditor(
         }.sortedWith(compareBy<ExportedApkComponent> { it.kind }.thenBy { it.className })
 
         val trackerScan = ApkTrackerIndicatorScanner().scan(apkFile, trackerCatalog)
-        val signingMetadata = signingCertificateMetadata(packageInfo)
+        val signatureVerification = ApkSignatureVerifier.verify(apkFile)
+        val parsedSigningMetadata = signingCertificateMetadata(packageInfo)
+        val signingMetadata = if (signatureVerification.status == ApkSignatureStatus.VERIFIED) {
+            parsedSigningMetadata
+        } else {
+            parsedSigningMetadata.copy(
+                historySha256 = emptyList(),
+                historyStatus = ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED
+            )
+        }
 
         @Suppress("DEPRECATION")
         val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -119,7 +129,7 @@ internal class ApkManifestAuditor(
             fileSizeBytes = apkFile.length(),
             sha256 = sha256(apkFile),
             signingCertificateSha256 = signingMetadata.currentSignerSha256,
-            signatureVerification = ApkSignatureVerifier.verify(apkFile),
+            signatureVerification = signatureVerification,
             permissions = permissions,
             exportedComponents = exportedComponents,
             trackerScan = trackerScan,

@@ -144,6 +144,24 @@ class ApkPrivacyDiffTest {
     }
 
     @Test
+    fun signatureNotVerifiedHistoryIsUnknown() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A),
+            historyStatus = ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED,
+            signatureStatus = ApkSignatureStatus.INVALID
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
     fun missingPlatformHistoryRemainsUnknown() {
         val baseline = report(
             versionCode = 10,

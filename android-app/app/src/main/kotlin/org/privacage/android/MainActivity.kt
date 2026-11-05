@@ -2545,6 +2545,8 @@ class MainActivity : Activity() {
                 append("not exposed on this Android API level; only legacy current signer fingerprints are available")
             ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ->
                 append("unavailable; do not infer that the signing identity is unchanged")
+            ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED ->
+                append("not accepted: APK signature verification did not pass; signer history is withheld")
         }
         append("\n\nAPK signature verification: ").append(report.signatureVerification.status.name)
         append("\nThis checks cryptographic signature integrity, not whether the publisher or app is trustworthy.")

@@ -124,8 +124,10 @@ internal object ApkPrivacyDiff {
 
         if (baselineStatus == ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ||
             baselineStatus == ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ||
+            baselineStatus == ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED ||
             candidateStatus == ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ||
-            candidateStatus == ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE
+            candidateStatus == ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ||
+            candidateStatus == ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED
         ) {
             return ApkSigningCertificateContinuity.UNKNOWN
         }
