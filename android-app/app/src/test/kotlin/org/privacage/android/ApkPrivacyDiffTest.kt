@@ -108,6 +108,7 @@ class ApkPrivacyDiffTest {
         permissions = permissions.map { ApkPermissionFinding(it, PermissionRiskClassifier.classify(it)) },
         exportedComponents = components,
         trackerScan = ApkTrackerScanReport(
+            status = ApkDexStringScanStatus.COMPLETE_STRING_SCAN,
             indicatorsConsidered = 4,
             dexFilesScanned = 1,
             dexBytesScanned = 128L,

@@ -50,6 +50,7 @@ class ApkTrackerIndicatorScannerTest {
 
             val report = ApkTrackerIndicatorScanner().scan(apk, records)
 
+            assertEquals(ApkDexStringScanStatus.COMPLETE_STRING_SCAN, report.status)
             assertEquals(2, report.indicatorsConsidered)
             assertEquals(1, report.dexFilesScanned)
             assertTrue(report.dexBytesScanned > 0)
@@ -96,6 +97,22 @@ class ApkTrackerIndicatorScannerTest {
     }
 
     @Test
+    fun reportsWhenCatalogHasNoScanableLiteralIndicators() {
+        val apk = zippedDex("classes.dex" to "com.example.analytics.Client")
+        try {
+            val report = ApkTrackerIndicatorScanner().scan(apk, emptyList())
+
+            assertEquals(ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS, report.status)
+            assertEquals(0, report.indicatorsConsidered)
+            assertEquals(0, report.dexFilesScanned)
+            assertTrue(report.findings.isEmpty())
+            assertTrue(report.warnings.any { it.contains("did not provide any scanable literal indicators") })
+        } finally {
+            apk.delete()
+        }
+    }
+
+    @Test
     fun reportsWhenArchiveHasNoDexEntries() {
         val apk = zippedDex("META-INF/MANIFEST.MF" to "not bytecode")
         try {
@@ -116,6 +133,7 @@ class ApkTrackerIndicatorScannerTest {
                 )
             )
 
+            assertEquals(ApkDexStringScanStatus.NO_DEX_ENTRIES, report.status)
             assertEquals(0, report.dexFilesScanned)
             assertEquals(0L, report.dexBytesScanned)
             assertTrue(report.findings.isEmpty())

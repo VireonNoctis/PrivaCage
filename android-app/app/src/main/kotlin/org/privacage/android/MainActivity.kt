@@ -2566,6 +2566,14 @@ class MainActivity : Activity() {
 
         append("\n\nPossible embedded catalog indicators found in DEX strings (")
             .append(report.trackerScan.findings.size).append("):")
+        append("\nDEX string scan status: ").append(
+            when (report.trackerScan.status) {
+                ApkDexStringScanStatus.COMPLETE_STRING_SCAN -> "COMPLETE — literal ASCII string scan only; DEX structure is not validated"
+                ApkDexStringScanStatus.PARTIAL_STRING_SCAN -> "PARTIAL — one or more archive entries or catalog indicators were skipped"
+                ApkDexStringScanStatus.NO_DEX_ENTRIES -> "NO DEX ENTRIES — no DEX string scan was possible"
+                ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS -> "NO SCANNABLE CATALOG INDICATORS — no scan was performed"
+            }
+        )
         append("\nCatalog markers considered: ").append(report.trackerScan.indicatorsConsidered)
         append("\nDEX files scanned: ").append(report.trackerScan.dexFilesScanned)
         append("\nDEX bytes scanned: ").append(report.trackerScan.dexBytesScanned)

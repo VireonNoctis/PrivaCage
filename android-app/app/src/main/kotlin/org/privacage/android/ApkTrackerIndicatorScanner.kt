@@ -21,7 +21,15 @@ internal data class ApkTrackerIndicatorFinding(
     val evidenceUrls: List<String>
 )
 
+internal enum class ApkDexStringScanStatus {
+    COMPLETE_STRING_SCAN,
+    PARTIAL_STRING_SCAN,
+    NO_DEX_ENTRIES,
+    NO_SCANABLE_CATALOG_INDICATORS
+}
+
 internal data class ApkTrackerScanReport(
+    val status: ApkDexStringScanStatus,
     val indicatorsConsidered: Int,
     val dexFilesScanned: Int,
     val dexBytesScanned: Long,
@@ -99,7 +107,14 @@ internal class ApkTrackerIndicatorScanner {
 
         if (patterns.isEmpty()) {
             warnings += "The bundled catalog did not provide any scanable literal indicators."
-            return ApkTrackerScanReport(0, 0, 0L, emptyList(), warnings.toList())
+            return ApkTrackerScanReport(
+                status = ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS,
+                indicatorsConsidered = 0,
+                dexFilesScanned = 0,
+                dexBytesScanned = 0L,
+                findings = emptyList(),
+                warnings = warnings.toList()
+            )
         }
 
         val hitsByMarker = linkedMapOf<String, MutableSet<String>>()
@@ -211,7 +226,13 @@ internal class ApkTrackerIndicatorScanner {
             .thenBy { it.indicatorType }
             .thenBy { it.indicator })
 
+        val scanStatus = when {
+            dexEntries.isEmpty() && warnings.none { it.contains("entry scan reached") } -> ApkDexStringScanStatus.NO_DEX_ENTRIES
+            warnings.isNotEmpty() -> ApkDexStringScanStatus.PARTIAL_STRING_SCAN
+            else -> ApkDexStringScanStatus.COMPLETE_STRING_SCAN
+        }
         return ApkTrackerScanReport(
+            status = scanStatus,
             indicatorsConsidered = markers.size,
             dexFilesScanned = dexFilesScanned,
             dexBytesScanned = dexBytesScanned,
