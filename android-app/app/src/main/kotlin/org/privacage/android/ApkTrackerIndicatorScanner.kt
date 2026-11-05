@@ -4,6 +4,7 @@ import org.privacage.audit.AsciiMultiPatternMatcher
 import org.privacage.audit.AsciiSearchPattern
 import java.io.File
 import java.io.IOException
+import java.util.HashSet
 import java.util.LinkedHashSet
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -110,6 +111,7 @@ internal class ApkTrackerIndicatorScanner {
             val entries = zip.entries()
             var entriesExamined = 0
             var archiveEntryLimitReached = false
+            val entryNames = HashSet<String>()
             while (entries.hasMoreElements()) {
                 if (entriesExamined >= MAX_ARCHIVE_ENTRIES) {
                     archiveEntryLimitReached = true
@@ -117,6 +119,9 @@ internal class ApkTrackerIndicatorScanner {
                 }
                 val entry = entries.nextElement()
                 entriesExamined++
+                if (!entryNames.add(entry.name)) {
+                    throw IOException("APK ZIP contains a duplicate entry name; archive identity is ambiguous.")
+                }
                 if (entry.isDirectory || !entry.name.endsWith(".dex", ignoreCase = true)) continue
                 if (dexEntries.size >= MAX_DEX_FILES) {
                     warnings += "More than " + MAX_DEX_FILES + " DEX files exist; additional DEX files were not scanned."
