@@ -47,7 +47,8 @@ class DnsTunnelEngine(
                 DnsTunnelResult.Response(
                     packet = result.responsePacket,
                     domain = result.domain,
-                    action = DnsTunnelAction.BLOCKED
+                    action = DnsTunnelAction.BLOCKED,
+                    matchedRule = result.matchedRule
                 )
             }
             is DnsPacketProcessingResult.ForwardRequired -> {
@@ -89,7 +90,8 @@ class DnsTunnelEngine(
                 DnsTunnelResult.Response(
                     packet = result.responsePacket,
                     domain = result.domain,
-                    action = DnsTunnelAction.BLOCKED
+                    action = DnsTunnelAction.BLOCKED,
+                    matchedRule = result.matchedRule
                 )
             }
             is DnsPacketProcessingResult.ForwardRequiredIpv6 -> {
@@ -161,7 +163,8 @@ sealed interface DnsTunnelResult {
     data class Response(
         val packet: ByteArray,
         val domain: String,
-        val action: DnsTunnelAction
+        val action: DnsTunnelAction,
+        val matchedRule: String? = null
     ) : DnsTunnelResult
 
     data class Drop(val reason: String) : DnsTunnelResult

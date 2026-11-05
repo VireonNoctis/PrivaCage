@@ -12,9 +12,11 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import org.privacage.audit.AuditExportEvent
+import org.privacage.dns.DnsTunnelAction
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -48,6 +50,25 @@ internal object LocalDnsEventHistory {
         HISTORY_UNREADABLE
     }
 
+    internal enum class EventType {
+        BLOCKED,
+        FORWARDED,
+        DROPPED,
+        DIAGNOSTIC
+    }
+
+    internal enum class ReasonCode {
+        PACKET_REJECTED,
+        UPSTREAM_FAILURE,
+        DIAGNOSTIC_VALID_RESPONSE,
+        DIAGNOSTIC_INVALID_RESPONSE,
+        DIAGNOSTIC_FAILED
+    }
+
+    private val legacyEventKeys = setOf("timestamp", "domain", "action", "socket_owner")
+    private val currentEventKeys = legacyEventKeys + setOf("rule_id", "reason_code")
+    private val ruleIdPattern = Regex("^dns-rule-sha256:[0-9a-f]{64}$")
+
     /**
      * Parse history without silently dropping malformed records. A null result means that saved
      * evidence must be preserved for the user to inspect or explicitly clear.
@@ -67,23 +88,50 @@ internal object LocalDnsEventHistory {
             return null
         }
         if (events.length() > MAX_EVENTS) return null
-        val expectedKeys = setOf("timestamp", "domain", "action", "socket_owner")
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index) ?: return null
             val eventKeys = mutableSetOf<String>()
             val iterator = event.keys()
             while (iterator.hasNext()) eventKeys += iterator.next()
-            if (eventKeys != expectedKeys) return null
+            val legacy = eventKeys == legacyEventKeys
+            if (!legacy && eventKeys != currentEventKeys) return null
 
             val timestamp = event.opt("timestamp") as? String ?: return null
             val domain = event.opt("domain") as? String ?: return null
             val action = event.opt("action") as? String ?: return null
             val socketOwner = event.opt("socket_owner") as? String ?: return null
-            if (timestamp.length > 64 || domain.isBlank() || domain.length > MAX_DOMAIN_LENGTH ||
+            val type = eventTypeFromStoredAction(action) ?: return null
+            if (timestamp.length > 64 || domain.length > MAX_DOMAIN_LENGTH ||
                 domain != domain.trim() || domain.any(Char::isISOControl) ||
                 action.isBlank() || action.length > 64 || action.any(Char::isISOControl) ||
                 socketOwner.isBlank() || socketOwner.length > 512 || socketOwner.any(Char::isISOControl)
             ) return null
+            if (type in setOf(EventType.BLOCKED, EventType.FORWARDED) && domain.isBlank()) return null
+            if (type in setOf(EventType.DROPPED, EventType.DIAGNOSTIC) && domain.isNotEmpty()) return null
+
+            if (!legacy) {
+                val ruleId = event.opt("rule_id") as? String ?: return null
+                val reasonCode = event.opt("reason_code") as? String ?: return null
+                if (ruleId.isNotEmpty() && !ruleIdPattern.matches(ruleId)) return null
+                if (type == EventType.BLOCKED && ruleId.isEmpty()) return null
+                if (type != EventType.BLOCKED && ruleId.isNotEmpty()) return null
+                val validReason = when (type) {
+                    EventType.BLOCKED, EventType.FORWARDED -> reasonCode.isEmpty()
+                    EventType.DROPPED -> reasonCode in setOf(
+                        ReasonCode.PACKET_REJECTED.name,
+                        ReasonCode.UPSTREAM_FAILURE.name
+                    )
+                    EventType.DIAGNOSTIC -> reasonCode in setOf(
+                        ReasonCode.DIAGNOSTIC_VALID_RESPONSE.name,
+                        ReasonCode.DIAGNOSTIC_INVALID_RESPONSE.name,
+                        ReasonCode.DIAGNOSTIC_FAILED.name
+                    )
+                }
+                if (!validReason) return null
+            } else if (action !in setOf("ALLOW", "BLOCK", "BLOCKED", "FORWARDED")) {
+                return null
+            }
+
             val instant = try {
                 Instant.parse(timestamp)
             } catch (_: DateTimeParseException) {
@@ -258,15 +306,79 @@ internal object LocalDnsEventHistory {
         return retained
     }
 
-    fun record(context: Context, packet: ByteArray, domain: String, action: String): RecordResult {
+    fun record(
+        context: Context,
+        packet: ByteArray,
+        domain: String,
+        action: DnsTunnelAction,
+        matchedRule: String? = null
+    ): RecordResult {
+        val type = when (action) {
+            DnsTunnelAction.BLOCKED -> EventType.BLOCKED
+            DnsTunnelAction.FORWARDED -> EventType.FORWARDED
+        }
+        val ruleId = if (type == EventType.BLOCKED) ruleIdForMatchedRule(matchedRule) else ""
+        if (type == EventType.BLOCKED && ruleId.isEmpty()) return RecordResult.HISTORY_UNREADABLE
+        if (type == EventType.FORWARDED && !matchedRule.isNullOrBlank()) return RecordResult.HISTORY_UNREADABLE
+        return appendEvent(context, packet, type, domain, ruleId, "")
+    }
+
+    fun recordDropped(context: Context, packet: ByteArray, reasonCode: ReasonCode): RecordResult {
+        require(reasonCode == ReasonCode.PACKET_REJECTED || reasonCode == ReasonCode.UPSTREAM_FAILURE)
+        return appendEvent(context, packet, EventType.DROPPED, "", "", reasonCode.name)
+    }
+
+    fun recordDiagnostic(context: Context, validDnsResponse: Boolean?, failed: Boolean = false): RecordResult {
+        val reasonCode = when {
+            failed -> ReasonCode.DIAGNOSTIC_FAILED
+            validDnsResponse == true -> ReasonCode.DIAGNOSTIC_VALID_RESPONSE
+            else -> ReasonCode.DIAGNOSTIC_INVALID_RESPONSE
+        }
+        return appendEvent(context, null, EventType.DIAGNOSTIC, "", "", reasonCode.name)
+    }
+
+    internal fun ruleIdForMatchedRule(matchedRule: String?): String {
+        val normalized = matchedRule?.trim()?.lowercase().orEmpty()
+        if (normalized.isBlank() || normalized.length > MAX_DOMAIN_LENGTH ||
+            normalized.split('.').size < 2 ||
+            normalized.split('.').any { label ->
+                label.isEmpty() || label.length > 63 || label.first() == '-' || label.last() == '-' ||
+                    label.any { it !in 'a'..'z' && it !in '0'..'9' && it != '-' }
+            }
+        ) return ""
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(normalized.toByteArray(Charsets.UTF_8))
+        val hexadecimal = digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        return "dns-rule-sha256:$hexadecimal"
+    }
+
+    private fun eventTypeFromStoredAction(action: String): EventType? = when (action) {
+        "ALLOW" -> EventType.FORWARDED
+        "BLOCK" -> EventType.BLOCKED
+        else -> EventType.values().firstOrNull { it.name == action }
+    }
+
+    private fun appendEvent(
+        context: Context,
+        packet: ByteArray?,
+        type: EventType,
+        domain: String,
+        ruleId: String,
+        reasonCode: String
+    ): RecordResult {
         val prefs = context.getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return RecordResult.DISABLED
         val normalizedDomain = domain.filterNot(Char::isISOControl).trim()
             .take(MAX_DOMAIN_LENGTH).lowercase()
-        val normalizedAction = action.filterNot(Char::isISOControl).trim().take(64)
-        if (normalizedDomain.isBlank() || normalizedAction.isBlank()) return RecordResult.HISTORY_UNREADABLE
-        val attribution = resolveSocketOwner(context, packet)
-            .filterNot(Char::isISOControl).trim().take(512).ifBlank { "Unknown" }
+        if (type in setOf(EventType.BLOCKED, EventType.FORWARDED) && normalizedDomain.isBlank()) {
+            return RecordResult.HISTORY_UNREADABLE
+        }
+        if (type in setOf(EventType.DROPPED, EventType.DIAGNOSTIC) && normalizedDomain.isNotEmpty()) {
+            return RecordResult.HISTORY_UNREADABLE
+        }
+        val attribution = packet?.let { resolveSocketOwner(context, it) }
+            ?.filterNot(Char::isISOControl)?.trim()?.take(512)?.ifBlank { "Unknown" }
+            ?: "PrivaCage diagnostic"
         return synchronized(this) {
             val current = readAndPruneEvents(prefs, Instant.now())
                 ?: return RecordResult.HISTORY_UNREADABLE
@@ -278,8 +390,10 @@ internal object LocalDnsEventHistory {
             next.put(JSONObject()
                 .put("timestamp", Instant.now().toString())
                 .put("domain", normalizedDomain)
-                .put("action", normalizedAction)
-                .put("socket_owner", attribution))
+                .put("action", type.name)
+                .put("socket_owner", attribution)
+                .put("rule_id", ruleId)
+                .put("reason_code", reasonCode))
             try {
                 writeStoredHistory(prefs, next.toString())
             } catch (_: IOException) {
@@ -301,8 +415,22 @@ internal object LocalDnsEventHistory {
         for (index in events.length() - 1 downTo start) {
             val event = events.optJSONObject(index) ?: continue
             val hostname = event.optString("domain")
-            val classification = DnsHistoryDomainClassifier.classify(hostname, catalog)
-            result += "${event.optString("timestamp")}  [${event.optString("action")}] $hostname\nSocket owner: ${event.optString("socket_owner", "Unknown")}\n${classification.summary()}"
+            val action = eventTypeFromStoredAction(event.optString("action"))?.name ?: event.optString("action")
+            val ruleId = event.optString("rule_id")
+            val reasonCode = event.optString("reason_code")
+            val classification = if (hostname.isNotBlank()) {
+                DnsHistoryDomainClassifier.classify(hostname, catalog).summary()
+            } else {
+                ""
+            }
+            result += buildString {
+                append(event.optString("timestamp")).append("  [").append(action).append("]")
+                if (hostname.isNotBlank()) append(" ").append(hostname)
+                append("\\nSocket owner: ").append(event.optString("socket_owner", "Unknown"))
+                if (ruleId.isNotBlank()) append("\\nRule ID: ").append(ruleId)
+                if (reasonCode.isNotBlank()) append("\\nReason: ").append(reasonCode)
+                if (classification.isNotBlank()) append("\\n").append(classification)
+            }
         }
         return result
     }
@@ -320,7 +448,8 @@ internal object LocalDnsEventHistory {
                 ?: throw IOException("Stored DNS history contains a malformed record at index $index; export cancelled.")
             result += AuditExportEvent(
                 timestamp = event.optString("timestamp", ""),
-                category = event.optString("action", ""),
+                category = eventTypeFromStoredAction(event.optString("action", ""))?.name
+                    ?: event.optString("action", ""),
                 hostname = event.optString("domain", ""),
                 socketOwnerLabel = event.optString("socket_owner", "Unknown")
             )
