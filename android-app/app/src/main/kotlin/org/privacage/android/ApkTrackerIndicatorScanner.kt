@@ -25,7 +25,7 @@ internal enum class ApkDexStringScanStatus {
     COMPLETE_STRING_SCAN,
     PARTIAL_STRING_SCAN,
     NO_DEX_ENTRIES,
-    NO_SCANABLE_CATALOG_INDICATORS
+    NO_SCANNABLE_CATALOG_INDICATORS
 }
 
 internal data class ApkTrackerScanReport(
@@ -106,9 +106,9 @@ internal class ApkTrackerIndicatorScanner {
         }
 
         if (patterns.isEmpty()) {
-            warnings += "The bundled catalog did not provide any scanable literal indicators."
+            warnings += "The bundled catalog did not provide any scannable literal indicators."
             return ApkTrackerScanReport(
-                status = ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS,
+                status = ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS,
                 indicatorsConsidered = 0,
                 dexFilesScanned = 0,
                 dexBytesScanned = 0L,

@@ -2571,7 +2571,7 @@ class MainActivity : Activity() {
                 ApkDexStringScanStatus.COMPLETE_STRING_SCAN -> "COMPLETE — literal ASCII string scan only; DEX structure is not validated"
                 ApkDexStringScanStatus.PARTIAL_STRING_SCAN -> "PARTIAL — one or more archive entries or catalog indicators were skipped"
                 ApkDexStringScanStatus.NO_DEX_ENTRIES -> "NO DEX ENTRIES — no DEX string scan was possible"
-                ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS -> "NO SCANNABLE CATALOG INDICATORS — no scan was performed"
+                ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS -> "NO SCANNABLE CATALOG INDICATORS — no scan was performed"
             }
         )
         append("\nCatalog markers considered: ").append(report.trackerScan.indicatorsConsidered)

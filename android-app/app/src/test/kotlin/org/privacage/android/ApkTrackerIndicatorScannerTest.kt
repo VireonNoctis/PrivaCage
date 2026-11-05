@@ -102,11 +102,11 @@ class ApkTrackerIndicatorScannerTest {
         try {
             val report = ApkTrackerIndicatorScanner().scan(apk, emptyList())
 
-            assertEquals(ApkDexStringScanStatus.NO_SCANABLE_CATALOG_INDICATORS, report.status)
+            assertEquals(ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS, report.status)
             assertEquals(0, report.indicatorsConsidered)
             assertEquals(0, report.dexFilesScanned)
             assertTrue(report.findings.isEmpty())
-            assertTrue(report.warnings.any { it.contains("did not provide any scanable literal indicators") })
+            assertTrue(report.warnings.any { it.contains("did not provide any scannable literal indicators") })
         } finally {
             apk.delete()
         }
