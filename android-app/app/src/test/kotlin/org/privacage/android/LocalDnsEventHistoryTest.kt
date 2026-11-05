@@ -163,6 +163,14 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
+    fun signedAuditExportRemainsLimitedToItsSupportedBlockAndForwardCategories() {
+        assertEquals(LocalDnsEventHistory.EventType.FORWARDED, LocalDnsEventHistory.eventTypeForExport("ALLOW"))
+        assertEquals(LocalDnsEventHistory.EventType.BLOCKED, LocalDnsEventHistory.eventTypeForExport("BLOCKED"))
+        assertNull(LocalDnsEventHistory.eventTypeForExport("DROPPED"))
+        assertNull(LocalDnsEventHistory.eventTypeForExport("DIAGNOSTIC"))
+    }
+
+    @Test
     fun keepsLegacyAllowAndBlockEventsReadableAlongsideTypedEvents() {
         val legacy = event("2026-10-26T10:00:00Z", "legacy.example")
         val typed = typedEvent("DROPPED", "", "", "PACKET_REJECTED")

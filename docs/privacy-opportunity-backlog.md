@@ -22,7 +22,7 @@ Offer optional local lookup against a documented downloaded dataset, without sub
 
 **Implemented Android slice (5 November 2026):** local DNS history uses explicit `BLOCKED`, `FORWARDED`, `DROPPED`, and `DIAGNOSTIC` categories. New blocked events carry a deterministic SHA-256 rule identifier derived from the normalized matching rule; dropped and diagnostic events retain only a bounded reason code and no hostname, query bytes, response bytes, or raw packet. Existing four-field history records remain readable during the transition. Socket-owner labels remain best-effort and may identify Android's system resolver rather than the initiating app.
 
-**Limits:** the rule identifier is a stable fingerprint, not a secret or a globally assigned catalogue ID. DNS history remains optional, local, bounded, and subject to the selected retention period. Non-DNS packets are not added to this history.
+**Limits:** the rule identifier is a stable fingerprint, not a secret or a globally assigned catalogue ID. DNS history remains optional, local, bounded, and subject to the selected retention period. Non-DNS packets are not added to this history. The existing signed audit-checkpoint format still exports only blocked/forwarded hostname events; dropped/diagnostic outcomes and rule fingerprints remain in the local history until that cross-platform format is versioned.
 
 ### App privacy change alerts
 Compare user-selected APK versions locally, show exact differences, cite signature database revisions, and distinguish declared capability from observed behavior. Obfuscation and dynamic loading limit static analysis.

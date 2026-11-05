@@ -358,6 +358,11 @@ internal object LocalDnsEventHistory {
         else -> EventType.values().firstOrNull { it.name == action }
     }
 
+    internal fun eventTypeForExport(action: String): EventType? =
+        eventTypeFromStoredAction(action)?.takeIf {
+            it == EventType.BLOCKED || it == EventType.FORWARDED
+        }
+
     private fun appendEvent(
         context: Context,
         packet: ByteArray?,
@@ -426,10 +431,10 @@ internal object LocalDnsEventHistory {
             result += buildString {
                 append(event.optString("timestamp")).append("  [").append(action).append("]")
                 if (hostname.isNotBlank()) append(" ").append(hostname)
-                append("\\nSocket owner: ").append(event.optString("socket_owner", "Unknown"))
-                if (ruleId.isNotBlank()) append("\\nRule ID: ").append(ruleId)
-                if (reasonCode.isNotBlank()) append("\\nReason: ").append(reasonCode)
-                if (classification.isNotBlank()) append("\\n").append(classification)
+                append("\nSocket owner: ").append(event.optString("socket_owner", "Unknown"))
+                if (ruleId.isNotBlank()) append("\nRule ID: ").append(ruleId)
+                if (reasonCode.isNotBlank()) append("\nReason: ").append(reasonCode)
+                if (classification.isNotBlank()) append("\n").append(classification)
             }
         }
         return result
@@ -446,10 +451,10 @@ internal object LocalDnsEventHistory {
         for (index in 0 until events.length()) {
             val event = events.optJSONObject(index)
                 ?: throw IOException("Stored DNS history contains a malformed record at index $index; export cancelled.")
+            val exportType = eventTypeForExport(event.optString("action", "")) ?: continue
             result += AuditExportEvent(
                 timestamp = event.optString("timestamp", ""),
-                category = eventTypeFromStoredAction(event.optString("action", ""))?.name
-                    ?: event.optString("action", ""),
+                category = exportType.name,
                 hostname = event.optString("domain", ""),
                 socketOwnerLabel = event.optString("socket_owner", "Unknown")
             )
