@@ -111,6 +111,14 @@ internal object ApkPrivacyDiff {
         baseline: ApkManifestAuditReport,
         candidate: ApkManifestAuditReport
     ): ApkSigningCertificateContinuity {
+        // Do not trust PackageManager signer metadata as a continuity claim unless the
+        // independent APK signature verifier accepted both complete APK files.
+        if (baseline.signatureVerification.status != ApkSignatureStatus.VERIFIED ||
+            candidate.signatureVerification.status != ApkSignatureStatus.VERIFIED
+        ) {
+            return ApkSigningCertificateContinuity.UNKNOWN
+        }
+
         val baselineStatus = baseline.signingCertificateHistoryStatus
         val candidateStatus = candidate.signingCertificateHistoryStatus
 

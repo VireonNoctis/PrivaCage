@@ -100,6 +100,23 @@ class ApkPrivacyDiffTest {
     }
 
     @Test
+    fun invalidApkSignatureCannotClaimAuthorizedRotation() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B),
+            signatureStatus = ApkSignatureStatus.INVALID
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
     fun historyMustEndWithTheReportedCurrentSigner() {
         val baseline = report(
             versionCode = 10,
@@ -248,7 +265,8 @@ class ApkPrivacyDiffTest {
         findings: List<ApkTrackerIndicatorFinding> = emptyList(),
         signingHistory: List<String> = listOf(CERT_A),
         signers: List<String> = signingHistory.takeLast(1),
-        historyStatus: ApkSigningCertificateHistoryStatus = ApkSigningCertificateHistoryStatus.AVAILABLE
+        historyStatus: ApkSigningCertificateHistoryStatus = ApkSigningCertificateHistoryStatus.AVAILABLE,
+        signatureStatus: ApkSignatureStatus = ApkSignatureStatus.VERIFIED
     ) = ApkManifestAuditReport(
         packageName = packageName,
         versionName = versionName,
@@ -257,7 +275,7 @@ class ApkPrivacyDiffTest {
         fileSizeBytes = 10_000L,
         sha256 = "b".repeat(64),
         signingCertificateSha256 = signers.sorted(),
-        signatureVerification = ApkSignatureVerification(ApkSignatureStatus.VERIFIED, emptyList(), emptyList()),
+        signatureVerification = ApkSignatureVerification(signatureStatus, emptyList(), emptyList()),
         permissions = permissions.map { ApkPermissionFinding(it, PermissionRiskClassifier.classify(it)) },
         exportedComponents = components,
         trackerScan = ApkTrackerScanReport(
