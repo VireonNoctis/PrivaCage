@@ -2524,11 +2524,27 @@ class MainActivity : Activity() {
         append("Target SDK: ").append(report.targetSdkVersion ?: "unknown").append('\n')
         append("File size: ").append(report.fileSizeBytes).append(" bytes\n")
         append("APK SHA-256: ").append(report.sha256).append('\n')
-        append("Current signing certificate SHA-256 fingerprints:")
+        append("Current signing certificate SHA-256 fingerprint(s):")
         if (report.signingCertificateSha256.isEmpty()) {
-            append(" unavailable (unsigned APK or Android did not expose signer metadata)")
+            append(" unavailable (Android did not expose signer metadata)")
         } else {
             report.signingCertificateSha256.forEach { append("\n  ").append(it) }
+        }
+        append("\nSigning certificate history: ")
+        when (report.signingCertificateHistoryStatus) {
+            ApkSigningCertificateHistoryStatus.AVAILABLE -> {
+                append("available from Android, oldest to current")
+                report.signingCertificateHistorySha256.forEach { append("\n  ").append(it) }
+                if (report.signingCertificateHistorySha256.size == 1) {
+                    append("\n  One signer is listed; Android supplied no earlier rotated certificate.")
+                }
+            }
+            ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS ->
+                append("multiple simultaneous signers; a rotation history is not applicable to this signer model")
+            ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ->
+                append("not exposed on this Android API level; only legacy current signer fingerprints are available")
+            ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ->
+                append("unavailable; do not infer that the signing identity is unchanged")
         }
         append("\n\nAPK signature verification: ").append(report.signatureVerification.status.name)
         append("\nThis checks cryptographic signature integrity, not whether the publisher or app is trustworthy.")
@@ -2625,10 +2641,32 @@ class MainActivity : Activity() {
             .append(" -> ").append(candidate.targetSdkVersion ?: "unknown").append('\n')
         append("APK signature verification: baseline ").append(baseline.signatureVerification.status.name)
             .append(", candidate ").append(candidate.signatureVerification.status.name).append('\n')
-        append("Signing certificate fingerprints: ")
-            .append(if (baseline.signingCertificateSha256 == candidate.signingCertificateSha256) "unchanged" else "CHANGED")
-        if (baseline.signingCertificateSha256 != candidate.signingCertificateSha256) {
-            append("\nWARNING: signing fingerprints differ. Rotation can be legitimate, but independently verify the publisher before installing an APK.")
+        append("Signing certificate continuity: ").append(diff.signingCertificateContinuity.name)
+        when (diff.signingCertificateContinuity) {
+            ApkSigningCertificateContinuity.UNCHANGED ->
+                append("\nAndroid-provided signer identity/history is unchanged.")
+            ApkSigningCertificateContinuity.AUTHORIZED_ROTATION ->
+                append("\nThe candidate's Android-provided single-signer history extends the baseline history and has a higher version code. This is consistent with an authorized certificate rotation.")
+            ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE ->
+                append("\nWARNING: the candidate has a lower version code and its signer history is an earlier prefix of the baseline lineage. Treat it as a possible downgrade.")
+            ApkSigningCertificateContinuity.LINEAGE_REGRESSION ->
+                append("\nWARNING: the candidate history is an earlier prefix of the baseline lineage without a lower version code. The signer history regressed.")
+            ApkSigningCertificateContinuity.SIGNER_MISMATCH ->
+                append("\nWARNING: signer histories or current signer sets differ without a matching forward rotation lineage.")
+            ApkSigningCertificateContinuity.SIGNER_MODEL_CHANGED ->
+                append("\nWARNING: the signer model changed between single-signer history and multiple simultaneous signers.")
+            ApkSigningCertificateContinuity.UNKNOWN ->
+                append("\nAndroid could not provide comparable signer history for both APKs. Do not interpret missing history as an unchanged signer.")
+        }
+        append("\nBaseline history status: ").append(baseline.signingCertificateHistoryStatus.name)
+        append("\nCandidate history status: ").append(candidate.signingCertificateHistoryStatus.name)
+        if (baseline.signingCertificateHistorySha256.isNotEmpty()) {
+            append("\nBaseline signer history (oldest -> current): ")
+                .append(baseline.signingCertificateHistorySha256.joinToString(" -> "))
+        }
+        if (candidate.signingCertificateHistorySha256.isNotEmpty()) {
+            append("\nCandidate signer history (oldest -> current): ")
+                .append(candidate.signingCertificateHistorySha256.joinToString(" -> "))
         }
         appendDiffSection(this, "Declared permissions added", diff.addedPermissions.map {
             "[" + it.review.category.displayName + "] " + it.permissionName

@@ -23,6 +23,13 @@ internal data class ExportedApkComponent(
     val requiredPermission: String?
 )
 
+internal enum class ApkSigningCertificateHistoryStatus {
+    AVAILABLE,
+    MULTIPLE_SIGNERS,
+    PLATFORM_UNSUPPORTED,
+    METADATA_UNAVAILABLE
+}
+
 internal data class ApkManifestAuditReport(
     val packageName: String,
     val versionName: String?,
@@ -34,7 +41,10 @@ internal data class ApkManifestAuditReport(
     val signatureVerification: ApkSignatureVerification,
     val permissions: List<ApkPermissionFinding>,
     val exportedComponents: List<ExportedApkComponent>,
-    val trackerScan: ApkTrackerScanReport
+    val trackerScan: ApkTrackerScanReport,
+    val signingCertificateHistorySha256: List<String> = emptyList(),
+    val signingCertificateHistoryStatus: ApkSigningCertificateHistoryStatus =
+        ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE
 )
 
 /**
@@ -92,6 +102,7 @@ internal class ApkManifestAuditor(
         }.sortedWith(compareBy<ExportedApkComponent> { it.kind }.thenBy { it.className })
 
         val trackerScan = ApkTrackerIndicatorScanner().scan(apkFile, trackerCatalog)
+        val signingMetadata = signingCertificateMetadata(packageInfo)
 
         @Suppress("DEPRECATION")
         val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -107,11 +118,13 @@ internal class ApkManifestAuditor(
             targetSdkVersion = packageInfo.applicationInfo?.targetSdkVersion,
             fileSizeBytes = apkFile.length(),
             sha256 = sha256(apkFile),
-            signingCertificateSha256 = signingCertificateFingerprints(packageInfo),
+            signingCertificateSha256 = signingMetadata.currentSignerSha256,
             signatureVerification = ApkSignatureVerifier.verify(apkFile),
             permissions = permissions,
             exportedComponents = exportedComponents,
-            trackerScan = trackerScan
+            trackerScan = trackerScan,
+            signingCertificateHistorySha256 = signingMetadata.historySha256,
+            signingCertificateHistoryStatus = signingMetadata.historyStatus
         )
     }
 
@@ -140,21 +153,67 @@ internal class ApkManifestAuditor(
         )
     }
 
-    private fun signingCertificateFingerprints(packageInfo: PackageInfo): List<String> {
-        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
-        } else {
-            legacySignatures(packageInfo)
-        }
-        return signatures
-            .map { CertificateFingerprint.sha256(it.toByteArray()) }
-            .distinct()
-            .sorted()
-    }
+    private data class SigningCertificateMetadata(
+        val currentSignerSha256: List<String>,
+        val historySha256: List<String>,
+        val historyStatus: ApkSigningCertificateHistoryStatus
+    )
 
-    @Suppress("DEPRECATION")
-    private fun legacySignatures(packageInfo: PackageInfo) =
-        packageInfo.signatures?.toList().orEmpty()
+    private fun signingCertificateMetadata(packageInfo: PackageInfo): SigningCertificateMetadata {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            @Suppress("DEPRECATION")
+            val legacySigners = packageInfo.signatures.orEmpty()
+                .map { CertificateFingerprint.sha256(it.toByteArray()) }
+                .distinct()
+                .sorted()
+            return SigningCertificateMetadata(
+                currentSignerSha256 = legacySigners,
+                historySha256 = emptyList(),
+                historyStatus = ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED
+            )
+        }
+
+        val signingInfo = packageInfo.signingInfo
+            ?: return SigningCertificateMetadata(
+                currentSignerSha256 = emptyList(),
+                historySha256 = emptyList(),
+                historyStatus = ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE
+            )
+
+        if (signingInfo.hasMultipleSigners()) {
+            val currentSigners = signingInfo.apkContentsSigners.orEmpty()
+                .map { CertificateFingerprint.sha256(it.toByteArray()) }
+                .distinct()
+                .sorted()
+            return SigningCertificateMetadata(
+                currentSignerSha256 = currentSigners,
+                historySha256 = emptyList(),
+                historyStatus = if (currentSigners.isEmpty()) {
+                    ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE
+                } else {
+                    ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+                }
+            )
+        }
+
+        // Android documents this ordered history as the preferred source for single-signer
+        // packages. Its final entry is the current signer; earlier entries are authorized
+        // predecessors from the platform-recognized proof-of-rotation lineage.
+        val history = signingInfo.signingCertificateHistory.orEmpty()
+            .map { CertificateFingerprint.sha256(it.toByteArray()) }
+        if (history.isEmpty()) {
+            return SigningCertificateMetadata(
+                currentSignerSha256 = emptyList(),
+                historySha256 = emptyList(),
+                historyStatus = ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE
+            )
+        }
+        return SigningCertificateMetadata(
+            currentSignerSha256 = listOf(history.last()),
+            historySha256 = history,
+            historyStatus = ApkSigningCertificateHistoryStatus.AVAILABLE
+        )
+    }
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
