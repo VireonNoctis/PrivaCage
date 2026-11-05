@@ -100,9 +100,34 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
-    fun invalidRetentionValueFallsBackToTheSafeSevenDayDefault() {
-        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(0))
-        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(365))
+    fun everyAdvertisedRetentionOptionHasTheExpectedPersistedValueAndLabel() {
+        assertEquals(listOf(1, 7, 30), LocalDnsEventHistory.RETENTION_OPTIONS_DAYS)
+        assertEquals("24 hours", LocalDnsEventHistory.retentionLabel(1))
+        assertEquals("7 days", LocalDnsEventHistory.retentionLabel(7))
+        assertEquals("30 days", LocalDnsEventHistory.retentionLabel(30))
+    }
+
+    @Test
+    fun invalidRetentionValuesAlwaysResolveToTheSevenDayDefaultLabel() {
+        listOf(Int.MIN_VALUE, -1, 0, 2, 14, 365, Int.MAX_VALUE).forEach { invalid ->
+            assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(invalid))
+            assertEquals("7 days", LocalDnsEventHistory.retentionLabel(invalid))
+        }
+    }
+
+    @Test
+    fun thirtyDayRetentionKeepsTheExactCutoffAndDropsOnlyOlderEvents() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val older = event(now.minus(Duration.ofDays(30)).minusNanos(1).toString(), "older.example")
+        val atCutoff = event(now.minus(Duration.ofDays(30)).toString(), "cutoff.example")
+        val recent = event(now.minus(Duration.ofDays(2)).toString(), "recent.example")
+
+        val retained = LocalDnsEventHistory.pruneExpiredEvents(events(older, atCutoff, recent), now, 30)
+
+        assertNotNull(retained)
+        assertEquals(2, retained?.length())
+        assertEquals("cutoff.example", retained?.optJSONObject(0)?.optString("domain"))
+        assertEquals("recent.example", retained?.optJSONObject(1)?.optString("domain"))
     }
 
     @Test
