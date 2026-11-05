@@ -100,6 +100,23 @@ class ApkPrivacyDiffTest {
     }
 
     @Test
+    fun historyMustEndWithTheReportedCurrentSigner() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A, CERT_B),
+            signers = listOf(CERT_C)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B, CERT_C)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.SIGNER_MISMATCH, diff.signingCertificateContinuity)
+    }
+
+    @Test
     fun unrelatedSigningHistoriesAreNotReportedAsAuthorizedRotation() {
         val baseline = report(versionCode = 10, signingHistory = listOf(CERT_A))
         val candidate = report(versionCode = 11, signingHistory = listOf(CERT_C))
@@ -229,8 +246,8 @@ class ApkPrivacyDiffTest {
         permissions: List<String> = emptyList(),
         components: List<ExportedApkComponent> = emptyList(),
         findings: List<ApkTrackerIndicatorFinding> = emptyList(),
-        signers: List<String> = listOf(CERT_A),
-        signingHistory: List<String> = signers,
+        signingHistory: List<String> = listOf(CERT_A),
+        signers: List<String> = signingHistory.takeLast(1),
         historyStatus: ApkSigningCertificateHistoryStatus = ApkSigningCertificateHistoryStatus.AVAILABLE
     ) = ApkManifestAuditReport(
         packageName = packageName,

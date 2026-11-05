@@ -140,6 +140,11 @@ internal object ApkPrivacyDiff {
         if (baselineHistory.isEmpty() || candidateHistory.isEmpty()) {
             return ApkSigningCertificateContinuity.UNKNOWN
         }
+        if (baseline.signingCertificateSha256 != listOf(baselineHistory.last()) ||
+            candidate.signingCertificateSha256 != listOf(candidateHistory.last())
+        ) {
+            return ApkSigningCertificateContinuity.SIGNER_MISMATCH
+        }
         if (baselineHistory == candidateHistory &&
             baseline.signingCertificateSha256 == candidate.signingCertificateSha256
         ) {
