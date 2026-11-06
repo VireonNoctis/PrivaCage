@@ -27,14 +27,16 @@ This document describes the current Android implementation. It does not claim th
 ## 3. Optional sync relay retention and metadata
 
 The current relay implementation:
-- stores opaque encrypted packet bytes, message IDs, space IDs, cursors and timestamps;
-- stores a hash of a capability token rather than the capability token;
-- stores public device cards/fingerprints and roster information needed for validation;
+- stores encrypted packet bytes, message IDs, space IDs, cursors, expiry/insert timestamps and public roster/device-card information;
+- stores SHA-256 hashes of space/member capabilities rather than raw tokens;
+- stores signed member-request nonces for five minutes to prevent replay;
 - does not decrypt packet contents;
-- expires stored packet records after seven days; and
+- expires message rows after seven days and nonce rows after five minutes;
+- prunes expired rows at startup and every 60 seconds, as well as during message access;
+- enables SQLite `secure_delete=ON` for ordinary table deletions; and
 - limits each space to 10,000 non-expired packets.
 
-The relay can observe message sizes, message timing, routing identifiers and access patterns. A reverse proxy or hosting provider may retain source IP and HTTP request metadata according to its own configuration. The repository relay defaults to loopback; a public relay is operated by whoever deploys it.
+The application does not persist source IP addresses or log request headers/bodies. It necessarily sees request-authentication metadata in memory, including member fingerprint, timestamp, nonce, signature, space/message IDs and payload size. A reverse proxy or hosting provider can see source IP and other connection metadata and may retain paths, headers, body sizes or request timing according to its own configuration. SQLite deletion/secure-delete is not a promise of physical erasure: WAL frames, file-system snapshots, volume backups and copied database files remain deployment-level retention risks. The repository relay defaults to loopback; a public relay is operated by whoever deploys it.
 
 ## 4. Third-party retention
 

@@ -15,9 +15,9 @@ The feature is DNS-only and does not capture arbitrary HTTPS, app-owned DoH/DoQ,
 
 The user configures a relay URL, space and capability. Device messages are signed and recipient-encrypted before upload. The relay transports and stores opaque packets, not readable profile contents.
 
-The relay nevertheless sees message IDs, space IDs, public device cards/fingerprints, timestamps/cursors, payload lengths and access patterns. The relay operator and any reverse proxy/host may see ordinary connection metadata.
+The relay nevertheless sees message IDs, space IDs, public device cards/fingerprints, timestamps/cursors, payload lengths, access patterns and member-mode request authentication metadata. It receives bearer capabilities in request headers but stores only SHA-256 capability hashes. It stores encrypted message bytes for seven days and request nonces for five minutes, with startup and 60-second cleanup sweeps. SQLite secure-delete is enabled for ordinary table deletions, but this does not guarantee physical erasure from WAL frames, filesystem snapshots, storage-level backups or copied database files.
 
-The repository relay defaults to loopback. It does not create a central user-account service. Anyone who deploys it publicly is responsible for securing the host, TLS termination, administrator credentials, access controls, backups, logging and its own privacy notice.
+The repository relay binds to loopback and the application source does not persist client IP addresses or log request bodies/headers. A public deployment needs a separately secured TLS reverse proxy. The proxy/host may see source IP addresses and ordinary connection metadata, and may log paths, headers, body sizes or request timing according to its own configuration. The deployment operator must secure TLS termination, administrator credentials, access controls, backups and its own privacy notice.
 
 ## 3. Browser, app store and source links
 
