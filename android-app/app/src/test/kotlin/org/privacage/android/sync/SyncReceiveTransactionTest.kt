@@ -98,6 +98,33 @@ class SyncReceiveTransactionTest {
     }
 
     @Test
+    fun newerRosterDiscardsReceiveFromRemovedPeerButKeepsTrustedSender() {
+        val revokedRecord = JSONObject().put("relay_cursor", 7L)
+        SyncReceiveTransactionRecord.stage(
+            revokedRecord, 7L, 8L, messageId, senderFingerprint, payload
+        )
+
+        assertTrue(
+            SyncReceiveTransactionRecord.discardIfSenderNotTrusted(revokedRecord, emptySet())
+        )
+        assertFalse(revokedRecord.has(SyncReceiveTransactionRecord.KEY))
+        assertEquals(7L, revokedRecord.getLong("relay_cursor"))
+
+        val retainedRecord = JSONObject().put("relay_cursor", 7L)
+        SyncReceiveTransactionRecord.stage(
+            retainedRecord, 7L, 8L, messageId, senderFingerprint, payload
+        )
+
+        assertFalse(
+            SyncReceiveTransactionRecord.discardIfSenderNotTrusted(
+                retainedRecord,
+                setOf(senderFingerprint)
+            )
+        )
+        assertTrue(retainedRecord.has(SyncReceiveTransactionRecord.KEY))
+    }
+
+    @Test
     fun refusesCommitWhenJournalChanged() {
         val record = JSONObject().put("relay_cursor", 1L)
         SyncReceiveTransactionRecord.stage(

@@ -453,6 +453,10 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             record.remove(KEY_PENDING_PROFILE)
             record.remove(KEY_PENDING_SENDER)
         }
+        val trustedFingerprints = mutableSetOf<String>()
+        val trustedKeys = trusted.keys()
+        while (trustedKeys.hasNext()) trustedFingerprints += trustedKeys.next()
+        SyncReceiveTransactionRecord.discardIfSenderNotTrusted(record, trustedFingerprints)
 
         if (pendingRotationAuthorized && pendingRotation != null && pendingNextCard != null) {
             val nextBundle = pendingRotation.optString("next_bundle_base64", "")
@@ -1424,6 +1428,17 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     private fun completePendingReceiveTransaction(record: JSONObject): SyncReceiveResult? {
         val transaction = SyncReceiveTransactionRecord.read(record, record.optLong(KEY_CURSOR, 0L))
             ?: return null
+        val trusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
+        val revoked = record.optJSONObject(KEY_REVOKED_FINGERPRINTS) ?: JSONObject()
+        if (revoked.has(transaction.senderFingerprint) ||
+            !trusted.has(transaction.senderFingerprint) ||
+            !isRosterMemberActive(record, transaction.senderFingerprint)
+        ) {
+            // Do not finalize a receive staged under a roster that has since revoked its sender.
+            record.remove(KEY_PENDING_RECEIVE_TRANSACTION)
+            store.saveRecord(record)
+            return null
+        }
         parseNative(bridge.nativeRecordReplayId(transaction.messageId, replayLedgerPath()))
         SyncReceiveTransactionRecord.commit(record, transaction)
         store.saveRecord(record)

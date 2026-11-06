@@ -104,6 +104,20 @@ internal object SyncReceiveTransactionRecord {
         return PendingSyncReceiveTransaction(messageId, relayCursor, sender, payloadJson)
     }
 
+    /**
+     * Discards a staged receive when a newer trusted roster no longer authorizes
+     * its sender. This prevents a journal staged under an older roster from being
+     * finalized after that peer has been removed.
+     */
+    @Throws(IOException::class)
+    fun discardIfSenderNotTrusted(record: JSONObject, trustedFingerprints: Set<String>): Boolean {
+        val currentCursor = exactLong(record.opt(KEY_CURSOR) ?: 0L, "Stored relay cursor")
+        val transaction = read(record, currentCursor) ?: return false
+        if (transaction.senderFingerprint in trustedFingerprints) return false
+        record.remove(KEY)
+        return true
+    }
+
     @Throws(IOException::class)
     fun commit(record: JSONObject, transaction: PendingSyncReceiveTransaction) {
         val currentCursor = exactLong(record.opt(KEY_CURSOR) ?: 0L, "Stored relay cursor")
