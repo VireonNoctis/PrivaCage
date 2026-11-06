@@ -138,10 +138,13 @@ internal object ApkPrivacyDiff {
             if (baselineStatus != candidateStatus) {
                 return ApkSigningCertificateContinuity.SIGNER_MODEL_CHANGED
             }
-            return if (baseline.signingCertificateSha256 == candidate.signingCertificateSha256) {
-                ApkSigningCertificateContinuity.UNCHANGED
+            if (baseline.signingCertificateSha256 != candidate.signingCertificateSha256) {
+                return ApkSigningCertificateContinuity.SIGNER_MISMATCH
+            }
+            return if (candidate.versionCode < baseline.versionCode) {
+                ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
             } else {
-                ApkSigningCertificateContinuity.SIGNER_MISMATCH
+                ApkSigningCertificateContinuity.UNCHANGED
             }
         }
 
@@ -158,13 +161,23 @@ internal object ApkPrivacyDiff {
         if (baselineHistory == candidateHistory &&
             baseline.signingCertificateSha256 == candidate.signingCertificateSha256
         ) {
-            return ApkSigningCertificateContinuity.UNCHANGED
+            return if (candidate.versionCode < baseline.versionCode) {
+                ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+            } else {
+                ApkSigningCertificateContinuity.UNCHANGED
+            }
         }
 
         val candidateExtendsBaseline = candidateHistory.size > baselineHistory.size &&
             candidateHistory.take(baselineHistory.size) == baselineHistory
-        if (candidateExtendsBaseline && candidate.versionCode > baseline.versionCode) {
-            return ApkSigningCertificateContinuity.AUTHORIZED_ROTATION
+        if (candidateExtendsBaseline) {
+            return when {
+                candidate.versionCode > baseline.versionCode ->
+                    ApkSigningCertificateContinuity.AUTHORIZED_ROTATION
+                candidate.versionCode < baseline.versionCode ->
+                    ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+                else -> ApkSigningCertificateContinuity.UNKNOWN
+            }
         }
 
         val candidateIsEarlierLineage = baselineHistory.size > candidateHistory.size &&
