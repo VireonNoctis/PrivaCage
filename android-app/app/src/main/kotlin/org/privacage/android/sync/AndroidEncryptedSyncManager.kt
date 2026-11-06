@@ -168,6 +168,9 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             record.remove(KEY_PENDING_PROFILE)
             record.remove(KEY_PENDING_SENDER)
         }
+        if (record.optJSONObject(KEY_PENDING_RECEIVE_TRANSACTION)?.optString("sender_fingerprint", "") == fingerprint) {
+            record.remove(KEY_PENDING_RECEIVE_TRANSACTION)
+        }
         appendRosterHistory(record, "peer_revoked_local", fingerprint, "Removed from this installation; publish a newer owner-signed roster to distribute the revocation.")
         store.saveRecord(record)
         return fingerprint
@@ -1277,6 +1280,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
     fun receiveProfile(validateProfile: (String) -> Unit): SyncReceiveResult {
         val record = requireRecord()
         validateLocalRecord(record)
+        completePendingReceiveTransaction(record)?.let { return it }
         val pending = record.optString(KEY_PENDING_PROFILE, "")
         if (pending.isNotEmpty()) {
             return SyncReceiveResult(
@@ -1345,13 +1349,13 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 )
             val opened = try {
                 parseNative(
-                    bridge.nativeOpenPacket(
+                    bridge.nativeOpenPacketPrepared(
                         record.getString(KEY_BUNDLE_BASE64),
                         record.getString(KEY_LOCAL_PASSPHRASE),
                         senderCard.toString(),
                         message.packetJson,
                         System.currentTimeMillis() / 1000L,
-                        File(appContext.filesDir, "$SYNC_DIRECTORY/replay-ledger.json").absolutePath
+                        replayLedgerPath()
                     )
                 )
             } catch (exception: SyncBridgeFailure) {
@@ -1377,22 +1381,57 @@ internal class AndroidEncryptedSyncManager(context: Context) {
                 return@repeat
             }
 
-            record.put(KEY_CURSOR, message.cursor)
-            record.put(KEY_PENDING_PROFILE, payloadJson)
-            record.put(KEY_PENDING_SENDER, senderFingerprint)
-            store.saveRecord(record)
-            return SyncReceiveResult(
-                "pending",
-                "A signed and encrypted settings profile was received. Review it before applying.",
-                payloadJson,
-                senderFingerprint
+            if (payloadJson.toByteArray(StandardCharsets.UTF_8).size > MAX_PROFILE_BYTES) {
+                cursor = advanceCursor(record, message.cursor)
+                skipped += 1
+                return@repeat
+            }
+            val messageId = opened.optString("message_id", "")
+            if (messageId != message.messageId) {
+                cursor = advanceCursor(record, message.cursor)
+                skipped += 1
+                return@repeat
+            }
+            SyncReceiveTransactionRecord.stage(
+                record = record,
+                currentCursor = cursor,
+                relayCursor = message.cursor,
+                messageId = messageId,
+                senderFingerprint = senderFingerprint,
+                payloadJson = payloadJson
             )
+            // Phase 1: persist the recoverable acceptance intent inside the same
+            // Keystore-encrypted record that owns the relay cursor and pending profile.
+            store.saveRecord(record)
+            return completePendingReceiveTransaction(record)
+                ?: throw IOException("The staged sync receive transaction disappeared before it could be committed.")
         }
 
         return SyncReceiveResult(
             "scanned",
             "Checked " + MAX_MESSAGES_PER_CHECK + " queue item(s). " + skipped +
                 " invalid or non-applicable item(s) were skipped. Check again to continue."
+        )
+    }
+
+    private fun replayLedgerPath(): String =
+        File(appContext.filesDir, "$SYNC_DIRECTORY/replay-ledger.json").absolutePath
+
+    /**
+     * Completes phase 2 of a staged receive. The journal is saved before this method
+     * touches the replay ledger, so any crash leaves enough encrypted local state to retry.
+     */
+    private fun completePendingReceiveTransaction(record: JSONObject): SyncReceiveResult? {
+        val transaction = SyncReceiveTransactionRecord.read(record, record.optLong(KEY_CURSOR, 0L))
+            ?: return null
+        parseNative(bridge.nativeRecordReplayId(transaction.messageId, replayLedgerPath()))
+        SyncReceiveTransactionRecord.commit(record, transaction)
+        store.saveRecord(record)
+        return SyncReceiveResult(
+            "pending",
+            "A signed and encrypted settings profile was received and committed locally. Review it before applying.",
+            transaction.payloadJson,
+            transaction.senderFingerprint
         )
     }
 
@@ -1538,6 +1577,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         ) {
             throw IOException("Stored sync identity does not match its encrypted private bundle.")
         }
+        SyncReceiveTransactionRecord.read(record, record.optLong(KEY_CURSOR, 0L))
         if (record.has(KEY_PENDING_KEY_ROTATION)) {
             val pending = record.optJSONObject(KEY_PENDING_KEY_ROTATION)
                 ?: throw IOException("Staged key rotation is malformed.")
@@ -1678,5 +1718,6 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val KEY_CURSOR = "relay_cursor"
         private const val KEY_PENDING_PROFILE = "pending_profile_json"
         private const val KEY_PENDING_SENDER = "pending_sender_fingerprint"
+        private const val KEY_PENDING_RECEIVE_TRANSACTION = SyncReceiveTransactionRecord.KEY
     }
 }
