@@ -84,6 +84,56 @@ class ApkPrivacyDiffTest {
     }
 
     @Test
+    fun lowerVersionWithUnchangedSignerLineageIsPossibleDowngrade() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 10, signingHistory = listOf(CERT_A))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun lowerVersionWithForwardSignerLineageIsPossibleDowngradeNotAuthorizedRotation() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 10, signingHistory = listOf(CERT_A, CERT_B))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun sameVersionForwardSignerLineageIsNotClaimedAsAuthorizedRotation() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 11, signingHistory = listOf(CERT_A, CERT_B))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun lowerVersionWithUnchangedMultipleSignerSetIsPossibleDowngrade() {
+        val baseline = report(
+            versionCode = 11,
+            signers = listOf(CERT_A, CERT_B),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+        val candidate = report(
+            versionCode = 10,
+            signers = listOf(CERT_B, CERT_A),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
     fun identifiesLineageRegressionWithoutLowerVersionCode() {
         val baseline = report(
             versionCode = 10,
