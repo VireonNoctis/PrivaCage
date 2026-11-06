@@ -366,8 +366,8 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         val revokedCards = JSONObject()
         val priorTrusted = record.optJSONObject(KEY_TRUSTED_CARDS) ?: JSONObject()
         val priorRevokedCards = record.optJSONObject(KEY_REVOKED_CARDS) ?: JSONObject()
-        val pendingRotation = record.optJSONObject(KEY_PENDING_KEY_ROTATION)
-        val pendingNextCard = pendingRotation?.optJSONObject("next_card")
+        val pendingRotation = SyncPeerKeyRotationRecord.read(record, localFingerprint)
+        val pendingNextCard = pendingRotation?.nextCard
         val pendingNextFingerprint = pendingNextCard?.optString("fingerprint_sha256", "").orEmpty()
         val members = unsigned.getJSONArray("members")
         var localMemberFound = false
@@ -459,24 +459,20 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         SyncReceiveTransactionRecord.discardIfSenderNotTrusted(record, trustedFingerprints)
 
         if (pendingRotationAuthorized && pendingRotation != null && pendingNextCard != null) {
-            val nextBundle = pendingRotation.optString("next_bundle_base64", "")
-            val nextPassphrase = pendingRotation.optString("next_local_passphrase", "")
-            if (nextBundle.isBlank() || nextPassphrase.isBlank()) {
-                throw IOException("Staged key rotation is incomplete; current identity was not replaced.")
-            }
-            val restoredNext = parseNative(bridge.nativeRestoreIdentity(nextBundle, nextPassphrase)).getJSONObject("card")
+            val restoredNext = parseNative(
+                bridge.nativeRestoreIdentity(
+                    pendingRotation.nextBundleBase64,
+                    pendingRotation.nextLocalPassphrase
+                )
+            ).getJSONObject("card")
             if (!sameDeviceCard(restoredNext, pendingNextCard)) {
                 throw IOException("Staged replacement private key does not match its signed public card.")
             }
-            val previousFingerprint = pendingRotation.optString("previous_fingerprint", localFingerprint)
-            record.put(KEY_BUNDLE_BASE64, nextBundle)
-            record.put(KEY_LOCAL_PASSPHRASE, nextPassphrase)
-            record.put(KEY_CARD_JSON, pendingNextCard.toString())
-            record.put(KEY_NEXT_SEQUENCE, 1L)
-            record.remove(KEY_PENDING_KEY_ROTATION)
+            val activated = SyncPeerKeyRotationRecord.activate(record, localFingerprint)
             appendRosterHistory(
                 record, "key_rotation_activated", pendingNextFingerprint,
-                "Activated the staged identity after owner-signed roster revision $revision authorized it; previous fingerprint was $previousFingerprint.",
+                "Activated the staged identity after owner-signed roster revision $revision authorized it; previous fingerprint was " +
+                    activated.previousFingerprint + ".",
                 revision
             )
         }
@@ -969,13 +965,14 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Native rotation did not preserve the current identity as its predecessor.")
         }
         val rotation = response.getJSONObject("rotation")
-        val pending = JSONObject()
-            .put("previous_fingerprint", localFingerprint)
-            .put("next_card", nextCard)
-            .put("rotation_json", rotation)
-            .put("next_bundle_base64", response.getString("next_bundle_base64"))
-            .put("next_local_passphrase", nextPassphrase)
-            .put("staged_at_unix", System.currentTimeMillis() / 1000L)
+        val pending = SyncPeerKeyRotationRecord.create(
+            previousFingerprint = localFingerprint,
+            nextCard = nextCard,
+            rotation = rotation,
+            nextBundleBase64 = response.getString("next_bundle_base64"),
+            nextLocalPassphrase = nextPassphrase,
+            stagedAtUnix = System.currentTimeMillis() / 1000L
+        )
         record.put(KEY_PENDING_KEY_ROTATION, pending)
         appendRosterHistory(
             record, "key_rotation_staged", localFingerprint,
@@ -1593,30 +1590,28 @@ internal class AndroidEncryptedSyncManager(context: Context) {
             throw IOException("Stored sync identity does not match its encrypted private bundle.")
         }
         SyncReceiveTransactionRecord.read(record, record.optLong(KEY_CURSOR, 0L))
-        if (record.has(KEY_PENDING_KEY_ROTATION)) {
-            val pending = record.optJSONObject(KEY_PENDING_KEY_ROTATION)
-                ?: throw IOException("Staged key rotation is malformed.")
-            val previousFingerprint = pending.optString("previous_fingerprint", "")
-            val nextCard = pending.optJSONObject("next_card")
-                ?: throw IOException("Staged key rotation omitted its replacement card.")
-            val rotation = pending.optJSONObject("rotation_json")
-                ?: throw IOException("Staged key rotation omitted its signed transition.")
-            if (previousFingerprint != stored.optString("fingerprint_sha256")) {
-                throw IOException("Staged key rotation predecessor does not match the local identity.")
-            }
+        val pendingRotation = SyncPeerKeyRotationRecord.read(
+            record,
+            stored.optString("fingerprint_sha256")
+        )
+        if (pendingRotation != null) {
             val verifiedRotation = parseNative(
-                bridge.nativeVerifyKeyRotation(stored.toString(), rotation.toString(), System.currentTimeMillis() / 1000L)
+                bridge.nativeVerifyKeyRotation(
+                    stored.toString(),
+                    pendingRotation.rotation.toString(),
+                    System.currentTimeMillis() / 1000L
+                )
             ).getJSONObject("next_card")
-            if (!sameDeviceCard(verifiedRotation, nextCard)) {
+            if (!sameDeviceCard(verifiedRotation, pendingRotation.nextCard)) {
                 throw IOException("Staged key rotation signature does not match its replacement card.")
             }
-            val nextBundle = pending.optString("next_bundle_base64", "")
-            val nextPassphrase = pending.optString("next_local_passphrase", "")
-            if (nextBundle.isBlank() || nextPassphrase.isBlank()) {
-                throw IOException("Staged key rotation is missing its encrypted replacement identity.")
-            }
-            val nextIdentity = parseNative(bridge.nativeRestoreIdentity(nextBundle, nextPassphrase)).getJSONObject("card")
-            if (!sameDeviceCard(nextIdentity, nextCard)) {
+            val nextIdentity = parseNative(
+                bridge.nativeRestoreIdentity(
+                    pendingRotation.nextBundleBase64,
+                    pendingRotation.nextLocalPassphrase
+                )
+            ).getJSONObject("card")
+            if (!sameDeviceCard(nextIdentity, pendingRotation.nextCard)) {
                 throw IOException("Staged replacement private bundle does not match its signed card.")
             }
         }
@@ -1726,7 +1721,7 @@ internal class AndroidEncryptedSyncManager(context: Context) {
         private const val KEY_ROSTER_REVISION = "roster_revision"
         private const val KEY_ROSTER_HISTORY = "roster_change_history"
         private const val KEY_ROSTER_PUBLISH_PENDING = "roster_publish_pending"
-        private const val KEY_PENDING_KEY_ROTATION = "pending_key_rotation"
+        private const val KEY_PENDING_KEY_ROTATION = SyncPeerKeyRotationRecord.KEY
         private const val KEY_OWNER_ROTATION_PACKAGE_JSON = "last_owner_key_rotation_package_json"
         private const val KEY_OWNER_ROTATION_HANDOFF_PENDING = "owner_key_rotation_handoff_pending"
         private const val KEY_NEXT_SEQUENCE = "next_sequence"
