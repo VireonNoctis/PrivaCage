@@ -64,6 +64,7 @@ class MainActivity : Activity() {
     private lateinit var domainsInput: EditText
     private lateinit var domainTestInput: EditText
     private lateinit var statsText: TextView
+    private lateinit var dnsMetricViews: List<PrivaCageRollingMetricView>
     private lateinit var apkAuditText: TextView
     private lateinit var statusText: TextView
     private lateinit var vpnStateText: TextView
@@ -116,6 +117,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
+        val storedDnsConfiguration = try {
+            LocalDnsConfigurationStore.read(this)
+        } catch (exception: Exception) {
+            null
+        }
         var trackerCatalog: List<TrackerSignature>? = null
         var trackerCatalogError: String? = null
         var trackerCatalogLoading = true
@@ -128,6 +134,49 @@ class MainActivity : Activity() {
             text = "Local-first privacy controls. Android still owns OS-level permissions and system telemetry."
             setPadding(0, dp(8), 0, dp(12))
         })
+        if (storedDnsConfiguration == null && (
+                prefs.contains(PrivacyDnsVpnService.KEY_RESOLVER_IP) ||
+                    prefs.contains(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS) ||
+                    prefs.contains("dns_configuration_encrypted_v1")
+            )
+        ) {
+            root.addView(TextView(this).apply {
+                text = "Saved DNS settings could not be authenticated or migrated. Existing data was preserved. Do not assume DNS filtering is configured; review the encrypted settings before starting the VPN."
+                textSize = 12f
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        }
+        root.addView(TextView(this).apply {
+            text = "LEGAL & PRIVACY"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Read the app's Terms, Privacy Policy, strict no-telemetry rules, data retention and authority-disclosure policy. Documents are packaged locally."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Read Terms, Privacy Policy and more"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, LegalPrivacyActivity::class.java))
+            }
+        }, matchWidth())
+
+        root.addView(TextView(this).apply {
+            text = "APP POLICY REVIEW"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Observe newly visible apps locally. Save official policy links, open them in your browser and record when you have reviewed them. No policy text or app inventory is uploaded."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Review installed and opened apps' policies"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, AppPolicyReviewActivity::class.java))
+            }
+        }, matchWidth())
         root.addView(TextView(this).apply { text = "ANDROID PRIVACY CONTROLS"; textSize = 16f; setPadding(0, dp(8), 0, dp(4)) })
         root.addView(TextView(this).apply {
             text = "These shortcuts open Android's own settings so you can review access and revoke permissions there. PrivaCage cannot override the OS or secretly revoke permissions for other apps."
@@ -300,12 +349,12 @@ class MainActivity : Activity() {
             hint = "Enter a resolver IP you trust"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             setSingleLine(true)
-            setText(prefs.getString(PrivacyDnsVpnService.KEY_RESOLVER_IP, ""))
+            setText(storedDnsConfiguration?.resolverIpv4.orEmpty())
         }
         root.addView(resolverInput, matchWidth())
         dnsOverTlsInput = CheckBox(this).apply {
             text = "Use DNS-over-TLS (encrypted upstream DNS; fails closed)"
-            isChecked = prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)
+            isChecked = storedDnsConfiguration?.dnsOverTlsEnabled ?: false
         }
         root.addView(dnsOverTlsInput, matchWidth())
         root.addView(TextView(this).apply { text = "TLS certificate hostname (required when DNS-over-TLS is enabled)" })
@@ -313,7 +362,7 @@ class MainActivity : Activity() {
             hint = "e.g. dns.google or cloudflare-dns.com"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
-            setText(prefs.getString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, ""))
+            setText(storedDnsConfiguration?.dnsOverTlsHostname.orEmpty())
         }
         root.addView(resolverHostnameInput, matchWidth())
         root.addView(TextView(this).apply {
@@ -440,8 +489,7 @@ class MainActivity : Activity() {
             gravity = Gravity.TOP
             minLines = 4
             maxLines = 10
-            setText(prefs.getStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, emptySet())
-                .orEmpty().sorted().joinToString("\n"))
+            setText(storedDnsConfiguration?.blockedDomains.orEmpty().sorted().joinToString("\n"))
         }
         root.addView(domainsInput, matchWidth())
         root.addView(TextView(this).apply {
@@ -479,7 +527,7 @@ class MainActivity : Activity() {
         })
         root.addView(Button(this).apply {
             text = "Save configuration"
-            setOnClickListener { if (saveConfiguration()) statusText.text = "Configuration saved locally." }
+            setOnClickListener { saveConfiguration() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Enable DNS filtering"
@@ -505,9 +553,46 @@ class MainActivity : Activity() {
             text = "Privacy-preserving DNS counters"
             setPadding(0, dp(16), 0, 0)
         })
+        dnsMetricViews = listOf(
+            PrivaCageRollingMetricView(this, "BLOCKED REPLIES"),
+            PrivaCageRollingMetricView(this, "UPSTREAM REPLIES"),
+            PrivaCageRollingMetricView(this, "UNSUPPORTED PACKETS"),
+            PrivaCageRollingMetricView(this, "UPSTREAM FAILURES")
+        )
+        val metricGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        for (rowStart in dnsMetricViews.indices step 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            row.addView(
+                dnsMetricViews[rowStart],
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = dp(4)
+                }
+            )
+            row.addView(
+                dnsMetricViews[rowStart + 1],
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(4)
+                }
+            )
+            metricGrid.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+        }
+        root.addView(metricGrid, matchWidth())
         statsText = TextView(this).apply {
-            textSize = 13f
-            setPadding(0, dp(4), 0, dp(4))
+            text = "Current/last VPN session aggregate totals, separate from optional local event history. Active-session values update in batches and flush again when the tunnel stops. These counters describe DNS-core outcomes; they do not prove that Android delivered every reply."
+            textSize = 12f
+            setPadding(0, dp(5), 0, dp(4))
         }
         root.addView(statsText, matchWidth())
         root.addView(Button(this).apply {
@@ -1171,6 +1256,33 @@ class MainActivity : Activity() {
         if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
         if (::vpnStateText.isInitialized) refreshVpnState()
         if (::dnsDiagnosticText.isInitialized) refreshDnsRouteDiagnostic()
+        Thread({
+            val scan = try {
+                AppPolicyReviewMonitor.capture(this@MainActivity) to null
+            } catch (exception: Exception) {
+                null to (exception.message ?: exception.javaClass.simpleName)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val capture = scan.first
+                if (capture != null && capture.newPendingCount > 0) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("App privacy review")
+                        .setMessage(
+                            capture.newPendingCount.toString() +
+                                " newly observed apps or recent Usage Access app-open observations are waiting for a Terms and Privacy Policy review. " +
+                                "The prompt appears when you return to PrivaCage; Android does not let an ordinary app safely overlay another app."
+                        )
+                        .setNegativeButton("Later", null)
+                        .setPositiveButton("Review apps") { _, _ ->
+                            startActivity(Intent(this@MainActivity, AppPolicyReviewActivity::class.java))
+                        }
+                        .show()
+                } else if (scan.second != null && ::statusText.isInitialized) {
+                    statusText.text = "App policy monitor could not update its encrypted local queue: " + scan.second
+                }
+            }
+        }, "PrivaCage-app-policy-monitor").start()
     }
 
     @Deprecated("Uses platform-compatible activity result callbacks")
@@ -1676,12 +1788,21 @@ class MainActivity : Activity() {
             .setTitle("Review received settings")
             .setMessage(message)
             .setPositiveButton("Apply these settings") { _, _ ->
-                getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-                    .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
-                    .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
-                    .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
-                    .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
-                    .apply()
+                try {
+                    LocalDnsConfigurationStore.save(
+                        this@MainActivity,
+                        LocalDnsConfiguration(
+                            imported.resolverIpv4,
+                            imported.blockedDomains.toSet(),
+                            imported.dnsOverTlsEnabled,
+                            imported.dnsOverTlsHostname
+                        )
+                    )
+                } catch (exception: Exception) {
+                    syncStatusText.text = "Received settings were not saved: " +
+                        (exception.message ?: exception.javaClass.simpleName)
+                    return@setPositiveButton
+                }
                 resolverInput.setText(imported.resolverIpv4)
                 domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
                 dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
@@ -2403,11 +2524,29 @@ class MainActivity : Activity() {
         append("Target SDK: ").append(report.targetSdkVersion ?: "unknown").append('\n')
         append("File size: ").append(report.fileSizeBytes).append(" bytes\n")
         append("APK SHA-256: ").append(report.sha256).append('\n')
-        append("Current signing certificate SHA-256 fingerprints:")
+        append("Current signing certificate SHA-256 fingerprint(s):")
         if (report.signingCertificateSha256.isEmpty()) {
-            append(" unavailable (unsigned APK or Android did not expose signer metadata)")
+            append(" unavailable (Android did not expose signer metadata)")
         } else {
             report.signingCertificateSha256.forEach { append("\n  ").append(it) }
+        }
+        append("\nSigning certificate history: ")
+        when (report.signingCertificateHistoryStatus) {
+            ApkSigningCertificateHistoryStatus.AVAILABLE -> {
+                append("available from Android, oldest to current")
+                report.signingCertificateHistorySha256.forEach { append("\n  ").append(it) }
+                if (report.signingCertificateHistorySha256.size == 1) {
+                    append("\n  One signer is listed; Android supplied no earlier rotated certificate.")
+                }
+            }
+            ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS ->
+                append("multiple simultaneous signers; a rotation history is not applicable to this signer model")
+            ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ->
+                append("not exposed on this Android API level; only legacy current signer fingerprints are available")
+            ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ->
+                append("unavailable; do not infer that the signing identity is unchanged")
+            ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED ->
+                append("not accepted: APK signature verification did not pass; signer history is withheld")
         }
         append("\n\nAPK signature verification: ").append(report.signatureVerification.status.name)
         append("\nThis checks cryptographic signature integrity, not whether the publisher or app is trustworthy.")
@@ -2445,6 +2584,14 @@ class MainActivity : Activity() {
 
         append("\n\nPossible embedded catalog indicators found in DEX strings (")
             .append(report.trackerScan.findings.size).append("):")
+        append("\nDEX string scan status: ").append(
+            when (report.trackerScan.status) {
+                ApkDexStringScanStatus.COMPLETE_STRING_SCAN -> "COMPLETE — literal ASCII string scan only; DEX structure is not validated"
+                ApkDexStringScanStatus.PARTIAL_STRING_SCAN -> "PARTIAL — one or more archive entries or catalog indicators were skipped"
+                ApkDexStringScanStatus.NO_DEX_ENTRIES -> "NO DEX ENTRIES — no DEX string scan was possible"
+                ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS -> "NO SCANNABLE CATALOG INDICATORS — no scan was performed"
+            }
+        )
         append("\nCatalog markers considered: ").append(report.trackerScan.indicatorsConsidered)
         append("\nDEX files scanned: ").append(report.trackerScan.dexFilesScanned)
         append("\nDEX bytes scanned: ").append(report.trackerScan.dexBytesScanned)
@@ -2496,10 +2643,32 @@ class MainActivity : Activity() {
             .append(" -> ").append(candidate.targetSdkVersion ?: "unknown").append('\n')
         append("APK signature verification: baseline ").append(baseline.signatureVerification.status.name)
             .append(", candidate ").append(candidate.signatureVerification.status.name).append('\n')
-        append("Signing certificate fingerprints: ")
-            .append(if (baseline.signingCertificateSha256 == candidate.signingCertificateSha256) "unchanged" else "CHANGED")
-        if (baseline.signingCertificateSha256 != candidate.signingCertificateSha256) {
-            append("\nWARNING: signing fingerprints differ. Rotation can be legitimate, but independently verify the publisher before installing an APK.")
+        append("Signing certificate continuity: ").append(diff.signingCertificateContinuity.name)
+        when (diff.signingCertificateContinuity) {
+            ApkSigningCertificateContinuity.UNCHANGED ->
+                append("\nAndroid-provided signer identity/history is unchanged.")
+            ApkSigningCertificateContinuity.AUTHORIZED_ROTATION ->
+                append("\nThe candidate's Android-provided single-signer history extends the baseline history and has a higher version code. This is consistent with an authorized certificate rotation.")
+            ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE ->
+                append("\nWARNING: the candidate has a lower version code and its signer history is an earlier prefix of the baseline lineage. Treat it as a possible downgrade.")
+            ApkSigningCertificateContinuity.LINEAGE_REGRESSION ->
+                append("\nWARNING: the candidate history is an earlier prefix of the baseline lineage without a lower version code. The signer history regressed.")
+            ApkSigningCertificateContinuity.SIGNER_MISMATCH ->
+                append("\nWARNING: signer histories or current signer sets differ without a matching forward rotation lineage.")
+            ApkSigningCertificateContinuity.SIGNER_MODEL_CHANGED ->
+                append("\nWARNING: the signer model changed between single-signer history and multiple simultaneous signers.")
+            ApkSigningCertificateContinuity.UNKNOWN ->
+                append("\nAndroid could not provide comparable signer history for both APKs. Do not interpret missing history as an unchanged signer.")
+        }
+        append("\nBaseline history status: ").append(baseline.signingCertificateHistoryStatus.name)
+        append("\nCandidate history status: ").append(candidate.signingCertificateHistoryStatus.name)
+        if (baseline.signingCertificateHistorySha256.isNotEmpty()) {
+            append("\nBaseline signer history (oldest -> current): ")
+                .append(baseline.signingCertificateHistorySha256.joinToString(" -> "))
+        }
+        if (candidate.signingCertificateHistorySha256.isNotEmpty()) {
+            append("\nCandidate signer history (oldest -> current): ")
+                .append(candidate.signingCertificateHistorySha256.joinToString(" -> "))
         }
         appendDiffSection(this, "Declared permissions added", diff.addedPermissions.map {
             "[" + it.review.category.displayName + "] " + it.permissionName
@@ -3130,19 +3299,10 @@ class MainActivity : Activity() {
 
     private fun refreshDnsStats() {
         val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
-        statsText.text = buildString {
-            append("Current/last VPN session aggregate totals (separate from optional local event history):\n")
-            append("Blocked replies prepared: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
-            append("\nUpstream replies prepared: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
-            append("\nUnsupported or malformed packets: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
-            append("\nUpstream failures/timeouts: ")
-            append(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
-            append("\nActive-session counts update in batches and flush again when the tunnel stops.")
-            append("\nCounters reflect DNS-core outcomes, not proof that Android delivered every reply.")
-        }
+        dnsMetricViews[0].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_BLOCKED, 0L))
+        dnsMetricViews[1].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_FORWARDED, 0L))
+        dnsMetricViews[2].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UNSUPPORTED, 0L))
+        dnsMetricViews[3].setValue(prefs.getLong(PrivacyDnsVpnService.KEY_STATS_UPSTREAM_FAILURES, 0L))
     }
 
     private fun promptExportPassphrase() {
@@ -3340,12 +3500,21 @@ class MainActivity : Activity() {
                     statusText.text = "Import cancelled; existing settings were kept."
                 }
                 .setPositiveButton("Replace settings") { _, _ ->
-                    getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-                        .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, imported.resolverIpv4)
-                        .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, imported.blockedDomains.toSet())
-                        .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, imported.dnsOverTlsEnabled)
-                        .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, imported.dnsOverTlsHostname)
-                        .apply()
+                    try {
+                        LocalDnsConfigurationStore.save(
+                            this@MainActivity,
+                            LocalDnsConfiguration(
+                                imported.resolverIpv4,
+                                imported.blockedDomains.toSet(),
+                                imported.dnsOverTlsEnabled,
+                                imported.dnsOverTlsHostname
+                            )
+                        )
+                    } catch (exception: Exception) {
+                        statusText.text = "Encrypted DNS settings were not replaced: " +
+                            (exception.message ?: exception.javaClass.simpleName)
+                        return@setPositiveButton
+                    }
                     resolverInput.setText(imported.resolverIpv4)
                     domainsInput.setText(imported.blockedDomains.sorted().joinToString("\n"))
                     dnsOverTlsInput.isChecked = imported.dnsOverTlsEnabled
@@ -3449,12 +3618,17 @@ class MainActivity : Activity() {
         } catch (exception: IllegalArgumentException) {
             statusText.text = exception.message ?: "Enter a valid DNS-over-TLS certificate hostname."; return false
         } else ""
-        getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE).edit()
-            .putString(PrivacyDnsVpnService.KEY_RESOLVER_IP, resolver)
-            .putStringSet(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS, domains)
-            .putBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, useDot)
-            .putString(PrivacyDnsVpnService.KEY_DOT_HOSTNAME, tlsHostname)
-            .apply()
+        try {
+            LocalDnsConfigurationStore.save(
+                this,
+                LocalDnsConfiguration(resolver, domains, useDot, tlsHostname)
+            )
+        } catch (exception: Exception) {
+            statusText.text = "Encrypted DNS configuration was not saved: " +
+                (exception.message ?: exception.javaClass.simpleName)
+            return false
+        }
+        statusText.text = "DNS configuration encrypted and saved on this device."
         return true
     }
 
@@ -3510,11 +3684,17 @@ class MainActivity : Activity() {
     }
 
     private fun showVpnPreflight() {
-        val prefs = getSharedPreferences(PrivacyDnsVpnService.PREFERENCES_NAME, MODE_PRIVATE)
-        val upstreamDescription = if (prefs.getBoolean(PrivacyDnsVpnService.KEY_DOT_ENABLED, false)) {
-            "DNS-over-TLS is enabled. PrivaCage verifies the configured certificate hostname and drops queries if TLS fails; the selected resolver can still see the DNS names."
-        } else {
-            "Plain upstream DNS is selected. Queries from PrivaCage to the resolver are not encrypted."
+        val upstreamDescription = try {
+            when (val configuration = LocalDnsConfigurationStore.read(this)) {
+                null -> "No encrypted DNS configuration is saved yet. Configure and save a resolver and at least one rule before starting filtering."
+                else -> if (configuration.dnsOverTlsEnabled) {
+                    "DNS-over-TLS is enabled. PrivaCage verifies the configured certificate hostname and drops queries if TLS fails; the selected resolver can still see the DNS names."
+                } else {
+                    "Plain upstream DNS is selected. Queries from PrivaCage to the resolver are not encrypted."
+                }
+            }
+        } catch (exception: Exception) {
+            "The encrypted DNS configuration could not be authenticated or read. Filtering will not be started from an unreadable configuration."
         }
         val message = buildString {
             append("Starting PrivaCage may disconnect the VPN you currently use. Android allows only one active VPN service per user/profile.\n\n")

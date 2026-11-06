@@ -100,9 +100,34 @@ class LocalDnsEventHistoryTest {
     }
 
     @Test
-    fun invalidRetentionValueFallsBackToTheSafeSevenDayDefault() {
-        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(0))
-        assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(365))
+    fun everyAdvertisedRetentionOptionHasTheExpectedPersistedValueAndLabel() {
+        assertEquals(listOf(1, 7, 30), LocalDnsEventHistory.RETENTION_OPTIONS_DAYS)
+        assertEquals("24 hours", LocalDnsEventHistory.retentionLabel(1))
+        assertEquals("7 days", LocalDnsEventHistory.retentionLabel(7))
+        assertEquals("30 days", LocalDnsEventHistory.retentionLabel(30))
+    }
+
+    @Test
+    fun invalidRetentionValuesAlwaysResolveToTheSevenDayDefaultLabel() {
+        listOf(Int.MIN_VALUE, -1, 0, 2, 14, 365, Int.MAX_VALUE).forEach { invalid ->
+            assertEquals(7, LocalDnsEventHistory.normalizeRetentionDays(invalid))
+            assertEquals("7 days", LocalDnsEventHistory.retentionLabel(invalid))
+        }
+    }
+
+    @Test
+    fun thirtyDayRetentionKeepsTheExactCutoffAndDropsOnlyOlderEvents() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val older = event(now.minus(Duration.ofDays(30)).minusNanos(1).toString(), "older.example")
+        val atCutoff = event(now.minus(Duration.ofDays(30)).toString(), "cutoff.example")
+        val recent = event(now.minus(Duration.ofDays(2)).toString(), "recent.example")
+
+        val retained = LocalDnsEventHistory.pruneExpiredEvents(events(older, atCutoff, recent), now, 30)
+
+        assertNotNull(retained)
+        assertEquals(2, retained?.length())
+        assertEquals("cutoff.example", retained?.optJSONObject(0)?.optString("domain"))
+        assertEquals("recent.example", retained?.optJSONObject(1)?.optString("domain"))
     }
 
     @Test
@@ -115,6 +140,74 @@ class LocalDnsEventHistoryTest {
         assertEquals(1, retained?.length())
         assertEquals("future.example", retained?.optJSONObject(0)?.optString("domain"))
     }
+
+    @Test
+    fun acceptsAllTypedOutcomesWithOnlyBoundedMetadata() {
+        val ruleId = LocalDnsEventHistory.ruleIdForMatchedRule("Tracker.Example")
+        assertTrue(ruleId.matches(Regex("^dns-rule-sha256:[0-9a-f]{64}$")))
+        val stored = events(
+            typedEvent("BLOCKED", "tracker.example", ruleId, ""),
+            typedEvent("FORWARDED", "news.example.org", "", ""),
+            typedEvent("DROPPED", "", "", "PACKET_REJECTED"),
+            typedEvent("DROPPED", "", "", "UPSTREAM_FAILURE"),
+            typedEvent("DIAGNOSTIC", "", "", "DIAGNOSTIC_VALID_RESPONSE"),
+            typedEvent("DIAGNOSTIC", "", "", "DIAGNOSTIC_FAILED")
+        )
+
+        val parsed = LocalDnsEventHistory.parseStoredEvents(stored)
+
+        assertNotNull(parsed)
+        assertEquals(6, parsed?.length())
+        assertEquals("BLOCKED", parsed?.optJSONObject(0)?.optString("action"))
+        assertEquals(ruleId, parsed?.optJSONObject(0)?.optString("rule_id"))
+        assertEquals("UPSTREAM_FAILURE", parsed?.optJSONObject(3)?.optString("reason_code"))
+        assertEquals("", parsed?.optJSONObject(4)?.optString("domain"))
+    }
+
+    @Test
+    fun ruleIdentifiersAreStableAndBoundToTheNormalizedRule() {
+        val first = LocalDnsEventHistory.ruleIdForMatchedRule("Tracker.Example")
+        val second = LocalDnsEventHistory.ruleIdForMatchedRule("tracker.example")
+        val other = LocalDnsEventHistory.ruleIdForMatchedRule("other.example")
+
+        assertEquals(first, second)
+        assertTrue(first != other)
+        assertEquals("", LocalDnsEventHistory.ruleIdForMatchedRule("not a domain"))
+        assertEquals("", LocalDnsEventHistory.ruleIdForMatchedRule(null))
+    }
+
+    @Test
+    fun rejectsInvalidTaxonomyDomainRuleAndReasonCombinations() {
+        val ruleId = LocalDnsEventHistory.ruleIdForMatchedRule("tracker.example")
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("UNKNOWN", "", "", ""))))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("BLOCKED", "tracker.example", "", ""))))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("FORWARDED", "news.example.org", ruleId, ""))))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("DROPPED", "tracker.example", "", "PACKET_REJECTED"))))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("DROPPED", "", "", "RAW_PACKET"))))
+        assertNull(LocalDnsEventHistory.parseStoredEvents(events(typedEvent("DIAGNOSTIC", "", "", "RAW_QUERY"))))
+    }
+
+    @Test
+    fun signedAuditExportRemainsLimitedToItsSupportedBlockAndForwardCategories() {
+        assertEquals(LocalDnsEventHistory.EventType.FORWARDED, LocalDnsEventHistory.eventTypeForExport("ALLOW"))
+        assertEquals(LocalDnsEventHistory.EventType.BLOCKED, LocalDnsEventHistory.eventTypeForExport("BLOCKED"))
+        assertNull(LocalDnsEventHistory.eventTypeForExport("DROPPED"))
+        assertNull(LocalDnsEventHistory.eventTypeForExport("DIAGNOSTIC"))
+    }
+
+    @Test
+    fun keepsLegacyAllowAndBlockEventsReadableAlongsideTypedEvents() {
+        val legacy = event("2026-10-26T10:00:00Z", "legacy.example")
+        val typed = typedEvent("DROPPED", "", "", "PACKET_REJECTED")
+        val parsed = LocalDnsEventHistory.parseStoredEvents(events(legacy, typed))
+
+        assertNotNull(parsed)
+        assertEquals("ALLOW", parsed?.optJSONObject(0)?.optString("action"))
+        assertEquals("DROPPED", parsed?.optJSONObject(1)?.optString("action"))
+    }
+
+    private fun typedEvent(action: String, domain: String, ruleId: String, reasonCode: String): String =
+        """{"timestamp":"2026-10-26T10:00:00Z","domain":"$domain","action":"$action","socket_owner":"Unknown","rule_id":"$ruleId","reason_code":"$reasonCode"}"""
 
     private fun event(timestamp: String, domain: String = "example.org"): String =
         """{"timestamp":"$timestamp","domain":"$domain","action":"ALLOW","socket_owner":"Unknown"}"""

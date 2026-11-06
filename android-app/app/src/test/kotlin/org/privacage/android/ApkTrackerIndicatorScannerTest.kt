@@ -50,6 +50,7 @@ class ApkTrackerIndicatorScannerTest {
 
             val report = ApkTrackerIndicatorScanner().scan(apk, records)
 
+            assertEquals(ApkDexStringScanStatus.COMPLETE_STRING_SCAN, report.status)
             assertEquals(2, report.indicatorsConsidered)
             assertEquals(1, report.dexFilesScanned)
             assertTrue(report.dexBytesScanned > 0)
@@ -96,6 +97,22 @@ class ApkTrackerIndicatorScannerTest {
     }
 
     @Test
+    fun reportsWhenCatalogHasNoScanableLiteralIndicators() {
+        val apk = zippedDex("classes.dex" to "com.example.analytics.Client")
+        try {
+            val report = ApkTrackerIndicatorScanner().scan(apk, emptyList())
+
+            assertEquals(ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS, report.status)
+            assertEquals(0, report.indicatorsConsidered)
+            assertEquals(0, report.dexFilesScanned)
+            assertTrue(report.findings.isEmpty())
+            assertTrue(report.warnings.any { it.contains("did not provide any scannable literal indicators") })
+        } finally {
+            apk.delete()
+        }
+    }
+
+    @Test
     fun reportsWhenArchiveHasNoDexEntries() {
         val apk = zippedDex("META-INF/MANIFEST.MF" to "not bytecode")
         try {
@@ -116,6 +133,7 @@ class ApkTrackerIndicatorScannerTest {
                 )
             )
 
+            assertEquals(ApkDexStringScanStatus.NO_DEX_ENTRIES, report.status)
             assertEquals(0, report.dexFilesScanned)
             assertEquals(0L, report.dexBytesScanned)
             assertTrue(report.findings.isEmpty())
@@ -143,6 +161,14 @@ class ApkTrackerIndicatorScannerTest {
             )
             val error = runCatching { ApkTrackerIndicatorScanner().scan(apk, listOf(record)) }.exceptionOrNull()
             assertTrue("Malformed archive must surface an error", error is java.io.IOException)
+
+            val withoutCatalog = runCatching {
+                ApkTrackerIndicatorScanner().scan(apk, emptyList())
+            }.exceptionOrNull()
+            assertTrue(
+                "Malformed ZIP input must not be reported as a no-catalog scan.",
+                withoutCatalog is java.io.IOException
+            )
         } finally {
             apk.delete()
         }
@@ -271,6 +297,95 @@ class ApkTrackerIndicatorScannerTest {
         } finally {
             apk.delete()
         }
+    }
+
+    @Test
+    fun rejectsDuplicateCentralDirectoryEntryNames() {
+        val apk = zippedDex("classes.dex" to "com.example.analytics.Client")
+        try {
+            val bytes = apk.readBytes()
+            val eocd = findEndOfCentralDirectory(bytes)
+            val centralOffset = littleEndianInt(bytes, eocd + 16)
+            val centralSize = littleEndianInt(bytes, eocd + 12)
+            val duplicateRecord = bytes.copyOfRange(centralOffset, centralOffset + centralSize)
+            val expanded = ByteArray(bytes.size + duplicateRecord.size)
+            bytes.copyInto(expanded, 0, 0, eocd)
+            duplicateRecord.copyInto(expanded, eocd)
+            bytes.copyInto(expanded, eocd + duplicateRecord.size, eocd, bytes.size)
+            val newEocd = eocd + duplicateRecord.size
+            putLittleEndianShort(expanded, newEocd + 8, littleEndianShort(expanded, newEocd + 8) + 1)
+            putLittleEndianShort(expanded, newEocd + 10, littleEndianShort(expanded, newEocd + 10) + 1)
+            putLittleEndianInt(expanded, newEocd + 12, centralSize + duplicateRecord.size)
+            apk.writeBytes(expanded)
+
+            val error = runCatching {
+                ApkTrackerIndicatorScanner().scan(apk, listOf(signatureForDuplicateFixture()))
+            }.exceptionOrNull()
+
+            assertTrue(error is java.io.IOException)
+            assertTrue(error?.message.orEmpty().contains("duplicate entry name"))
+        } finally {
+            apk.delete()
+        }
+    }
+
+    @Test
+    fun rejectsDexEntriesUsingUnsupportedZipCompressionMethods() {
+        val apk = zippedDex("classes.dex" to "com.example.analytics.Client")
+        try {
+            val bytes = apk.readBytes()
+            val eocd = findEndOfCentralDirectory(bytes)
+            val centralOffset = littleEndianInt(bytes, eocd + 16)
+            val localOffset = littleEndianInt(bytes, centralOffset + 42)
+            putLittleEndianShort(bytes, centralOffset + 10, 99)
+            putLittleEndianShort(bytes, localOffset + 8, 99)
+            apk.writeBytes(bytes)
+
+            val error = runCatching {
+                ApkTrackerIndicatorScanner().scan(apk, listOf(signatureForDuplicateFixture()))
+            }.exceptionOrNull()
+
+            assertTrue("Unsupported ZIP compression must fail closed; got $error", error is java.io.IOException)
+        } finally {
+            apk.delete()
+        }
+    }
+
+    private fun signatureForDuplicateFixture() = TrackerSignature(
+        id = "zip-fixture",
+        name = "ZIP fixture",
+        category = "test",
+        domains = emptyList(),
+        sdkPatterns = listOf("com.example.analytics.Client"),
+        confidence = "low",
+        status = "review",
+        lastVerified = "2026-10-25",
+        evidence = evidence
+    )
+
+    private fun findEndOfCentralDirectory(bytes: ByteArray): Int {
+        for (index in bytes.size - 22 downTo 0) {
+            if (bytes[index] == 0x50.toByte() && bytes[index + 1] == 0x4b.toByte() &&
+                bytes[index + 2] == 0x05.toByte() && bytes[index + 3] == 0x06.toByte()
+            ) return index
+        }
+        throw AssertionError("ZIP end-of-central-directory record not found")
+    }
+
+    private fun littleEndianShort(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xff) or ((bytes[offset + 1].toInt() and 0xff) shl 8)
+
+    private fun littleEndianInt(bytes: ByteArray, offset: Int): Int =
+        littleEndianShort(bytes, offset) or (littleEndianShort(bytes, offset + 2) shl 16)
+
+    private fun putLittleEndianShort(bytes: ByteArray, offset: Int, value: Int) {
+        bytes[offset] = value.toByte()
+        bytes[offset + 1] = (value ushr 8).toByte()
+    }
+
+    private fun putLittleEndianInt(bytes: ByteArray, offset: Int, value: Int) {
+        putLittleEndianShort(bytes, offset, value)
+        putLittleEndianShort(bytes, offset + 2, value ushr 16)
     }
 
     private fun zippedDex(vararg entries: Pair<String, String>): File {

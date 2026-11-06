@@ -6,7 +6,7 @@ use jni::{
     sys::{jlong, jstring},
     JNIEnv,
 };
-use pcage_sync::{DeviceIdentity, IdentityCard, KeyRotation, OwnerKeyRotation, RosterMember, SignedDeviceRoster, SyncError, SyncPacket};
+use pcage_sync::{DeviceIdentity, IdentityCard, KeyRotation, OwnerKeyRotation, ReplayLedger, RosterMember, SignedDeviceRoster, SyncError, SyncPacket};
 use serde_json::{json, Value};
 use std::{path::PathBuf, ptr};
 use zeroize::Zeroize;
@@ -380,6 +380,66 @@ pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeOp
             return Err("packet_rejected: decrypted profile is not a JSON object".to_owned());
         }
         Ok(json!({ "ok": true, "payload": payload }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeOpenPacketPrepared(
+    mut env: JNIEnv, _this: JObject,
+    bundle_base64: JString, passphrase: JString, sender_card_json: JString,
+    packet_json: JString, now_unix: jlong, ledger_path: JString,
+) -> jstring {
+    let result = (|| {
+        let bundle_base64 = read_string(&mut env, bundle_base64)?;
+        let passphrase = read_string(&mut env, passphrase)?;
+        let sender_card_json = read_string(&mut env, sender_card_json)?;
+        let packet_json = read_string(&mut env, packet_json)?;
+        let ledger_path = read_string(&mut env, ledger_path)?;
+        let now_unix = u64::try_from(now_unix).map_err(|_| "Invalid receive timestamp".to_owned())?;
+        let sender = parse_card(&sender_card_json)?;
+        let packet: SyncPacket = serde_json::from_str(&packet_json)
+            .map_err(|_| "packet_rejected: relay payload is not a valid sync packet".to_owned())?;
+        let message_id = packet.body.header.message_id.clone();
+        let identity = restore_identity(&bundle_base64, &passphrase)?;
+        let path = PathBuf::from(ledger_path);
+        let mut plaintext = match identity.open_packet_prepared(&packet, &sender, now_unix, &path) {
+            Ok(value) => value,
+            Err(SyncError::Replay) => return Err("replay: packet was already accepted".to_owned()),
+            Err(SyncError::IoFailure) => return Err("replay_ledger_io: local replay history could not be read".to_owned()),
+            Err(SyncError::InvalidInput("replay ledger full; archive it safely")) => {
+                return Err("replay_ledger_full: local replay history reached its safety limit".to_owned());
+            }
+            Err(error) => return Err(format!("packet_rejected: {error}")),
+        };
+        let payload_result = serde_json::from_slice::<Value>(&plaintext)
+            .map_err(|_| "packet_rejected: decrypted payload is not valid JSON".to_owned());
+        plaintext.zeroize();
+        let payload = payload_result?;
+        if !payload.is_object() {
+            return Err("packet_rejected: decrypted profile is not a JSON object".to_owned());
+        }
+        Ok(json!({ "ok": true, "payload": payload, "message_id": message_id }))
+    })();
+    respond(&mut env, result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_privacage_android_sync_NativeSyncBridge_nativeRecordReplayId(
+    mut env: JNIEnv, _this: JObject, message_id: JString, ledger_path: JString,
+) -> jstring {
+    let result = (|| {
+        let message_id = read_string(&mut env, message_id)?;
+        let ledger_path = read_string(&mut env, ledger_path)?;
+        let path = PathBuf::from(ledger_path);
+        match ReplayLedger::record_durable_idempotent(&path, &message_id) {
+            Ok(()) => Ok(json!({ "ok": true })),
+            Err(SyncError::IoFailure) => Err("replay_ledger_io: local replay history could not be updated".to_owned()),
+            Err(SyncError::InvalidInput("replay ledger full; archive it safely")) => {
+                Err("replay_ledger_full: local replay history reached its safety limit".to_owned())
+            }
+            Err(error) => Err(format!("replay_ledger_error: {error}")),
+        }
     })();
     respond(&mut env, result)
 }

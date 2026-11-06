@@ -12,6 +12,8 @@ RESULTS="$PERFORMANCE_RESULTS_DIR"
 HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD)"
 mkdir -p "$RESULTS/baseline" "$RESULTS/head"
 
+bash "$ROOT/.github/scripts/capture-performance-environment.sh" emulator
+
 # Reuse one dependency cache on the same runner; the implementation and benchmark
 # workloads remain sequential to avoid CPU contention between samples.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$RUNNER_TEMP/privacage-cargo-target}"

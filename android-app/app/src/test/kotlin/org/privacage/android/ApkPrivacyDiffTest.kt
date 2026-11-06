@@ -51,6 +51,241 @@ class ApkPrivacyDiffTest {
         assertEquals(CATALOG_SHA256, diff.trackerCatalogSha256)
     }
 
+    @Test
+    fun recognizesPlatformProvidedForwardCertificateRotation() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.AUTHORIZED_ROTATION, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun identifiesEarlierSignerLineageAsPossibleDowngrade() {
+        val baseline = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+        val candidate = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun lowerVersionWithUnchangedSignerLineageIsPossibleDowngrade() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 10, signingHistory = listOf(CERT_A))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun lowerVersionWithForwardSignerLineageIsPossibleDowngradeNotAuthorizedRotation() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 10, signingHistory = listOf(CERT_A, CERT_B))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun sameVersionForwardSignerLineageIsNotClaimedAsAuthorizedRotation() {
+        val baseline = report(versionCode = 11, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 11, signingHistory = listOf(CERT_A, CERT_B))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun lowerVersionWithUnchangedMultipleSignerSetIsPossibleDowngrade() {
+        val baseline = report(
+            versionCode = 11,
+            signers = listOf(CERT_A, CERT_B),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+        val candidate = report(
+            versionCode = 10,
+            signers = listOf(CERT_B, CERT_A),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun identifiesLineageRegressionWithoutLowerVersionCode() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.LINEAGE_REGRESSION, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun invalidApkSignatureCannotClaimAuthorizedRotation() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B),
+            signatureStatus = ApkSignatureStatus.INVALID
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun historyMustEndWithTheReportedCurrentSigner() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A, CERT_B),
+            signers = listOf(CERT_C)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B, CERT_C)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.SIGNER_MISMATCH, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun unrelatedSigningHistoriesAreNotReportedAsAuthorizedRotation() {
+        val baseline = report(versionCode = 10, signingHistory = listOf(CERT_A))
+        val candidate = report(versionCode = 11, signingHistory = listOf(CERT_C))
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.SIGNER_MISMATCH, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun signatureNotVerifiedHistoryIsUnknown() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A),
+            historyStatus = ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED,
+            signatureStatus = ApkSignatureStatus.INVALID
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun missingPlatformHistoryRemainsUnknown() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A),
+            historyStatus = ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED
+        )
+        val candidate = report(
+            versionCode = 11,
+            signingHistory = listOf(CERT_A, CERT_B)
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNKNOWN, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun multipleSignerIdentityIsComparedAsAnUnorderedSet() {
+        val baseline = report(
+            versionCode = 10,
+            signers = listOf(CERT_A, CERT_B),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+        val candidate = report(
+            versionCode = 11,
+            signers = listOf(CERT_B, CERT_A),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.UNCHANGED, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun multipleSignerSetChangesAreNotTreatedAsRotation() {
+        val baseline = report(
+            versionCode = 10,
+            signers = listOf(CERT_A, CERT_B),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+        val candidate = report(
+            versionCode = 11,
+            signers = listOf(CERT_A, CERT_C),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.SIGNER_MISMATCH, diff.signingCertificateContinuity)
+    }
+
+    @Test
+    fun changingBetweenSingleAndMultipleSignerModelsIsNotRotation() {
+        val baseline = report(
+            versionCode = 10,
+            signingHistory = listOf(CERT_A)
+        )
+        val candidate = report(
+            versionCode = 11,
+            signers = listOf(CERT_A, CERT_B),
+            signingHistory = emptyList(),
+            historyStatus = ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        )
+
+        val diff = ApkPrivacyDiff.compare(baseline, candidate, CATALOG_SHA256)
+
+        assertEquals(ApkSigningCertificateContinuity.SIGNER_MODEL_CHANGED, diff.signingCertificateContinuity)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun refusesToCompareDifferentPackages() {
         ApkPrivacyDiff.compare(
@@ -95,7 +330,11 @@ class ApkPrivacyDiffTest {
         versionCode: Long = 1L,
         permissions: List<String> = emptyList(),
         components: List<ExportedApkComponent> = emptyList(),
-        findings: List<ApkTrackerIndicatorFinding> = emptyList()
+        findings: List<ApkTrackerIndicatorFinding> = emptyList(),
+        signingHistory: List<String> = listOf(CERT_A),
+        signers: List<String> = signingHistory.takeLast(1),
+        historyStatus: ApkSigningCertificateHistoryStatus = ApkSigningCertificateHistoryStatus.AVAILABLE,
+        signatureStatus: ApkSignatureStatus = ApkSignatureStatus.VERIFIED
     ) = ApkManifestAuditReport(
         packageName = packageName,
         versionName = versionName,
@@ -103,17 +342,20 @@ class ApkPrivacyDiffTest {
         targetSdkVersion = 35,
         fileSizeBytes = 10_000L,
         sha256 = "b".repeat(64),
-        signingCertificateSha256 = listOf("c".repeat(64)),
-        signatureVerification = ApkSignatureVerification(ApkSignatureStatus.VERIFIED, emptyList(), emptyList()),
+        signingCertificateSha256 = signers.sorted(),
+        signatureVerification = ApkSignatureVerification(signatureStatus, emptyList(), emptyList()),
         permissions = permissions.map { ApkPermissionFinding(it, PermissionRiskClassifier.classify(it)) },
         exportedComponents = components,
         trackerScan = ApkTrackerScanReport(
+            status = ApkDexStringScanStatus.COMPLETE_STRING_SCAN,
             indicatorsConsidered = 4,
             dexFilesScanned = 1,
             dexBytesScanned = 128L,
             findings = findings,
             warnings = emptyList()
-        )
+        ),
+        signingCertificateHistorySha256 = signingHistory,
+        signingCertificateHistoryStatus = historyStatus
     )
 
     private fun indicator(
@@ -134,6 +376,9 @@ class ApkPrivacyDiffTest {
     )
 
     private companion object {
+        val CERT_A = "a".repeat(64)
+        val CERT_B = "b".repeat(64)
+        val CERT_C = "c".repeat(64)
         const val INTERNET = "android.permission.INTERNET"
         const val CAMERA = "android.permission.CAMERA"
         const val FINE_LOCATION = "android.permission.ACCESS_FINE_LOCATION"

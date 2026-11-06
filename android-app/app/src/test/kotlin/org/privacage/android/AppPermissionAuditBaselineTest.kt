@@ -33,6 +33,17 @@ class AppPermissionAuditBaselineTest {
     }
 
     @Test
+    fun encryptedBaselineReadFailureIsPreservedAndNotTreatedAsEmpty() {
+        val result = AppPermissionAudit.readBaselinePreference {
+            throw IOException("Keystore authentication failed")
+        }
+
+        assertEquals(null, result.value)
+        assertEquals(true, result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
     fun acceptsOnlyTheExactBaselineSchema() {
         val snapshot = AppPermissionAudit.decodeBaseline(
             """{"schema_version":1,"packages":{"com.example.app":{"android.permission.CAMERA":true}}}"""

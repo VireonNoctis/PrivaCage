@@ -10,10 +10,21 @@ internal data class ApkTrackerIndicatorChange(
     val after: ApkTrackerIndicatorFinding
 )
 
+internal enum class ApkSigningCertificateContinuity {
+    UNCHANGED,
+    AUTHORIZED_ROTATION,
+    POSSIBLE_DOWNGRADE,
+    LINEAGE_REGRESSION,
+    SIGNER_MISMATCH,
+    SIGNER_MODEL_CHANGED,
+    UNKNOWN
+}
+
 internal data class ApkPrivacyDiffReport(
     val baseline: ApkManifestAuditReport,
     val candidate: ApkManifestAuditReport,
     val trackerCatalogSha256: String,
+    val signingCertificateContinuity: ApkSigningCertificateContinuity,
     val addedPermissions: List<ApkPermissionFinding>,
     val removedPermissions: List<ApkPermissionFinding>,
     val addedExportedComponents: List<ExportedApkComponent>,
@@ -56,6 +67,7 @@ internal object ApkPrivacyDiff {
             baseline = baseline,
             candidate = candidate,
             trackerCatalogSha256 = trackerCatalogSha256,
+            signingCertificateContinuity = compareSigningCertificateContinuity(baseline, candidate),
             addedPermissions = candidate.permissions
                 .filter { it.permissionName !in baselinePermissions }
                 .sortedBy { it.permissionName },
@@ -93,6 +105,90 @@ internal object ApkPrivacyDiff {
                     if (before == after) null else ApkTrackerIndicatorChange(before, after)
                 }
         )
+    }
+
+    private fun compareSigningCertificateContinuity(
+        baseline: ApkManifestAuditReport,
+        candidate: ApkManifestAuditReport
+    ): ApkSigningCertificateContinuity {
+        // Do not trust PackageManager signer metadata as a continuity claim unless the
+        // independent APK signature verifier accepted both complete APK files.
+        if (baseline.signatureVerification.status != ApkSignatureStatus.VERIFIED ||
+            candidate.signatureVerification.status != ApkSignatureStatus.VERIFIED
+        ) {
+            return ApkSigningCertificateContinuity.UNKNOWN
+        }
+
+        val baselineStatus = baseline.signingCertificateHistoryStatus
+        val candidateStatus = candidate.signingCertificateHistoryStatus
+
+        if (baselineStatus == ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ||
+            baselineStatus == ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ||
+            baselineStatus == ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED ||
+            candidateStatus == ApkSigningCertificateHistoryStatus.PLATFORM_UNSUPPORTED ||
+            candidateStatus == ApkSigningCertificateHistoryStatus.METADATA_UNAVAILABLE ||
+            candidateStatus == ApkSigningCertificateHistoryStatus.SIGNATURE_NOT_VERIFIED
+        ) {
+            return ApkSigningCertificateContinuity.UNKNOWN
+        }
+
+        if (baselineStatus == ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS ||
+            candidateStatus == ApkSigningCertificateHistoryStatus.MULTIPLE_SIGNERS
+        ) {
+            if (baselineStatus != candidateStatus) {
+                return ApkSigningCertificateContinuity.SIGNER_MODEL_CHANGED
+            }
+            if (baseline.signingCertificateSha256 != candidate.signingCertificateSha256) {
+                return ApkSigningCertificateContinuity.SIGNER_MISMATCH
+            }
+            return if (candidate.versionCode < baseline.versionCode) {
+                ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+            } else {
+                ApkSigningCertificateContinuity.UNCHANGED
+            }
+        }
+
+        val baselineHistory = baseline.signingCertificateHistorySha256
+        val candidateHistory = candidate.signingCertificateHistorySha256
+        if (baselineHistory.isEmpty() || candidateHistory.isEmpty()) {
+            return ApkSigningCertificateContinuity.UNKNOWN
+        }
+        if (baseline.signingCertificateSha256 != listOf(baselineHistory.last()) ||
+            candidate.signingCertificateSha256 != listOf(candidateHistory.last())
+        ) {
+            return ApkSigningCertificateContinuity.SIGNER_MISMATCH
+        }
+        if (baselineHistory == candidateHistory &&
+            baseline.signingCertificateSha256 == candidate.signingCertificateSha256
+        ) {
+            return if (candidate.versionCode < baseline.versionCode) {
+                ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+            } else {
+                ApkSigningCertificateContinuity.UNCHANGED
+            }
+        }
+
+        val candidateExtendsBaseline = candidateHistory.size > baselineHistory.size &&
+            candidateHistory.take(baselineHistory.size) == baselineHistory
+        if (candidateExtendsBaseline) {
+            return when {
+                candidate.versionCode > baseline.versionCode ->
+                    ApkSigningCertificateContinuity.AUTHORIZED_ROTATION
+                candidate.versionCode < baseline.versionCode ->
+                    ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+                else -> ApkSigningCertificateContinuity.UNKNOWN
+            }
+        }
+
+        val candidateIsEarlierLineage = baselineHistory.size > candidateHistory.size &&
+            baselineHistory.take(candidateHistory.size) == candidateHistory
+        if (candidateIsEarlierLineage && candidate.versionCode < baseline.versionCode) {
+            return ApkSigningCertificateContinuity.POSSIBLE_DOWNGRADE
+        }
+        if (candidateIsEarlierLineage) {
+            return ApkSigningCertificateContinuity.LINEAGE_REGRESSION
+        }
+        return ApkSigningCertificateContinuity.SIGNER_MISMATCH
     }
 
     private fun componentKey(kind: String, className: String): String = "$kind\u0000$className"

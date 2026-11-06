@@ -237,7 +237,8 @@ internal class AndroidKeystoreIdentityStore(context: Context) {
             "next_sequence",
             "relay_cursor",
             "pending_profile_json",
-            "pending_sender_fingerprint"
+            "pending_sender_fingerprint",
+            "pending_receive_transaction"
         )
 
         private const val DIRECTORY_NAME = "privacage-sync"

@@ -19,6 +19,10 @@ Catalogue metrics are not device telemetry. The web client does not invent activ
 
 The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
+## Android app policy review observations
+
+A local package inventory diff detects newly observed launcher-visible applications when PrivaCage next resumes. A scan fails closed and preserves the prior queue if Android omits PrivaCage's own launcher entry or returns no other launcher-visible packages; an empty result is not treated as mass-uninstall evidence. Optional app-open observation uses UsageStatsManager behind Android's user-granted Usage Access special setting. Each scan queries at most the most recent 24 hours; Android retains usage events for only a few days, so this is not a complete usage history. Resulting reminders are presented inside PrivaCage after return; the app does not create overlays on other applications. The user supplies HTTPS policy URLs, saves them locally, and opens them in the system browser. PrivaCage does not fetch, store, extract or upload policy text. The encrypted queue contains package identifiers, observation metadata, URLs and review status only.
+
 ## Proposed layers
 
 1. Platform adapters collect facts exposed by supported OS APIs.
@@ -105,9 +109,9 @@ The Rust protocol core and Android JNI adapter implement device identity, encryp
 
 ## Opaque encrypted-sync relay
 
-`shared/rust/pcage-sync-relay` is a persistent SQLite-backed HTTP relay. It stores packet bytes as opaque payloads, indexes them by space and message ID, exposes cursor-based reads, expires records after seven days, rejects duplicate IDs, and caps each space at 10,000 queued messages. Space creation, capability rotation, and deletion require a separate admin bearer token; each space capability is stored as a SHA-256 hash. The server never receives a private key or profile plaintext.
+`shared/rust/pcage-sync-relay` is a persistent SQLite-backed HTTP relay. It stores encrypted packet bytes as opaque payloads, indexes them by space and message ID, exposes cursor-based reads, rejects duplicate IDs, and caps each space at 10,000 non-expired messages. Message rows expire after seven days and request-nonce rows after five minutes. Expired rows are pruned at startup and by a 60-second background sweep, in addition to message access. SQLite `secure_delete=ON` is enabled for ordinary table deletions; this does not guarantee erasure from prior WAL frames, filesystem snapshots, storage backups, or copied database files. Space creation, capability rotation, and deletion require a separate admin bearer token; the relay stores SHA-256 hashes rather than raw space/member capability tokens. Public device cards and signed roster history are stored for trust validation. The relay never receives a private key or profile plaintext.
 
-The service refuses to bind to a non-loopback address. Remote deployment requires a TLS reverse proxy on the same host forwarding to the loopback listener. The relay still sees space IDs, message IDs, timestamps, packet sizes, and access patterns. Capability tokens are shared by every device in a space, so revoking one device individually requires the future signed roster/revocation layer. The Android/iOS/Windows apps are not yet wired to this service.
+The application stores no client IP address and has no request-body/header logging middleware. It receives client connection metadata at the network layer, however, and the external TLS reverse proxy or host may log IP addresses, paths, headers, body sizes, and request timing under its own configuration. The service refuses to bind to a non-loopback address. Remote deployment requires a TLS reverse proxy on the same host forwarding to the loopback listener. The relay still sees space IDs, message IDs, timestamps, packet sizes, public device fingerprints and access patterns.
 
 
 ## Multi-format metadata inspection and scrubbing
@@ -125,3 +129,12 @@ The Windows workspace exposes two intentionally separate control surfaces:
 - `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
 
 The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.
+
+
+## Strict local privacy controls
+
+The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys.
+
+The Android release is governed by a strict no-product-telemetry policy. Repository CI scans Android build files, the manifest and main Kotlin/Java/XML source for known analytics, advertising, attribution and remote crash-reporting indicators. The check is deliberately described as static regression coverage rather than proof against platform/OEM diagnostics or unknown hand-written collection.
+
+The `docs/privacy/` Markdown policies are packaged as Android assets and rendered by a local-only policy reader. Reading those documents does not call a remote policy endpoint. The documents are draft templates until the responsible controller identity, contact details, lawful bases, actual deployed operators and effective date are supplied and legally reviewed.

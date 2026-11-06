@@ -18,7 +18,7 @@ import java.time.format.DateTimeParseException
  *
  * Android package visibility intentionally limits this to apps discoverable through
  * the launcher intent. The optional comparison baseline stores only package names,
- * dangerous permission names, and grant booleans in app-private preferences.
+ * dangerous permission names, and grant booleans in an AES-GCM encrypted app-private preference.
  */
 internal object AppPermissionAudit {
     internal data class BaselinePreferenceRead(
@@ -36,12 +36,22 @@ internal object AppPermissionAudit {
                 unreadable = true,
                 warning = "The saved permission baseline has an unexpected stored type and has been preserved."
             )
+        } catch (exception: IOException) {
+            BaselinePreferenceRead(
+                value = null,
+                unreadable = true,
+                warning = "The saved encrypted permission baseline could not be authenticated or read and has been preserved: " +
+                    (exception.message ?: exception.javaClass.simpleName)
+            )
         }
 
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
     private const val KEY_BASELINE = "dangerous_permission_baseline_v1"
+    private const val KEY_BASELINE_ENCRYPTED = "dangerous_permission_baseline_encrypted_v1"
+    private const val KEY_ALIAS = "org.privacage.android.permission-baseline.aes-gcm.v1"
+    private const val AAD_LABEL = "permission-audit-baseline"
     private const val BASELINE_SCHEMA_VERSION = 2
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
     private const val MAX_BASELINE_PACKAGES = 2_000
@@ -50,10 +60,12 @@ internal object AppPermissionAudit {
     private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
 
     fun clearBaseline(context: Context): Boolean =
-        context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_BASELINE)
-            .commit()
+        AndroidSensitivePreferenceVault.clear(
+            context,
+            PREFERENCES_NAME,
+            KEY_BASELINE_ENCRYPTED,
+            setOf(KEY_BASELINE)
+        )
 
     fun scan(context: Context): String {
         val packageManager = context.packageManager
@@ -157,8 +169,24 @@ internal object AppPermissionAudit {
             output.append("Comparison was not run and the saved baseline was not changed because ")
                 .append(skipped).append(" package(s) could not be inspected. This avoids treating an incomplete scan as a real permission change.")
         } else {
-            val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-            val baselineRead = readBaselinePreference { preferences.getString(KEY_BASELINE, null) }
+            val baselineRead = readBaselinePreference {
+                AndroidSensitivePreferenceVault.read(
+                    context = context,
+                    preferencesName = PREFERENCES_NAME,
+                    encryptedKey = KEY_BASELINE_ENCRYPTED,
+                    keyAlias = KEY_ALIAS,
+                    aadLabel = AAD_LABEL,
+                    defaultValue = null,
+                    maximumPlaintextBytes = MAX_BASELINE_BYTES,
+                    legacyKeys = setOf(KEY_BASELINE),
+                    legacyValue = {
+                        context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+                            .getString(KEY_BASELINE, null)
+                            ?: throw IOException("The legacy permission baseline has no readable value.")
+                    },
+                    validateValue = { decodeBaselineRecord(it) }
+                )
+            }
             val rawBaseline = baselineRead.value
             var baselineWarning: String? = baselineRead.warning
             var preserveUnreadableBaseline = baselineRead.unreadable
@@ -246,14 +274,18 @@ internal object AppPermissionAudit {
                 output.append("\nSaved baseline was not replaced. Clear it explicitly if you want to start a new comparison history.")
             } else {
                 try {
-                    val saved = preferences.edit()
-                        .putString(KEY_BASELINE, encodeBaseline(currentSnapshot, scanCapturedAt))
-                        .commit()
-                    if (!saved) {
-                        output.append("\nBaseline write failed: Android did not confirm the local preference write.")
-                    } else {
-                        output.append("\nSaved this completed scan as the next comparison baseline.")
-                    }
+                    AndroidSensitivePreferenceVault.write(
+                        context = context,
+                        preferencesName = PREFERENCES_NAME,
+                        encryptedKey = KEY_BASELINE_ENCRYPTED,
+                        keyAlias = KEY_ALIAS,
+                        aadLabel = AAD_LABEL,
+                        plaintext = encodeBaseline(currentSnapshot, scanCapturedAt),
+                        maximumPlaintextBytes = MAX_BASELINE_BYTES,
+                        legacyKeys = setOf(KEY_BASELINE),
+                        validateValue = { decodeBaselineRecord(it) }
+                    )
+                    output.append("\nSaved this completed scan as the next encrypted local comparison baseline.")
                 } catch (exception: Exception) {
                     output.append("\nBaseline write failed: ")
                         .append(exception.message ?: exception.javaClass.simpleName)

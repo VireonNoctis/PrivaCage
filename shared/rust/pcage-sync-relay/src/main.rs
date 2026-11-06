@@ -19,7 +19,7 @@ use std::{
     net::SocketAddr,
     path::Path as FsPath,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use subtle::ConstantTimeEq;
 
@@ -52,6 +52,7 @@ impl Store {
         let connection = Connection::open(path)?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
+             PRAGMA secure_delete=ON;
              PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS spaces (
                space_id TEXT PRIMARY KEY,
@@ -108,6 +109,18 @@ impl Store {
             connection.execute("ALTER TABLE space_members ADD COLUMN device_card_json TEXT", [])?;
         }
         Ok(Self { connection: Mutex::new(connection), admin_hash: hash_token(admin_token) })
+    }
+
+    /// Removes expired message and replay-nonce rows even when no clients are active.
+    fn prune_expired(&self) -> Result<(), StoreError> {
+        let now = unix_now().map_err(|_| StoreError::Database)?;
+        let nonce_cutoff = now.saturating_sub(REQUEST_NONCE_RETENTION_SECS);
+        let conn = self.connection.lock().map_err(|_| StoreError::Database)?;
+        conn.execute("DELETE FROM messages WHERE expires_at <= ?1", [now as i64])
+            .map_err(|_| StoreError::Database)?;
+        conn.execute("DELETE FROM space_request_nonces WHERE created_at <= ?1", [nonce_cutoff as i64])
+            .map_err(|_| StoreError::Database)?;
+        Ok(())
     }
 
     fn create_space(&self, admin_token: &str, space_id: &str, capability: &str) -> Result<(), StoreError> {
@@ -961,6 +974,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err("plain HTTP relay must bind to loopback; terminate TLS at a local reverse proxy".into());
     }
     let store = Arc::new(Store::open(FsPath::new(&db), &admin)?);
+    store.prune_expired().map_err(|_| {
+        std::io::Error::other("relay retention cleanup failed during startup")
+    })?;
+
+    let retention_store = Arc::clone(&store);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            if retention_store.prune_expired().is_err() {
+                eprintln!("PrivaCage relay retention cleanup failed; expired rows may remain until a later successful sweep.");
+            }
+        }
+    });
+
     let app = build_app(store);
     let listener = tokio::net::TcpListener::bind(listen).await?;
     println!("PrivaCage opaque sync relay listening on {listen}; payloads are never decrypted");
@@ -1353,6 +1381,66 @@ mod tests {
             store.put_signed_roster("device-space-0001", &serde_json::to_vec(&substituted).unwrap()),
             Err(StoreError::Conflict)
         ));
+    }
+
+    #[test]
+    fn retention_sweep_prunes_expired_packets_and_nonces_on_an_idle_relay() {
+        let dir = tempdir().unwrap();
+        let store = Store::open(&dir.path().join("relay.sqlite3"), &"a".repeat(64)).unwrap();
+        store.create_space(
+            &"a".repeat(64),
+            "device-space-0001",
+            &"0123456789abcdef".repeat(4),
+        ).unwrap();
+
+        let expired_id = "0123456789abcdef0123456789abcdef";
+        let active_id = "fedcba9876543210fedcba9876543210";
+        store.put("device-space-0001", expired_id, b"expired ciphertext").unwrap();
+        store.put("device-space-0001", active_id, b"active ciphertext").unwrap();
+
+        let now = unix_now().unwrap();
+        {
+            let conn = store.connection.lock().unwrap();
+            conn.execute(
+                "UPDATE messages SET expires_at=?1 WHERE space_id=?2 AND message_id=?3",
+                params![now.saturating_sub(1) as i64, "device-space-0001", expired_id],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO space_request_nonces(space_id, fingerprint, nonce, created_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    "device-space-0001",
+                    "ab".repeat(32),
+                    "cd".repeat(16),
+                    now.saturating_sub(REQUEST_NONCE_RETENTION_SECS + 1) as i64
+                ],
+            ).unwrap();
+            let secure_delete: i64 = conn.query_row("PRAGMA secure_delete", [], |row| row.get(0)).unwrap();
+            assert_eq!(secure_delete, 1);
+        }
+
+        store.prune_expired().unwrap();
+
+        let conn = store.connection.lock().unwrap();
+        let expired_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE message_id=?1",
+            [expired_id],
+            |row| row.get(0),
+        ).unwrap();
+        let active_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE message_id=?1",
+            [active_id],
+            |row| row.get(0),
+        ).unwrap();
+        let nonce_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM space_request_nonces",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(expired_count, 0);
+        assert_eq!(active_count, 1);
+        assert_eq!(nonce_count, 0);
     }
 
     #[tokio::test]
