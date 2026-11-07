@@ -113,7 +113,7 @@ Documents the active default network, its capabilities, and TRANSPORT_VPN. This 
 ### S09i — Android Developers: Settings actions
 https://developer.android.com/reference/android/provider/Settings
 
-Documents OS-owned settings handoffs for accessibility, notification-listener, security and VPN settings. Availability can vary by Android build; callers must handle a missing activity.
+Documents OS-owned settings handoffs for accessibility, notification-listener, security and VPN settings. ACTION_APPLICATION_DETAILS_SETTINGS opens one package's app-info page using a package: URI; availability can vary by Android build, so callers must handle a missing activity. PrivaCage uses this only on an explicit user tap and does not query application labels or mutate the package.
 
 ## Apple platform
 

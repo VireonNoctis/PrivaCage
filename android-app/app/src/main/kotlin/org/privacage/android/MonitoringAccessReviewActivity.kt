@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -186,16 +187,43 @@ class MonitoringAccessReviewActivity : Activity() {
                     resultsContainer.addView(body(message))
                 } else {
                     resultsContainer.addView(body("Components reported: " + observation.components.size))
+                    val appInfoTargets = LinkedHashSet<String>()
                     observation.components.forEach { component ->
                         resultsContainer.addView(componentText(
                             component.packageName + "\n" + component.className
                         ))
+                        if (appInfoTargets.add(component.packageName)) {
+                            resultsContainer.addView(appInfoButton(component.packageName))
+                        }
                     }
                 }
                 observation.detail?.let { resultsContainer.addView(body("Coverage note: " + it)) }
             }
         }
         resultsContainer.addView(settingsButton(settingsAction, "Open Android " + settingsLabel))
+    }
+
+    private fun appInfoButton(packageName: String) = Button(this).apply {
+        text = "Review app info"
+        contentDescription = "Open Android app info for $packageName"
+        setOnClickListener {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    }
+                )
+                statusText.text =
+                    "Opened Android app info for $packageName. PrivaCage did not change any setting."
+            } catch (exception: ActivityNotFoundException) {
+                statusText.text =
+                    "Android does not expose an app-info page for $packageName on this device. No setting was changed."
+            } catch (exception: SecurityException) {
+                statusText.text =
+                    "Android did not allow app info for $packageName to open. No setting was changed."
+            }
+        }
+        PrivaCageDesign.styleControl(this@MonitoringAccessReviewActivity, this)
     }
 
     private fun settingsButton(action: String, label: String) = Button(this).apply {
