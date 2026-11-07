@@ -50,13 +50,21 @@ internal object PrivaCageDesign {
         "INSTALL QUEUE",
         "APP POLICY REVIEW",
         "APP POLICY REVIEW QUEUE",
+        "MONITORING ACCESS REVIEW",
+        "ACCESSIBILITY SERVICES",
+        "ACTIVE DEVICE ADMINISTRATORS",
+        "NOTIFICATION LISTENERS",
+        "DEFAULT NETWORK VPN STATE",
+        "INTERPRETATION",
         "ALTERNATIVE CATALOG"
     )
 
     private val primaryActionLabels = setOf(
         "save configuration",
         "enable dns filtering",
-        "review installed and opened apps' policies"
+        "review installed and opened apps' policies",
+        "review monitoring-sensitive access",
+        "run local review"
     )
 
     private data class SectionCard(

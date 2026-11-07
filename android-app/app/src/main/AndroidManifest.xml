@@ -51,6 +51,7 @@
         <profileable android:shell="true" tools:targetApi="29" />
         <activity android:name=".AppAlternativesActivity" android:exported="false" />
         <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
+        <activity android:name=".MonitoringAccessReviewActivity" android:exported="false" />
         <activity android:name=".LegalPrivacyActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

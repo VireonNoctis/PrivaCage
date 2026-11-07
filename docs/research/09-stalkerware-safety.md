@@ -1,6 +1,6 @@
 # 09 — Stalkerware, Coercive Monitoring and User Safety
 
-**Research status:** safety-oriented product note, 25 October 2026  
+**Research status:** safety-oriented product note, 7 November 2026  
 **Decision this note supports:** make monitoring-risk checks helpful without escalating danger or falsely accusing legitimate tools.
 
 ## 1. The core design risk
@@ -20,6 +20,12 @@ Potentially useful user-guided review items include:
 - Persistent background activity or unusual network destinations, but only where PrivaCage has a verified signal.
 
 Each item needs a benign-use note. Accessibility can support assistive technology and automation; device management can be legitimate on work/school devices; VPNs and notification listeners have legitimate use cases. None of these is sufficient alone to diagnose stalkerware. Do not present a list of permissions as proof of spying.
+
+## 2a. Implemented stock-Android review slice (PR #25; verification pending)
+
+The first implementation is deliberately a settings review, not a stalkerware detector. After an explicit user action it reads enabled accessibility services, active device-administrator components, enabled notification-listener components, and whether the current default network reports VPN transport. It uses public Android APIs and the read-only notification-listener setting. The review is local, transient, and does not add a permission, use Usage Access, query a complete package inventory, contact a server, create a notification, or save a report.
+
+The UI shows the source and a benign-use explanation for each category. It does not identify the VPN owner, inspect notification contents, observe accessibility events, infer who enabled a setting, or inspect root/system state. Missing, malformed, oversized or truncated data is marked unavailable/partial rather than reported as an empty result. No service or setting is disabled automatically.
 
 ## 3. Safety-first interaction requirements
 
@@ -64,4 +70,6 @@ Do not put a detailed “how to secretly monitor someone” explanation into the
 - Default notifications do not disclose exact scan results.
 - Local-only operation is enforced and tested for the scan path.
 - A “no findings” result includes a clear statement that detection coverage is incomplete.
+- The stock review reports the current user/profile scope and does not imply complete package or VPN-owner visibility.
+- The scan adds no permissions, persistent records, notifications, network requests or automatic settings changes.
 - Specialist safety content is reviewed before any claim about safe removal or evidence preservation.
