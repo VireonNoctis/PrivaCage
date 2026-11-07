@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { BRAILLE_NUMBER_SIGN, brailleDigit, braillePunctuation } from './braille-numbers';
 
   interface Props {
     value: number | string;
@@ -120,6 +121,7 @@
 >
   <span class="sr-only">{formatted}</span>
   <span class="rolling-number__digits" aria-hidden="true">
+    <span class="rolling-number__sign">{BRAILLE_NUMBER_SIGN}</span>
     {#each formatted.split('').reverse() as character, reverseIndex (reverseIndex)}
       {#if /^\d$/.test(character)}
         <span
@@ -132,12 +134,12 @@
             ontransitionend={(event) => handleWheelTransitionEnd(reverseIndex, event)}
           >
             {#each wheelDigits as wheelDigit, wheelIndex (wheelIndex)}
-              <span>{wheelDigit}</span>
+              <span>{brailleDigit(wheelDigit)}</span>
             {/each}
           </span>
         </span>
       {:else}
-        <span class="rolling-number__separator">{character}</span>
+        <span class="rolling-number__separator">{braillePunctuation(character)}</span>
       {/if}
     {/each}
   </span>

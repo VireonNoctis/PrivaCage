@@ -11,6 +11,7 @@ android {
         getByName("main") {
             assets.srcDir("../../shared/tracker-db")
             assets.srcDir("../../shared/app-alternatives")
+            assets.srcDir("../../docs/privacy")
         }
     }
 

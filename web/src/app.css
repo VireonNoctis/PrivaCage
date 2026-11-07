@@ -3216,3 +3216,357 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* ============================================================
+   PRIVACAGE / PURE MONOCHROME TERMINAL SYSTEM
+   Zero grey surfaces, Braille digits, ASCII labels.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --page: #000;
+  --page-raised: #000;
+  --surface: #000;
+  --surface-raised: #000;
+  --surface-hover: #000;
+  --ink: #fff;
+  --ink-soft: #fff;
+  --muted: #fff;
+  --faint: #fff;
+  --line: #fff;
+  --line-strong: #fff;
+  --white: #fff;
+  --black: #000;
+  --ease: steps(4, end);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+}
+
+html,
+body,
+#app,
+.app-shell,
+.app-main,
+.sidebar,
+.topbar,
+.main-content {
+  color: #fff;
+  background: #000;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  color: #fff;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+}
+
+.sidebar,
+.topbar,
+.notice,
+.panel,
+.verification-panel,
+.metric-card,
+.data-boundary-strip,
+.hero-art,
+.module-card,
+.record-card,
+.platform-card,
+.audit-feature-card,
+.audit-import-panel,
+.audit-report,
+.audit-report-stat,
+.audit-report-hash,
+.fingerprint-check,
+.audit-compare-file,
+.setting-row,
+.setting-actions,
+.empty-state,
+.empty-state--large {
+  color: #fff;
+  background: #000 !important;
+  border-color: #fff !important;
+  border-radius: 0 !important;
+}
+
+.app-main {
+  background: #000 !important;
+}
+
+.sidebar,
+.topbar,
+.notice,
+.panel,
+.verification-panel,
+.metric-card,
+.data-boundary-strip,
+.hero-art,
+.module-card,
+.record-card,
+.platform-card,
+.audit-feature-card,
+.audit-import-panel,
+.audit-report,
+.audit-report-stat,
+.audit-report-hash,
+.fingerprint-check,
+.audit-compare-file,
+.setting-row,
+.setting-actions,
+.empty-state,
+.empty-state--large,
+.bar-track,
+.search-field,
+.filter-select,
+.fingerprint-check > input {
+  border-color: #fff !important;
+}
+
+* {
+  color: #fff;
+  text-shadow: none !important;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  color: #fff;
+}
+
+button,
+input,
+select,
+textarea,
+.search-field,
+.filter-select,
+.fingerprint-check > input {
+  background: #000 !important;
+  border: 1px solid #fff !important;
+  border-radius: 0 !important;
+}
+
+button:hover:not(:disabled),
+a:hover {
+  color: #000 !important;
+  background: #fff !important;
+}
+
+button:hover:not(:disabled) *,
+a:hover * {
+  color: #000 !important;
+}
+
+.button--light,
+.primary-nav a.active,
+.state-pill--available {
+  color: #000 !important;
+  background: #fff !important;
+  border-color: #fff !important;
+}
+
+.button--light *,
+.primary-nav a.active *,
+.state-pill--available * {
+  color: #000 !important;
+}
+
+.button--quiet,
+.button--outline,
+.icon-button,
+.notice-action,
+.notice-close {
+  color: #fff !important;
+  background: #000 !important;
+  border: 1px solid #fff !important;
+}
+
+.primary-nav a,
+.primary-nav a:hover,
+.primary-nav a.active {
+  border-radius: 0 !important;
+}
+
+.brand-mark,
+.hero-art,
+.hero-art::after,
+.hero-art-corner,
+.metric-card,
+.panel,
+.record-card-header,
+.record-details,
+.status-label,
+.state-pill {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.hero-art,
+.app-main {
+  background-image: none !important;
+}
+
+.hero-section h1,
+.page-intro h1,
+.panel-heading h2,
+.settings-group-heading h2,
+.empty-state h2,
+.audit-report-heading h2,
+.audit-compare-result h3 {
+  color: #fff !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+  letter-spacing: 0;
+}
+
+.eyebrow,
+.workspace-caption,
+.nav-caption,
+.nav-index,
+.sidebar-foot-note,
+.version-line,
+.strip-key,
+.strip-cell strong,
+.strip-stamp,
+.metric-top,
+.metric-foot,
+.section-kicker,
+.hero-art-code,
+.hero-art-coordinates,
+.hero-index,
+.panel-bottom-note,
+.category-bar-label,
+.page-intro-meta,
+.directory-meta,
+.detail-caption,
+.record-date,
+.evidence-index,
+.empty-state-kicker,
+.platform-card-top,
+.platform-card-foot,
+.setting-fixed,
+.guarantee-list,
+.footer-brand,
+.footer-build,
+.breadcrumb,
+.topbar-clock-label {
+  color: #fff !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-section h1 span,
+.page-intro h1 span,
+.hero-description,
+.page-intro > p,
+.panel-description,
+.metric-foot,
+.capability-copy p,
+.setting-copy p,
+.audit-import-panel > p,
+.audit-report-heading > div > p,
+.fingerprint-check > p,
+.audit-compare-result > p,
+.audit-compare-boundary {
+  color: #fff !important;
+}
+
+.bar-track,
+.bar-fill {
+  background: #000 !important;
+  border: 1px solid #fff !important;
+}
+
+.bar-fill {
+  border: 0 !important;
+  background: #fff !important;
+}
+
+.status-dot,
+.device-pill-dot,
+.metric-status-dot,
+.large-status-dot,
+.mini-dot {
+  border-color: #fff !important;
+  background: #000 !important;
+  box-shadow: none !important;
+}
+
+.status-dot.online,
+.large-status-dot.online,
+.mini-dot--active {
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.rolling-number,
+.rolling-number__digits,
+.rolling-number__digit,
+.rolling-number__wheel,
+.rolling-number__separator,
+.rolling-number__sign {
+  color: #fff !important;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace !important;
+}
+
+.rolling-number__digit {
+  width: 0.76em;
+  flex-basis: 0.76em;
+}
+
+.rolling-number__wheel > span {
+  font-size: 0.86em;
+  line-height: 1em;
+}
+
+.rolling-number__sign {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 0.14em;
+  font-size: 0.72em;
+  line-height: 1;
+}
+
+.rolling-number__separator {
+  min-width: 0.34em;
+}
+
+.refresh-glyph {
+  color: #fff !important;
+}
+
+:focus-visible {
+  outline: 2px solid #fff !important;
+  outline-offset: 3px;
+}
+
+::selection {
+  color: #000 !important;
+  background: #fff !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

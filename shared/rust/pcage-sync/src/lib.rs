@@ -207,31 +207,77 @@ impl DeviceIdentity {
     }
 
     pub fn open_packet(&self, packet: &SyncPacket, sender: &IdentityCard, now: u64, ledger_path: &Path) -> Result<Vec<u8>, SyncError> {
-        self.card.verify()?; sender.verify()?;
+        let mut plaintext = self.open_packet_prepared(packet, sender, now, ledger_path)?;
+        if let Err(error) = ReplayLedger::record_durable(ledger_path, &packet.body.header.message_id) {
+            plaintext.zeroize();
+            return Err(error);
+        }
+        Ok(plaintext)
+    }
+
+    /// Authenticates and decrypts a packet without committing its replay ID.
+    ///
+    /// Android uses this only as the first phase of a durable receive transaction: the
+    /// encrypted local identity record stores the pending payload and cursor before the
+    /// replay ledger is updated. Other callers should normally use open_packet().
+    pub fn open_packet_prepared(
+        &self,
+        packet: &SyncPacket,
+        sender: &IdentityCard,
+        now: u64,
+        ledger_path: &Path,
+    ) -> Result<Vec<u8>, SyncError> {
+        self.card.verify()?;
+        sender.verify()?;
         let h = &packet.body.header;
         if h.protocol_version != 1 { return Err(SyncError::InvalidInput("unsupported protocol version")); }
-        if h.sender_device_id != sender.device_id || h.sender_fingerprint_sha256 != sender.fingerprint_sha256 { return Err(SyncError::UntrustedSender); }
-        if h.recipient_device_id != self.card.device_id || h.recipient_fingerprint_sha256 != self.card.fingerprint_sha256 { return Err(SyncError::WrongRecipient); }
-        if h.sequence == 0 || h.expires_at_unix <= h.created_at_unix || h.expires_at_unix - h.created_at_unix > MAX_TTL { return Err(SyncError::InvalidInput("invalid packet lifetime")); }
+        if h.sender_device_id != sender.device_id || h.sender_fingerprint_sha256 != sender.fingerprint_sha256 {
+            return Err(SyncError::UntrustedSender);
+        }
+        if h.recipient_device_id != self.card.device_id || h.recipient_fingerprint_sha256 != self.card.fingerprint_sha256 {
+            return Err(SyncError::WrongRecipient);
+        }
+        if h.sequence == 0 || h.expires_at_unix <= h.created_at_unix || h.expires_at_unix - h.created_at_unix > MAX_TTL {
+            return Err(SyncError::InvalidInput("invalid packet lifetime"));
+        }
         if now > h.expires_at_unix { return Err(SyncError::Expired); }
         if h.created_at_unix > now.saturating_add(300) { return Err(SyncError::FutureDated); }
         let sig = Signature::from_bytes(&unhex::<64>(&packet.signature_hex)?);
-        let vk = VerifyingKey::from_bytes(&unhex::<32>(&sender.signing_public_key_hex)?).map_err(|_| SyncError::InvalidIdentity)?;
-        vk.verify(&serde_json::to_vec(&packet.body).map_err(|_| SyncError::SerializationFailure)?, &sig).map_err(|_| SyncError::InvalidSignature)?;
+        let vk = VerifyingKey::from_bytes(&unhex::<32>(&sender.signing_public_key_hex)?)
+            .map_err(|_| SyncError::InvalidIdentity)?;
+        vk.verify(&serde_json::to_vec(&packet.body).map_err(|_| SyncError::SerializationFailure)?, &sig)
+            .map_err(|_| SyncError::InvalidSignature)?;
         let id = unhex::<16>(&h.message_id)?;
-        if hex(&id) != h.message_id { return Err(SyncError::InvalidInput("message ID must use canonical lowercase hex")); }
+        if hex(&id) != h.message_id {
+            return Err(SyncError::InvalidInput("message ID must use canonical lowercase hex"));
+        }
         let eph = XPublic::from(unhex::<32>(&packet.body.ephemeral_public_key_hex)?);
         let shared = self.encryption.diffie_hellman(&eph);
         let mut key = derive(shared.as_bytes(), &id, &h.sender_device_id, &h.recipient_device_id)?;
         let nonce = unhex::<12>(&packet.body.nonce_hex)?;
         let ciphertext = decode_hex(&packet.body.ciphertext_hex)?;
-        if ciphertext.len() < 16 || ciphertext.len() > MAX_PAYLOAD + 16 { key.zeroize(); return Err(SyncError::InvalidInput("invalid ciphertext size")); }
+        if ciphertext.len() < 16 || ciphertext.len() > MAX_PAYLOAD + 16 {
+            key.zeroize();
+            return Err(SyncError::InvalidInput("invalid ciphertext size"));
+        }
         let aad = serde_json::to_vec(h).map_err(|_| SyncError::SerializationFailure)?;
         let cipher = ChaCha20Poly1305::new_from_slice(&key).map_err(|_| SyncError::DecryptionFailure)?;
-        let result = cipher.decrypt(Nonce::from_slice(&nonce), Payload { msg: &ciphertext, aad: &aad }).map_err(|_| SyncError::DecryptionFailure);
-        key.zeroize(); let mut plaintext = result?;
-        if let Err(e) = ReplayLedger::record_durable(ledger_path, &h.message_id) { plaintext.zeroize(); return Err(e); }
-        Ok(plaintext)
+        let result = cipher.decrypt(Nonce::from_slice(&nonce), Payload { msg: &ciphertext, aad: &aad })
+            .map_err(|_| SyncError::DecryptionFailure);
+        key.zeroize();
+        let mut plaintext = result?;
+
+        match ReplayLedger::contains(ledger_path, &h.message_id) {
+            Ok(true) => {
+                plaintext.zeroize();
+                Err(SyncError::Replay)
+            }
+            Ok(false) => Ok(plaintext),
+            Err(error) => {
+                plaintext.zeroize();
+                Err(error)
+            }
+        }
     }
 
     pub fn create_recovery_bundle(&self, passphrase: &str) -> Result<Vec<u8>, SyncError> {
@@ -586,22 +632,57 @@ pub struct ReplayLedger { seen_message_ids: BTreeSet<String> }
 impl ReplayLedger {
     pub fn load(path: &Path) -> Result<Self, SyncError> {
         match fs::read(path) {
-            Ok(b) => { let l: Self = serde_json::from_slice(&b).map_err(|_| SyncError::IoFailure)?;
-                if l.seen_message_ids.len() > MAX_REPLAY_IDS { return Err(SyncError::IoFailure); } Ok(l) }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Ok(b) => {
+                let ledger: Self = serde_json::from_slice(&b).map_err(|_| SyncError::IoFailure)?;
+                if ledger.seen_message_ids.len() > MAX_REPLAY_IDS { return Err(SyncError::IoFailure); }
+                Ok(ledger)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(_) => Err(SyncError::IoFailure),
         }
     }
+
+    pub fn contains(path: &Path, id: &str) -> Result<bool, SyncError> {
+        if !valid_message_id(id) {
+            return Err(SyncError::InvalidInput("message ID must use canonical lowercase hex"));
+        }
+        Ok(Self::load(path)?.seen_message_ids.contains(id))
+    }
+
     fn record_durable(path: &Path, id: &str) -> Result<(), SyncError> {
-        let mut l = Self::load(path)?;
-        if l.seen_message_ids.contains(id) { return Err(SyncError::Replay); }
-        if l.seen_message_ids.len() >= MAX_REPLAY_IDS { return Err(SyncError::InvalidInput("replay ledger full; archive it safely")); }
-        l.seen_message_ids.insert(id.to_owned());
-        let bytes = serde_json::to_vec(&l).map_err(|_| SyncError::SerializationFailure)?;
+        Self::record_durable_impl(path, id, false)
+    }
+
+    /// Idempotent replay registration for recovery of a receive transaction.
+    /// Existing IDs are success here because the encrypted transaction journal
+    /// proves this exact payload was staged before the ledger write was attempted.
+    pub fn record_durable_idempotent(path: &Path, id: &str) -> Result<(), SyncError> {
+        Self::record_durable_impl(path, id, true)
+    }
+
+    fn record_durable_impl(path: &Path, id: &str, allow_existing: bool) -> Result<(), SyncError> {
+        if !valid_message_id(id) {
+            return Err(SyncError::InvalidInput("message ID must use canonical lowercase hex"));
+        }
+        let mut ledger = Self::load(path)?;
+        if ledger.seen_message_ids.contains(id) {
+            return if allow_existing { Ok(()) } else { Err(SyncError::Replay) };
+        }
+        if ledger.seen_message_ids.len() >= MAX_REPLAY_IDS {
+            return Err(SyncError::InvalidInput("replay ledger full; archive it safely"));
+        }
+        ledger.seen_message_ids.insert(id.to_owned());
+        let bytes = serde_json::to_vec(&ledger).map_err(|_| SyncError::SerializationFailure)?;
         let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent).map_err(|_| SyncError::IoFailure)?;
-        AtomicFile::new(path, AllowOverwrite).write(|f| f.write_all(&bytes)).map_err(|_| SyncError::IoFailure)
+        AtomicFile::new(path, AllowOverwrite)
+            .write(|file| file.write_all(&bytes))
+            .map_err(|_| SyncError::IoFailure)
     }
+}
+
+fn valid_message_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[cfg(test)]
@@ -620,6 +701,31 @@ mod tests {
         assert_eq!(b.open_packet(&p, &a.card, 1_800_000_100, &path), Err(SyncError::Replay));
         let _ = fs::remove_file(path);
     }
+    #[test]
+    fn prepared_receive_can_recover_between_encrypted_record_and_replay_ledger_commits() {
+        let sender = DeviceIdentity::from_seeds([71; 32], [72; 32], 1).unwrap();
+        let recipient = DeviceIdentity::from_seeds([73; 32], [74; 32], 1).unwrap();
+        let packet = sender.seal_for(&recipient.card, br#"{"settings":{"theme":"mono"}}"#, 1, 1_800_000_000, 600).unwrap();
+        let id = packet.body.header.message_id.clone();
+        let path = ledger("prepared-receive.json");
+        let _ = fs::remove_file(&path);
+
+        let plaintext = recipient.open_packet_prepared(&packet, &sender.card, 1_800_000_100, &path).unwrap();
+        assert_eq!(plaintext, br#"{"settings":{"theme":"mono"}}"#);
+        assert!(!ReplayLedger::contains(&path, &id).unwrap());
+
+        // This is the second phase of the app transaction. A crash after this write
+        // but before the encrypted record is finalized must be safe to retry.
+        ReplayLedger::record_durable_idempotent(&path, &id).unwrap();
+        ReplayLedger::record_durable_idempotent(&path, &id).unwrap();
+        assert!(ReplayLedger::contains(&path, &id).unwrap());
+        assert_eq!(
+            recipient.open_packet_prepared(&packet, &sender.card, 1_800_000_100, &path),
+            Err(SyncError::Replay)
+        );
+        let _ = fs::remove_file(path);
+    }
+
     #[test] fn recipient_and_signature_are_bound() {
         let a = DeviceIdentity::from_seeds([1;32], [2;32], 1).unwrap();
         let b = DeviceIdentity::from_seeds([3;32], [4;32], 1).unwrap();

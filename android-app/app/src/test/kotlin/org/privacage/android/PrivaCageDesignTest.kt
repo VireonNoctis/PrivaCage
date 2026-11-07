@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class PrivaCageDesignTest {
@@ -17,6 +18,15 @@ class PrivaCageDesignTest {
             "ENCRYPTED DEVICE SYNC",
             PrivaCageDesign.sectionHeading("\nEncrypted Device Sync\n")
         )
+        assertEquals(
+            "APP POLICY REVIEW",
+            PrivaCageDesign.sectionHeading(" app policy review ")
+        )
+        assertEquals(
+            "APP POLICY REVIEW QUEUE",
+            PrivaCageDesign.sectionHeading("app policy review queue")
+        )
+        assertEquals("LEGAL & PRIVACY", PrivaCageDesign.sectionHeading("legal & privacy"))
         assertNull(PrivaCageDesign.sectionHeading("DNS privacy options"))
         assertNull(PrivaCageDesign.sectionHeading(""))
         assertNull(PrivaCageDesign.sectionHeading(null))
@@ -31,12 +41,24 @@ class PrivaCageDesignTest {
         assertEquals("ROUTE", PrivaCageDesign.navigationLabel("DNS ROUTE DIAGNOSTICS"))
         assertEquals("AUDIT", PrivaCageDesign.navigationLabel("PRIVACY AUDIT EXPORT"))
         assertEquals("SYNC", PrivaCageDesign.navigationLabel("ENCRYPTED DEVICE SYNC"))
+        assertEquals("APP POLICIES", PrivaCageDesign.navigationLabel("APP POLICY REVIEW"))
+        assertEquals("APP POLICIES", PrivaCageDesign.navigationLabel("APP POLICY REVIEW QUEUE"))
+    }
+
+    @Test
+    fun sectionNumbersUseBrailleNumericNotation() {
+        assertEquals("⠼⠚⠁", formatBrailleNumber("01"))
+        assertEquals("⠼⠁⠃⠉", formatBrailleNumber("123"))
+        assertThrows(IllegalArgumentException::class.java) {
+            formatBrailleNumber("1,234")
+        }
     }
 
     @Test
     fun onlyRoutineConfigurationActionsReceivePrimaryButtonStyling() {
         assertTrue(PrivaCageDesign.isPrimaryAction("Save configuration"))
         assertTrue(PrivaCageDesign.isPrimaryAction(" ENABLE DNS FILTERING "))
+        assertTrue(PrivaCageDesign.isPrimaryAction("Review installed and opened apps' policies"))
         assertFalse(PrivaCageDesign.isPrimaryAction("Stop DNS filtering"))
         assertFalse(PrivaCageDesign.isPrimaryAction("Clear local DNS event history"))
         assertFalse(PrivaCageDesign.isPrimaryAction("Confirm owner-key handoff complete"))

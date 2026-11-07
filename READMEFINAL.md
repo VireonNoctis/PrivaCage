@@ -5,7 +5,7 @@ This file preserves the broad product requirements and long-term direction for P
 
 > **Scope rule:** stock Android and iOS apps cannot universally inspect other apps' system calls, defeat encrypted DNS/tunnels, or force-disable privileged OS services. Root/system builds, managed-device APIs, custom operating systems, and approved iOS NetworkExtension entitlements are separate product tiers. A control that depends on unavailable authority stays clearly marked as blocked or platform-specific; it must never simulate success.
 
-## Current implementation status (29 October 2026)
+## Current implementation status (4 November 2026)
 
 | Target capability | Current state | What is real today |
 |---|---|---|
@@ -19,9 +19,13 @@ This file preserves the broad product requirements and long-term direction for P
 | Panic mode | **Not implemented.** | No one-tap network shutdown for all non-essential apps is available. |
 | Anomaly alerts | **Not implemented as described.** | No general per-app behavior-baseline alert engine or on-device ML monitor is claimed. |
 | Metadata protection | **Implemented with format limits.** | Local JPEG/PNG/WebP inspection and cleaned-copy export for recognized metadata classes; unknown chunks and identifying visual content can remain. |
-| Google-service review | **Implemented in PR #20; verification pending.** | Local status inspection for three package IDs plus Android-owned app-info handoff; does not force-disable core Google packages or inspect their traffic. |
+| Google-service review | **Implemented on main; Android build/tests and privacy-suite checks passed on PR #24 implementation head e30ed677 (4 November 2026); device verification pending.** | Local status inspection for three package IDs plus Android-owned app-info handoff; does not force-disable core Google packages or inspect their traffic. The feature and tests were integrated in commit 2a3290f. |
 | Windows privacy hardening | **Implemented with explicit scope.** | Local audit and selected allowlisted, reversible policies; not a guarantee of zero telemetry or zero outbound traffic. |
 | Web console | **Implemented catalogue console; live-device ingestion not connected.** | Svelte frontend and Rust/Axum API for tracker intelligence and local signed-checkpoint verification. It does not pretend to receive a live-device event stream. |
+| App policy review queue | **Implemented on PR #24 branch with platform limits; Android build/tests and privacy-suite checks passed on implementation head e30ed677 (4 November 2026); device verification pending.** | New launcher-visible app detection on PrivaCage resume; optional app-open events require Usage Access and inspect only a bounded recent 24-hour window. Policy URLs are user-supplied HTTPS URLs and opened in the browser; PrivaCage does not fetch, store or upload policy text. Prompts appear when returning to PrivaCage, not over another app. |
+| Sensitive local data encryption | **Implemented for selected Android stores on PR #24; Android build/tests and privacy-suite checks passed on implementation head e30ed677 (4 November 2026); device lifecycle verification pending.** | Separate Android Keystore AES-256-GCM envelopes now protect DNS configuration, rights-request metadata and permission-audit baselines, in addition to the encrypted DNS history, app-policy queue and sync identity stores. Operational status/counter preferences and signed audit exports are not all encrypted. |
+| Strict no-telemetry policy | **Implemented as a source/dependency regression gate for Android.** | CI scans the manifest, Gradle files and main application source for known analytics/ad/attribution/crash-reporting markers. This cannot eliminate Android/OEM diagnostics or prove absence of every possible custom telemetry path. |
+| App legal and privacy documents | **Draft documents packaged in Android.** | Terms, Privacy Policy, No-Telemetry, Retention/Encryption, Authority Requests and External Services are bundled and displayed locally without a policy-server request. Controller/contact/lawful-basis/effective-date placeholders still block publication. |
 | iOS companion | **Design/capability notes only; executable product target not present.** | Work must use public APIs, user-provided privacy reports, and approved NetworkExtension capabilities; no cross-app binary or syscall inspection claim. |
 
 The table is intentionally conservative. A unit test proves only the behavior it exercises; it does not prove OEM coverage, operating-system enforcement, legal effectiveness, or a complete live activity feed.
@@ -29,7 +33,7 @@ The table is intentionally conservative. A unit test proves only the behavior it
 ---
 
 ## Table of Contents
-- [Current implementation status](#current-implementation-status-29-october-2026)
+- [Current implementation status](#current-implementation-status-4-november-2026)
 - [Target feature set and delivery status](#target-feature-set-and-delivery-status)
 - [Target architecture](#target-architecture-not-a-claim-that-each-component-is-shipped)
 - [Historical proposed repo structure](#original-proposed-repo-structure-historical-design-reference)

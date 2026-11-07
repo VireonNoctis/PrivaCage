@@ -38,6 +38,12 @@ The assistant opens official CPPA data-broker guidance and provides a checklist 
 
 Official source: [CPPA — Information for data brokers / DROP](https://www.cppa.ca.gov/data_brokers/).
 
+## Local tracker integrity
+
+The local JSON reader requires the exact stored-record schema and strict field types. It accepts only canonical UUIDs and ISO calendar dates, unique record IDs, trimmed controller names without control characters, and the exact official guidance URL configured for the selected jurisdiction. For direct UK GDPR and California CCPA/CPRA requests, the reader recomputes the configured calendar-month or 45/90-day planning dates from the user-reported receipt date and rejects mismatches; California DROP records never carry an individual response deadline. Every write passes through the same strict reader before the preferences commit, with 100-record and 512 KiB limits enforced. The reader continues to accept legacy records in which the previous Android JSON writer omitted nullable keys, then writes those values in explicit-null form on the next successful save. It rejects oversized, over-count, duplicate-key, malformed or inconsistent data and preserves the stored value rather than treating it as an empty tracker.
+
+These checks protect against malformed or unexpectedly edited local records and prevent a stored guidance link from redirecting the user to an unrelated HTTPS host. They are not cryptographic tamper evidence and do not protect against a compromised operating system or a process with access to the app's private data.
+
 ## Safety, privacy and release requirements
 
 - Never auto-send a request, silently attach identity documents, or transmit personal information during onboarding.

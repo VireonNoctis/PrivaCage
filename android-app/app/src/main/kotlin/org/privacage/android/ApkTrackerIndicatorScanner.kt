@@ -4,6 +4,7 @@ import org.privacage.audit.AsciiMultiPatternMatcher
 import org.privacage.audit.AsciiSearchPattern
 import java.io.File
 import java.io.IOException
+import java.util.HashSet
 import java.util.LinkedHashSet
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -20,7 +21,15 @@ internal data class ApkTrackerIndicatorFinding(
     val evidenceUrls: List<String>
 )
 
+internal enum class ApkDexStringScanStatus {
+    COMPLETE_STRING_SCAN,
+    PARTIAL_STRING_SCAN,
+    NO_DEX_ENTRIES,
+    NO_SCANNABLE_CATALOG_INDICATORS
+}
+
 internal data class ApkTrackerScanReport(
+    val status: ApkDexStringScanStatus,
     val indicatorsConsidered: Int,
     val dexFilesScanned: Int,
     val dexBytesScanned: Long,
@@ -96,11 +105,6 @@ internal class ApkTrackerIndicatorScanner {
             }
         }
 
-        if (patterns.isEmpty()) {
-            warnings += "The bundled catalog did not provide any scanable literal indicators."
-            return ApkTrackerScanReport(0, 0, 0L, emptyList(), warnings.toList())
-        }
-
         val hitsByMarker = linkedMapOf<String, MutableSet<String>>()
         var dexFilesScanned = 0
         var dexBytesScanned = 0L
@@ -110,6 +114,7 @@ internal class ApkTrackerIndicatorScanner {
             val entries = zip.entries()
             var entriesExamined = 0
             var archiveEntryLimitReached = false
+            val entryNames = HashSet<String>()
             while (entries.hasMoreElements()) {
                 if (entriesExamined >= MAX_ARCHIVE_ENTRIES) {
                     archiveEntryLimitReached = true
@@ -117,6 +122,9 @@ internal class ApkTrackerIndicatorScanner {
                 }
                 val entry = entries.nextElement()
                 entriesExamined++
+                if (!entryNames.add(entry.name)) {
+                    throw IOException("APK ZIP contains a duplicate entry name; archive identity is ambiguous.")
+                }
                 if (entry.isDirectory || !entry.name.endsWith(".dex", ignoreCase = true)) continue
                 if (dexEntries.size >= MAX_DEX_FILES) {
                     warnings += "More than " + MAX_DEX_FILES + " DEX files exist; additional DEX files were not scanned."
@@ -131,7 +139,19 @@ internal class ApkTrackerIndicatorScanner {
                 warnings += "No DEX entries were found; bytecode string scanning did not run."
             }
 
-            val matcher = AsciiMultiPatternMatcher(patterns)
+            if (patterns.isEmpty()) {
+            warnings += "The bundled catalog did not provide any scannable literal indicators."
+            return ApkTrackerScanReport(
+                status = ApkDexStringScanStatus.NO_SCANNABLE_CATALOG_INDICATORS,
+                indicatorsConsidered = 0,
+                dexFilesScanned = 0,
+                dexBytesScanned = 0L,
+                findings = emptyList(),
+                warnings = warnings.toList()
+            )
+        }
+
+        val matcher = AsciiMultiPatternMatcher(patterns)
             for (entry in dexEntries) {
                 val remainingTotalBudget = MAX_TOTAL_DEX_BYTES - dexBytesScanned
                 if (entry.size < 0L || entry.compressedSize < 0L) {
@@ -206,7 +226,13 @@ internal class ApkTrackerIndicatorScanner {
             .thenBy { it.indicatorType }
             .thenBy { it.indicator })
 
+        val scanStatus = when {
+            dexEntries.isEmpty() && warnings.none { it.contains("entry scan reached") } -> ApkDexStringScanStatus.NO_DEX_ENTRIES
+            warnings.isNotEmpty() -> ApkDexStringScanStatus.PARTIAL_STRING_SCAN
+            else -> ApkDexStringScanStatus.COMPLETE_STRING_SCAN
+        }
         return ApkTrackerScanReport(
+            status = scanStatus,
             indicatorsConsidered = markers.size,
             dexFilesScanned = dexFilesScanned,
             dexBytesScanned = dexBytesScanned,

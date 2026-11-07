@@ -88,6 +88,17 @@ internal class NativeSyncBridge {
         replayLedgerPath: String
     ): String
 
+    external fun nativeOpenPacketPrepared(
+        localBundleBase64: String,
+        localPassphrase: String,
+        senderCardJson: String,
+        packetJson: String,
+        nowUnix: Long,
+        replayLedgerPath: String
+    ): String
+
+    external fun nativeRecordReplayId(messageId: String, replayLedgerPath: String): String
+
     external fun nativeExportRecoveryBundle(
         localBundleBase64: String,
         localPassphrase: String,
