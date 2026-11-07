@@ -352,7 +352,7 @@ internal object PrivaCageDesign {
         else -> heading
     }
 
-    private fun styleControl(context: Context, view: View) {
+    internal fun styleControl(context: Context, view: View) {
         when (view) {
             is EditText -> {
                 view.setTextColor(textPrimary)

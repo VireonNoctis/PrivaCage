@@ -209,6 +209,7 @@ class MonitoringAccessReviewActivity : Activity() {
                 statusText.text = "Android did not allow " + label + " to open. No setting was changed."
             }
         }
+        PrivaCageDesign.styleControl(this@MonitoringAccessReviewActivity, this)
     }
 
     private fun heading(value: String) = TextView(this).apply {
