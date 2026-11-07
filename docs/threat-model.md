@@ -11,6 +11,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Integrity of tracker signatures and update packages.
 - Trust in the accuracy of product warnings.
 - App package names, app-open timestamps, and user-supplied policy links in the local review queue.
+- Transient Android monitoring-access observations shown on the review screen.
 
 ## Threats
 
@@ -24,6 +25,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Recommendations are manipulated by commercial incentives.
 - A legal workflow implies that a company deleted data when it has not.
 - A user mistakes a bounded Usage Access observation window for a complete app-usage history.
+- A user interprets a legitimate accessibility service, device administrator, notification listener, or VPN as proof of abuse.
 
 ## Mitigations
 
@@ -42,6 +44,8 @@ This is a working threat model, not a security audit. Update it as executable co
 ## Additional mitigations
 
 - Require the user's Usage Access grant, inspect only launcher-visible packages, bound app-open queries to the most recent 24 hours, and describe the result as partial rather than a complete usage history.
+- The monitoring-access review is user-triggered, reads only four documented Android settings surfaces, does not persist or upload its results, and presents benign use cases and uncertainty beside each observation.
+- Never disable an accessibility service, administrator, notification listener, or VPN automatically; a settings handoff is not a recommendation to change access.
 
 ## Non-goals and limits
 
@@ -54,7 +58,7 @@ This is a working threat model, not a security audit. Update it as executable co
 
 ## Safety considerations
 
-Stalkerware signals must be framed carefully: a hidden icon, unusual accessibility permission, or persistence behavior is a review signal, not conclusive proof of abuse. Safety guidance must be cautious because removing software or changing settings can alert an abuser or put a user at greater risk.
+Stalkerware signals must be framed carefully: an enabled accessibility service, active administrator, notification listener, or VPN is a review signal, not conclusive proof of abuse. The stock review does not identify who enabled a setting or what a service does. Safety guidance must be cautious because removing software or changing settings can alert a person with device-management access or put a user at greater risk. The review has no automatic removal, notification, persistence, upload, or forced share path.
 
 
 ## No-telemetry, legal-process and local-encryption risks
