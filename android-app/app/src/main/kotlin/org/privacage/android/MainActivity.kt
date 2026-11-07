@@ -177,6 +177,22 @@ class MainActivity : Activity() {
                 startActivity(Intent(this@MainActivity, AppPolicyReviewActivity::class.java))
             }
         }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "MONITORING ACCESS REVIEW"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Review Android-exposed accessibility, administrator, notification-listener and default VPN settings. Not a malware verdict."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Review monitoring-sensitive access"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, MonitoringAccessReviewActivity::class.java))
+            }
+        }, matchWidth())
+
         root.addView(TextView(this).apply { text = "ANDROID PRIVACY CONTROLS"; textSize = 16f; setPadding(0, dp(8), 0, dp(4)) })
         root.addView(TextView(this).apply {
             text = "These shortcuts open Android's own settings so you can review access and revoke permissions there. PrivaCage cannot override the OS or secretly revoke permissions for other apps."

@@ -638,10 +638,10 @@ select {
 
 .button {
   display: inline-flex;
-  min-height: 39px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -657,6 +657,30 @@ select {
 
 .button:hover:not(:disabled) {
   transform: translateY(-1px);
+}
+
+.button::before {
+  flex: 0 0 auto;
+  content: "⠿";
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.76;
+  transition: opacity var(--duration-fast), transform var(--duration-fast) var(--ease);
+}
+
+.button:hover:not(:disabled)::before {
+  opacity: 1;
+  transform: translateX(1px);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 3px;
 }
 
 .button--light {

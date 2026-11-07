@@ -5,7 +5,7 @@ This file preserves the broad product requirements and long-term direction for P
 
 > **Scope rule:** stock Android and iOS apps cannot universally inspect other apps' system calls, defeat encrypted DNS/tunnels, or force-disable privileged OS services. Root/system builds, managed-device APIs, custom operating systems, and approved iOS NetworkExtension entitlements are separate product tiers. A control that depends on unavailable authority stays clearly marked as blocked or platform-specific; it must never simulate success.
 
-## Current implementation status (4 November 2026)
+## Current implementation status (7 November 2026)
 
 | Target capability | Current state | What is real today |
 |---|---|---|
@@ -23,6 +23,7 @@ This file preserves the broad product requirements and long-term direction for P
 | Windows privacy hardening | **Implemented with explicit scope.** | Local audit and selected allowlisted, reversible policies; not a guarantee of zero telemetry or zero outbound traffic. |
 | Web console | **Implemented catalogue console; live-device ingestion not connected.** | Svelte frontend and Rust/Axum API for tracker intelligence and local signed-checkpoint verification. It does not pretend to receive a live-device event stream. |
 | App policy review queue | **Implemented on PR #24 branch with platform limits; Android build/tests and privacy-suite checks passed on implementation head e30ed677 (4 November 2026); device verification pending.** | New launcher-visible app detection on PrivaCage resume; optional app-open events require Usage Access and inspect only a bounded recent 24-hour window. Policy URLs are user-supplied HTTPS URLs and opened in the browser; PrivaCage does not fetch, store or upload policy text. Prompts appear when returning to PrivaCage, not over another app. |
+| Monitoring-access review | **Partial stock-Android implementation on PR #25; CI verification pending.** | User-triggered, local-only review of Android-reported enabled accessibility services, active device-administrator components, enabled notification-listener components and whether the current default network reports VPN transport. It does not determine intent, identify VPN ownership, inspect notification contents or traffic, or diagnose stalkerware. Results are not saved or uploaded. |
 | Sensitive local data encryption | **Implemented for selected Android stores on PR #24; Android build/tests and privacy-suite checks passed on implementation head e30ed677 (4 November 2026); device lifecycle verification pending.** | Separate Android Keystore AES-256-GCM envelopes now protect DNS configuration, rights-request metadata and permission-audit baselines, in addition to the encrypted DNS history, app-policy queue and sync identity stores. Operational status/counter preferences and signed audit exports are not all encrypted. |
 | Strict no-telemetry policy | **Implemented as a source/dependency regression gate for Android.** | CI scans the manifest, Gradle files and main application source for known analytics/ad/attribution/crash-reporting markers. This cannot eliminate Android/OEM diagnostics or prove absence of every possible custom telemetry path. |
 | App legal and privacy documents | **Draft documents packaged in Android.** | Terms, Privacy Policy, No-Telemetry, Retention/Encryption, Authority Requests and External Services are bundled and displayed locally without a policy-server request. Controller/contact/lawful-basis/effective-date placeholders still block publication. |
@@ -408,7 +409,7 @@ This list is the next delivery queue, not a promise that a milestone can bypass 
 - [x] Evidence-backed tracker catalogue and review workflow. **Remaining:** wider evidence-backed coverage, per-entry freshness, source/license governance, and human review before promotion.
 - [ ] Anomaly alerts from observable local evidence only; distinguish novelty from wrongdoing and show the reason for each alert.
 - [ ] Device privacy change timeline from exposed settings and user-confirmed changes, not facts outside app visibility.
-- [ ] Stalkerware/coercive-monitoring checks based on OS-exposed indicators, with safety review and false-positive handling.
+- [ ] Stalkerware/coercive-monitoring checks based on OS-exposed indicators, with safety review and false-positive handling. **First stock-Android settings-review slice is on PR #25; broader coverage remains unfinished.**
 - [ ] Offline breach-exposure matching using a trusted, versioned local dataset without uploading the user's identifier.
 - [ ] Data-broker opt-out checklists, source-backed forms, and reminders with user control of identity details and submission.
 - [ ] PDF/Office metadata cleaning after bounded parser implementation, format-specific regression fixtures and output verification.
@@ -425,7 +426,7 @@ These extend the original vision. Each is a separate, evidence-gated feature; no
 
 | Idea | Feasibility | Minimum honest implementation |
 |---|---|---|
-| **Stalkerware / coercive-monitoring checks** | Partial checks are possible on stock Android; comprehensive detection is not. | Audit user-visible accessibility services, device-admin apps, notification-listener access and active VPN role only where Android exposes them. Explain each observation and confidence; never label a person or app abusive based on one signal. Keep root-only indicators separate. |
+| **Stalkerware / coercive-monitoring checks** | Partial checks are possible on stock Android; comprehensive detection is not. | First read-only stock-Android slice is implemented on PR #25 (CI verification pending): enabled accessibility services, active device administrators, enabled notification-listener components and current default-network VPN transport. It does not infer intent, identify a VPN owner, diagnose stalkerware or collect root/system indicators. Broader coverage and device/safety validation remain incomplete. |
 | **Offline breach exposure check** | Buildable if a trusted, versioned dataset can be distributed safely. | Prefer local hash matching or a k-anonymity-compatible hash-prefix protocol. Do not send full emails or identifiers to an arbitrary breach API. Include dataset date/provenance and explain that no match proves nothing about unlisted breaches. |
 | **Data-broker opt-out helper** | Partially buildable; individual broker flows and identity checks vary. | Add official opt-out links, a user-reviewed checklist and local reminders to the rights-request engine. No automated submission without a documented, user-authorized mechanism; avoid storing identity documents. |
 | **Photo/document metadata protection** | Buildable per format with bounded parsers and output verification. | Continue JPEG/PNG/WebP, then add PDF/Office metadata only after format-specific parsing tests. Preserve originals and explain unsupported fields; visible pixels/text can still reveal identity or location. |

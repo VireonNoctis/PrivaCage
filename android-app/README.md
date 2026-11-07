@@ -69,6 +69,22 @@ Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
+
+## Monitoring-access review (stock Android)
+
+The user-triggered Monitoring Access Review reads four narrowly scoped Android surfaces:
+
+- AccessibilityManager returns enabled accessibility services for FEEDBACK_ALL_MASK.
+- DevicePolicyManager.getActiveAdmins() returns active device-administrator components for the current user/profile.
+- Settings.Secure's enabled_notification_listeners value identifies notification-listener components Android currently records as enabled. The screen does not read notification contents.
+- ConnectivityManager reports whether the current default network has NetworkCapabilities.TRANSPORT_VPN. This does not identify the VPN owner or describe other/non-default routes.
+
+The review runs only after the user taps its button. It uses the existing ACCESS_NETWORK_STATE permission for the network-capability check; it adds no permission, package-visibility query, Usage Access dependency, notification, background service, network request, persistence, or upload. Component-setting input is bounded to 16 KiB and 100 entries. Malformed, oversized, or unavailable results are shown as partial/unavailable rather than as an empty list.
+
+A listed service may be legitimate assistive technology, automation, password management, notification sync, work/school management, or a VPN. The result is direct evidence of an OS-reported setting, not evidence of intent, misuse, or a person's involvement. The VPN check covers only the active default network and does not identify the owning app. No root/system-only indicators are collected. No result is saved; leaving the screen discards the displayed snapshot.
+
+Official API behavior was reviewed on 7 November 2026; see docs/research/SOURCES.md. Physical-device/OEM behavior and the safety interaction still require validation before release.
+
 ## Limits
 
 - A signed checkpoint detects changes to the exported snapshot but cannot prove that unrecorded events never occurred, that the device clock is correct, or that the signer is a particular person. The public-key fingerprint must be trusted independently. Android Keystore hardware backing is device-dependent. Deleting or losing the signing key can leave old checkpoints cryptographically verifiable but no longer anchored to this installation. Checkpoint JSON is not encrypted.
