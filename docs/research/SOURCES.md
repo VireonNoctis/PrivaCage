@@ -1,6 +1,6 @@
 # Research Source Register
 
-**Reviewed:** 7 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
+**Research register last reviewed:** 25 October 2026. **Android monitoring-access sources checked:** 7 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
 
 ## Android platform
 
