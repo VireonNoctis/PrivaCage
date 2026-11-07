@@ -8,12 +8,20 @@ import org.junit.Test
 class MonitoringAccessAuditTest {
     @Test
     fun emptyAndNullSettingsRepresentNoEnabledComponents() {
-        listOf(null, "", "   ").forEach { raw ->
+        listOf(null, "").forEach { raw ->
             val parsed = MonitoringAccessAudit.parseEnabledComponentSetting(raw)
             assertTrue(parsed.isComplete)
             assertTrue(parsed.components.isEmpty())
             assertEquals(0, parsed.invalidEntryCount)
         }
+    }
+
+    @Test
+    fun whitespaceOnlySettingIsReportedAsMalformedInsteadOfEmptySuccess() {
+        val parsed = MonitoringAccessAudit.parseEnabledComponentSetting("   ")
+        assertFalse(parsed.isComplete)
+        assertTrue(parsed.components.isEmpty())
+        assertEquals(1, parsed.invalidEntryCount)
     }
 
     @Test

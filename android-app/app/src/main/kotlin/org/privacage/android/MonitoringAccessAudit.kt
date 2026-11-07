@@ -64,7 +64,7 @@ internal object MonitoringAccessAudit {
         )
 
     internal fun parseEnabledComponentSetting(raw: String?): ParsedMonitoringComponentSetting {
-        if (raw.isNullOrBlank()) {
+        if (raw == null || raw.isEmpty()) {
             return ParsedMonitoringComponentSetting(emptyList(), 0, false, false)
         }
         if (raw.length > MAX_SETTING_CHARS) {
