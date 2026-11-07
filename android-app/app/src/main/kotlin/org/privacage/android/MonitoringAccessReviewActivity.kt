@@ -133,6 +133,9 @@ class MonitoringAccessReviewActivity : Activity() {
         ))
         snapshot.defaultNetworkVpn.detail?.let { resultsContainer.addView(body(it)) }
         resultsContainer.addView(body("Evidence source: " + snapshot.defaultNetworkVpn.source))
+        resultsContainer.addView(body(
+            "Evidence confidence: direct for the active default network only; VPN ownership and other routes are unknown."
+        ))
         resultsContainer.addView(settingsButton(Settings.ACTION_VPN_SETTINGS, "Open Android VPN settings"))
         resultsContainer.addView(heading("INTERPRETATION"))
         resultsContainer.addView(body(
@@ -154,6 +157,9 @@ class MonitoringAccessReviewActivity : Activity() {
         resultsContainer.addView(heading(title))
         resultsContainer.addView(body(explanation))
         resultsContainer.addView(body("Evidence source: " + observation.source))
+        resultsContainer.addView(body(
+            "Evidence confidence: direct for the OS-reported enabled state; intent and actual use are unknown."
+        ))
         when (observation.status) {
             MonitoringObservationStatus.UNAVAILABLE -> resultsContainer.addView(body(
                 "Status: unavailable. " + (observation.detail ?: "Android did not expose this information.")
