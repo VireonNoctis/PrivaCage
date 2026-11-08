@@ -79,7 +79,7 @@ class PrivacyRightsRequestBuilderTest {
         assertNull(draft.controllerName)
         assertNull(draft.standardResponseDueOn)
         assertNull(draft.extendedResponseDueOn)
-        assertTrue(draft.message.contains("PrivaCage does not submit this request"))
+        assertTrue(draft.message.contains("PrivaCage does not collect or submit it"))
         assertTrue(draft.message.contains("California residency eligibility"))
         assertEquals("https://privacy.ca.gov/drop/", draft.officialGuidanceUrl)
     }
