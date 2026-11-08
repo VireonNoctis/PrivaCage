@@ -169,9 +169,12 @@ class MonitoringAccessReviewActivity : Activity() {
         resultsContainer.addView(heading(title))
         resultsContainer.addView(body(explanation))
         resultsContainer.addView(body("Evidence source: " + observation.source))
-        resultsContainer.addView(body(
+        val confidence = if (observation.source == "Settings.Secure.enabled_notification_listeners") {
+            "Evidence confidence: best-effort AOSP setting value; this key is not a stable public SDK contract and OEM exposure may vary. Intent and actual use are unknown."
+        } else {
             "Evidence confidence: direct for the OS-reported enabled state; intent and actual use are unknown."
-        ))
+        }
+        resultsContainer.addView(body(confidence))
         when (observation.status) {
             MonitoringObservationStatus.UNAVAILABLE -> resultsContainer.addView(body(
                 "Status: unavailable. " + (observation.detail ?: "Android did not expose this information.")

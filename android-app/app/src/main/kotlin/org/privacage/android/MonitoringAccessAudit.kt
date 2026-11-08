@@ -63,8 +63,8 @@ internal object MonitoringAccessAudit {
             defaultNetworkVpn = readDefaultNetworkVpn(context)
         )
 
-    internal fun parseEnabledComponentSetting(raw: String?): ParsedMonitoringComponentSetting {
-        if (raw == null || raw.isEmpty()) {
+    internal fun parseEnabledComponentSetting(raw: String): ParsedMonitoringComponentSetting {
+        if (raw.isEmpty()) {
             return ParsedMonitoringComponentSetting(emptyList(), 0, false, false)
         }
         if (raw.length > MAX_SETTING_CHARS) {
