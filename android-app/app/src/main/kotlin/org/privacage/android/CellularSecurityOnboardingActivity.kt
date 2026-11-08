@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.KeyguardManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -79,7 +80,11 @@ class CellularSecurityOnboardingActivity : Activity() {
                 "it is the newest update available for this exact device. Check the manufacturer's update screen " +
                 "and compare the device-specific release with the current Android Security Bulletin."
         ))
-        root.addView(settingsButton(Settings.ACTION_SYSTEM_UPDATE_SETTINGS, "Check Android system updates"))
+        root.addView(Button(this).apply {
+            text = "Check Android system updates"
+            setOnClickListener { openSystemUpdateSettings() }
+            PrivaCageDesign.styleControl(this@CellularSecurityOnboardingActivity, this)
+        }, matchWidth())
         root.addView(urlButton("Open Android Security Bulletins", "https://source.android.com/docs/security/bulletin"))
 
         root.addView(heading("USER-CONFIRMED HARDENING"))
@@ -322,6 +327,36 @@ class CellularSecurityOnboardingActivity : Activity() {
         "UNAVAILABLE · Android restricted the secure-lock query"
     } catch (exception: RuntimeException) {
         "UNAVAILABLE · " + exception.javaClass.simpleName
+    }
+
+    private fun openSystemUpdateSettings() {
+        val action = "android.settings.SYSTEM_UPDATE_SETTINGS"
+        try {
+            val intent = Intent(action)
+            val handlers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(
+                    intent,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_SYSTEM_ONLY.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(intent, PackageManager.MATCH_SYSTEM_ONLY)
+            }
+            val target = handlers.maxByOrNull { it.priority }
+            val targetActivity = target?.activityInfo
+            if (target == null || target.priority <= 0 || targetActivity == null) {
+                statusText.text = "This Android build does not expose a trusted system update settings handler. Check for updates manually in Settings."
+                return
+            }
+            startActivity(Intent(action).setClassName(targetActivity.packageName, targetActivity.name))
+            statusText.text = "Opened the system update screen. Check both the Android security patch date and any separate Google Play system update."
+        } catch (exception: ActivityNotFoundException) {
+            statusText.text = "System update settings are not available on this Android build."
+        } catch (exception: SecurityException) {
+            statusText.text = "Android did not allow the system update settings screen to open."
+        } catch (exception: RuntimeException) {
+            statusText.text = "Could not safely resolve the system update settings screen (" + exception.javaClass.simpleName + ")."
+        }
     }
 
     private fun openSettings(action: String, label: String) {
