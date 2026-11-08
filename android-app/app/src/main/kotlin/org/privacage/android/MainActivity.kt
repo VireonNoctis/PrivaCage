@@ -169,6 +169,12 @@ class MainActivity : Activity() {
             textSize = 12f
             setPadding(0, dp(4), 0, dp(12))
         })
+        root.addView(Button(this).apply {
+            text = "Complete cellular security checklist"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, CellularSecurityOnboardingActivity::class.java))
+            }
+        }, matchWidth())
         if (storedDnsConfiguration == null && (
                 prefs.contains(PrivacyDnsVpnService.KEY_RESOLVER_IP) ||
                     prefs.contains(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS) ||

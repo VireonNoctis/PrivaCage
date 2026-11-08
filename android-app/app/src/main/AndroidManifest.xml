@@ -52,6 +52,7 @@
         <activity android:name=".AppAlternativesActivity" android:exported="false" />
         <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
         <activity android:name=".MonitoringAccessReviewActivity" android:exported="false" />
+        <activity android:name=".CellularSecurityOnboardingActivity" android:exported="false" />
         <activity android:name=".LegalPrivacyActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

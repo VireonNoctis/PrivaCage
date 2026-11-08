@@ -1,6 +1,6 @@
 # Research Source Register
 
-**Research register last reviewed:** 25 October 2026. **Android monitoring-access sources checked:** 7 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
+**Research register baseline:** 25 October 2026. **Android monitoring-access, cellular-security and device-posture sources rechecked:** 7–8 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
 
 ## Android platform
 
@@ -329,6 +329,87 @@ States that Accessibility services should only be used to assist users with disa
 https://developer.android.com/reference/android/provider/Settings
 
 Documents ACTION_WIRELESS_SETTINGS for Wi-Fi/Bluetooth/mobile-network controls and ACTION_SECURITY_SETTINGS for security/location privacy settings. OEM-specific navigation remains controlled by Android Settings. Checked 8 November 2026.
+
+
+<a id="s40"></a>
+### S40 — Android Open Source Project: Android Security Bulletin — November 2026
+https://source.android.com/docs/security/bulletin/2026/2026-11-01/
+
+Published 2 November 2026. Defines the 2026-11-01 and 2026-11-05 patch levels; the latter addresses all issues listed in both November patch-level groups. Includes critical Framework and kernel issue severity descriptions. Applicability depends on OS version/device/vendor updates. Checked 8 November 2026.
+
+<a id="s41"></a>
+### S41 — Android Developers: Build.VERSION
+https://developer.android.com/reference/android/os/Build.VERSION
+
+Documents SECURITY_PATCH as the user-visible security patch level string. It is a reported patch date, not a complete statement about vendor, modem or Google Play system update freshness. Checked 8 November 2026.
+
+<a id="s42"></a>
+### S42 — Android Developers: KeyguardManager
+https://developer.android.com/reference/android/app/KeyguardManager#isDeviceSecure()
+
+Documents isDeviceSecure(), which reports whether the device is secured by a PIN, pattern or password credential. It does not assess credential strength or device integrity. Checked 8 November 2026.
+
+<a id="s43"></a>
+### S43 — Android Developers: Settings.Global
+https://developer.android.com/reference/android/provider/Settings.Global
+
+The ADB_ENABLED and DEVELOPMENT_SETTINGS_ENABLED values are documented to return 0 for all third-party apps. PrivaCage must not infer that debugging is disabled from those reads. Checked 8 November 2026.
+
+<a id="s44"></a>
+### S44 — Android Developers: PackageManager.canRequestPackageInstalls
+https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls()
+
+Documents the install-request permission state for the calling package only. The check requires REQUEST_INSTALL_PACKAGES and is not a device-wide inventory of all packages that can request installation. Checked 8 November 2026.
+
+<a id="s45"></a>
+### S45 — Google Play Help: Use Google Play Protect
+https://support.google.com/googleplay/answer/2812853?hl=en
+
+Explains Play Protect app checks, scanning of apps from other sources, warnings/removal, default state on Google Mobile Services devices, how to review its setting, and information Google may receive as part of harmful-app detection. Checked 8 November 2026.
+
+<a id="s46"></a>
+### S46 — Android Open Source Project: Verified Boot device state
+https://source.android.com/docs/security/features/verifiedboot/device-state
+
+Documents LOCKED and UNLOCKED device states and bootloader warning/integrity behavior. It does not grant a normal third-party app a stable public API to read undocumented boot properties. Checked 8 November 2026.
+
+<a id="s47"></a>
+### S47 — Android Open Source Project: File-based encryption
+https://source.android.com/docs/security/features/encryption/file-based
+
+Documents file-based encryption, Direct Boot and the requirement for devices launching with Android 10+ to use file-based encryption. This does not prove every OEM backup or app export is encrypted. Checked 8 November 2026.
+
+<a id="s48"></a>
+### S48 — Android Developers: Tapjacking
+https://developer.android.com/privacy-and-security/risks/tapjacking
+
+Documents full and partial occlusion, overlay risks, Android 12 mitigations and the remaining partial-occlusion considerations. Checked 8 November 2026.
+
+<a id="s49"></a>
+### S49 — Android Developers: android:exported
+https://developer.android.com/privacy-and-security/risks/android-exported
+
+Documents how exported activities, services, receivers and providers can be called by other apps and the importance of explicit exported attributes. Checked 8 November 2026.
+
+<a id="s50"></a>
+### S50 — Android Developers: WebView native bridges
+https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges
+https://developer.android.com/privacy-and-security/risks/webview-unsafe-file-inclusion
+
+Documents risks from exposing JavaScript/native bridges to untrusted content, unsafe local-file access and enabling unnecessary JavaScript. Checked 8 November 2026.
+
+<a id="s51"></a>
+### S51 — Android Developers: Android 13 privacy and security changes
+https://developer.android.com/about/versions/13/summary
+https://developer.android.com/about/versions/13/behavior-changes-all
+
+Documents notification permission and clipboard-sensitivity behavior changes introduced in Android 13. Checked 8 November 2026.
+
+<a id="s52"></a>
+### S52 — Android Developers: Settings actions
+https://developer.android.com/reference/android/provider/Settings
+
+Documents system-owned handoffs including ACTION_APPLICATION_DEVELOPMENT_SETTINGS and ACTION_SYSTEM_UPDATE_SETTINGS. OEM navigation and availability remain system-controlled. Checked 8 November 2026.
 
 
 ## Evidence management note

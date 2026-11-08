@@ -95,6 +95,14 @@ Users get Settings handoffs to review 2G protection for each SIM and Android's u
 
 The monitor unregisters when the activity pauses. It adds no Accessibility Service, phone-state permission, location permission, cell scan, background worker, notification, network request, or persistent radio history. Accessibility access is unrelated to cellular cipher/radio enforcement and is not requested.
 
+## Cellular security onboarding checklist
+
+The main screen opens a dedicated checklist. Its per-SIM 2G protection, Android 16 unencrypted-network alert, system-update, USB-debugging and Play Protect states are explicitly **user-reported**. Each row has three choices: not reviewed, user confirmed, or unavailable/could not verify. Selections are saved in a small AES-256-GCM envelope using a dedicated Android Keystore key. If the saved value cannot be authenticated or validated, the UI preserves it and disables edits rather than replacing it with an empty checklist.
+
+Two separate device signals are read directly: KeyguardManager.isDeviceSecure() reports whether Android has a secure lock credential configured, and Build.VERSION.SECURITY_PATCH reports Android's visible security patch date. Neither is a security verdict. The patch date is not a complete vendor/modem freshness check; the lock signal does not measure credential strength.
+
+The checklist does not request Accessibility, phone-state, cell-location, location, package-inventory or new runtime permissions. It does not read ADB state (Android specifies that the public global setting reads as zero for all third-party apps), bootloader state, all-SIM radio state, Play Protect status, or carrier SIM-port settings. Settings handoffs remain user-controlled.
+
 ## Limits
 
 - A signed checkpoint detects changes to the exported snapshot but cannot prove that unrecorded events never occurred, that the device clock is correct, or that the signer is a particular person. The public-key fingerprint must be trusted independently. Android Keystore hardware backing is device-dependent. Deleting or losing the signing key can leave old checkpoints cryptographically verifiable but no longer anchored to this installation. Checkpoint JSON is not encrypted.
