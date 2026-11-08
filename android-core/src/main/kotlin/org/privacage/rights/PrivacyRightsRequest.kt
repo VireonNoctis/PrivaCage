@@ -127,7 +127,7 @@ object PrivacyRightsRequestBuilder {
                 append("1. Open the official CalPrivacy consumer DROP page and choose its 'Get started with DROP' link.\n")
                 append("2. Confirm that you meet California residency eligibility and review the identity-verification and data-handling notices.\n")
                 append("3. Choose what information to provide on the official service; PrivaCage does not collect or submit it.\n")
-                append("4. Save the confirmation/reference yourself only if you choose.\n")
+                append("4. Keep your DROP ID private. Do not paste it into PrivaCage or share it; use the official profile to check status.\n")
                 append("5. Record the submission date and any later responses separately.\n\n")
                 append("Requested action: direct the official mechanism to process a deletion request for eligible, non-exempt data-broker information.\n")
                 append("This checklist is not a submission receipt or proof of deletion.")
