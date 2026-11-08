@@ -125,7 +125,7 @@ class CellularSecurityOnboardingActivity : Activity() {
                 "OS signal, not a guarantee that every vendor or modem component is current.",
             status = current.securityUpdates,
             enabled = canSave,
-            openSettings = { openSettings(Settings.ACTION_SYSTEM_UPDATE_SETTINGS, "System update settings") },
+            openSettings = { openSystemUpdateSettings() },
             update = { value, status -> value.copy(securityUpdates = status) },
             currentStatus = { it.securityUpdates }
         )
