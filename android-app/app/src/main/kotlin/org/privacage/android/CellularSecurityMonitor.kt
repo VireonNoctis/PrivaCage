@@ -1,9 +1,7 @@
 package org.privacage.android
 
-import android.annotation.RequiresApi
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
@@ -106,7 +104,7 @@ internal object CellularNetworkClassifier {
     }
 }
 
-@RequiresApi(Build.VERSION_CODES.S)
+@Suppress("NewApi")
 internal class CellularSecurityMonitor(
     context: Context,
     private val onAssessment: (CellularNetworkAssessment) -> Unit
