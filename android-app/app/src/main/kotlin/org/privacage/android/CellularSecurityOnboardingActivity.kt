@@ -152,12 +152,55 @@ class CellularSecurityOnboardingActivity : Activity() {
             currentStatus = { it.playProtect }
         )
 
+        addChecklistItem(
+            root = root,
+            title = "DEVICE THEFT PROTECTION",
+            explanation = "Open Google → All services → Theft protection. Review Theft Detection Lock, Offline Device Lock, " +
+                "Failed Authentication Lock, Identity Check and Remote Lock where each is available on this device. " +
+                "Identity Check is model-dependent and requires biometrics and trusted places. Remote Lock requires " +
+                "a screen lock, active SIM, verified number, Find Hub and connectivity. Mark unavailable for controls " +
+                "that this device does not offer; these are Google/system settings, not PrivaCage detections.",
+            status = current.theftProtection,
+            enabled = canSave,
+            openSettings = { openSettings(Settings.ACTION_SECURITY_SETTINGS, "Android security and Google settings") },
+            update = { value, status -> value.copy(theftProtection = status) },
+            currentStatus = { it.theftProtection }
+        )
+        root.addView(urlButton(
+            "Open official Android Theft Protection guidance",
+            "https://support.google.com/android/answer/15146908?hl=en-GB"
+        ))
+
+        addChecklistItem(
+            root = root,
+            title = "ADVANCED PROTECTION AND USB PROTECTION",
+            explanation = "On supported Android 16 devices, review Advanced Protection → Device protection. " +
+                "It applies a broader security configuration and can restrict some features. Intrusion Logging is " +
+                "an optional part of setup; review its data and export implications before enabling it. USB Protection " +
+                "is documented for Pixel 6 and later: with the screen locked, it blocks new USB data connections and " +
+                "is enabled through Device protection. Other manufacturers may not expose the same feature.",
+            status = current.advancedProtectionUsb,
+            enabled = canSave,
+            openSettings = { openSettings(Settings.ACTION_SECURITY_SETTINGS, "Android Advanced Protection settings") },
+            update = { value, status -> value.copy(advancedProtectionUsb = status) },
+            currentStatus = { it.advancedProtectionUsb }
+        )
+        root.addView(urlButton(
+            "Open official Advanced Protection guidance",
+            "https://support.google.com/android/answer/16339980?hl=en-GB"
+        ))
+        root.addView(urlButton(
+            "Open official USB Protection guidance",
+            "https://support.google.com/android/answer/16778864?hl=en-GB"
+        ))
+
         root.addView(heading("WHAT THIS CHECKLIST DOES NOT VERIFY"))
         root.addView(body(
             "PrivaCage cannot read the modem's cipher state, detect every rogue base station, inspect bootloader " +
                 "or Verified Boot state through a stable ordinary-app API, enumerate all apps that may request " +
                 "installation, or read global USB debugging state. It also cannot verify carrier-side SIM-swap or " +
-                "number-port protection. Those items remain outside this checklist."
+                "number-port protection, or determine whether optional Theft Protection / Advanced Protection " +
+                "settings were enabled after you leave Android Settings. Those items remain user-reported or unavailable."
         ))
         root.addView(body(
             "A user-confirmed result can become outdated after a SIM change, OS update, settings reset or device " +

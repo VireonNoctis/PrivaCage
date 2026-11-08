@@ -412,6 +412,31 @@ https://developer.android.com/reference/android/provider/Settings
 Documents system-owned handoffs including ACTION_APPLICATION_DEVELOPMENT_SETTINGS and ACTION_SYSTEM_UPDATE_SETTINGS. OEM navigation and availability remain system-controlled. Checked 8 November 2026.
 
 
+<a id="s53"></a>
+### S53 — Google Android Help: Protect your personal data against theft
+https://support.google.com/android/answer/15146908?hl=en-GB
+
+Consumer guidance for Theft Detection Lock, Offline Device Lock, Failed Authentication Lock, Identity Check, Remote Lock requirements and feature/device availability. Checked 8 November 2026.
+
+<a id="s54"></a>
+### S54 — Android Developers: Advanced Protection Mode
+https://developer.android.com/privacy-and-security/advanced-protection-mode
+
+Documents Android 16 Advanced Protection Mode, its at-risk-user focus, and system mitigations including disabling 2G/WEP, blocking sideloading, forensic logging, unknown-call restrictions and messaging link protection. Also documents the separate QUERY_ADVANCED_PROTECTION_MODE permission and AdvancedProtectionManager API. PrivaCage's checklist remains manual and does not request that permission. Last updated 29 July 2026; checked 8 November 2026.
+
+<a id="s55"></a>
+### S55 — Google Android Help: Protect your Android device from USB threats with Advanced Protection Mode
+https://support.google.com/android/answer/16778864?hl=en-GB
+
+Documents USB Protection on Pixel 6 and later. With the device locked, it prevents new USB data connections until the device is unlocked; Device Protection enables it as part of Advanced Protection. Checked 8 November 2026.
+
+<a id="s56"></a>
+### S56 — Google Android Help: Improve device security with Advanced Protection for Android
+https://support.google.com/android/answer/16339980?hl=en-GB
+
+Consumer setup guidance for Android Device Protection, the requirement for a screen lock, possible reboot during setup and optional Intrusion Logging during enrollment. Checked 8 November 2026.
+
+
 ## Evidence management note
 
 For a public release, the project should maintain machine-readable source metadata where helpful: `source_id`, title, owner, URL, source type, publication/effective date, last_checked, claims_supported, reviewer and archived snapshot/hash if lawful. Don't copy full legal documents or third-party articles into the repository when a link and concise analysis suffice.

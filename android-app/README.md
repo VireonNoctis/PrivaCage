@@ -101,7 +101,11 @@ The main screen opens a dedicated checklist. Its per-SIM 2G protection, Android 
 
 Two separate device signals are read directly: KeyguardManager.isDeviceSecure() reports whether Android has a secure lock credential configured, and Build.VERSION.SECURITY_PATCH reports Android's visible security patch date. Neither is a security verdict. The patch date is not a complete vendor/modem freshness check; the lock signal does not measure credential strength.
 
-The checklist does not request Accessibility, phone-state, cell-location, location, package-inventory or new runtime permissions. It does not read ADB state (Android specifies that the public global setting reads as zero for all third-party apps), bootloader state, all-SIM radio state, Play Protect status, or carrier SIM-port settings. Settings handoffs remain user-controlled.
+The checklist also offers manual reviews for Android Theft Protection and Advanced Protection/USB Protection. Theft Protection controls (Theft Detection Lock, Offline Device Lock, Failed Authentication Lock, Identity Check and Remote Lock) are model/region dependent. Remote Lock requires a screen lock, active SIM, verified number, Find Hub and connectivity. Android 16 Advanced Protection Mode is an opt-in bundle; Intrusion Logging is optional. USB Protection is documented for Pixel 6 and later and blocks new USB data connections while the screen is locked. These are user-confirmed reports, not app-read settings.
+
+The checklist schema is now version 2. Existing encrypted schema-v1 records are validated and migrated by retaining their five existing choices and setting the two new items to `NOT_REVIEWED`; the migrated value is written through the same encrypted Keystore vault. A failed migration preserves the original encrypted record.
+
+The checklist does not request Accessibility, phone-state, cell-location, location, package-inventory, Advanced Protection status or new runtime permissions. It does not read ADB state (Android specifies that the public global setting reads as zero for all third-party apps), bootloader state, all-SIM radio state, Play Protect status, Theft Protection state, Advanced Protection state, USB Protection state or carrier SIM-port settings. Settings handoffs remain user-controlled.
 
 ## Limits
 

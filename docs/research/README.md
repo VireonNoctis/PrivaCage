@@ -23,7 +23,7 @@ This library is deliberately not a claim that every described capability is alre
 14. [Assumption audit](14-assumption-audit.md) — high-impact claims in the initial idea that need rewording or gating.
 15. [Android local-history encryption](15-android-local-history-encryption.md) — encrypted DNS-history storage, migration behavior, failure cases, and the device-validation checklist.
 16. [Android device and application security risk register](16-android-device-security-risk-register.md) — update lag, Verified Boot, screen lock, special access, sideloading, radio risks, debugging, wireless, components and realistic stock-app coverage.
-16. [Sources](SOURCES.md) — annotated source register with stable links.
+17. [Sources](SOURCES.md) — annotated source register with stable links.
 
 ## Evidence labels
 

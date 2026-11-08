@@ -182,6 +182,27 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 
 **Boundary:** the ordinary app cannot establish the identity, motives or full administrative scope of the organisation controlling a device. A managed-device owner may have authority beyond the normal-app observation scope.
 
+### R16 — Device theft, offline access and account takeover after theft
+
+**Threat:** a thief may try to exploit the period while a device is unlocked, repeatedly guess a lock credential, disconnect the device from the network, or change sensitive account/device settings. A stolen handset can also be used to reset accounts that rely too heavily on SMS or a verified phone number.
+
+**Useful controls:** on supported Android devices, review Theft Detection Lock, Offline Device Lock and Failed Authentication Lock. Identity Check adds biometric re-verification for selected sensitive actions outside designated trusted places on supported devices. Remote Lock may help lock a lost device, but it depends on a screen lock, active SIM, verified number, Find Hub and connectivity.
+
+**PrivaCage coverage:** the encrypted checklist records that the user reviewed available theft-protection controls. It does not read their state or simulate a theft event.
+
+**Boundary:** these features vary by Android version, model, region and Google services. PrivaCage cannot determine whether a control is available or enabled, cannot guarantee a lost device will be online, and cannot verify that a remote-lock request reached the phone. Check the official device guidance and carrier account protections separately.
+
+### R17 — Advanced Protection Mode and locked USB data access
+
+**Threat:** an attacker with physical access may attempt to use a USB connection while the phone is locked, or exploit a broader attack surface on a device used by someone at elevated risk. Ordinary USB debugging settings alone do not cover every USB data interface.
+
+**Useful controls:** Android 16 Advanced Protection Mode offers a bundled, opt-in configuration for at-risk users. Android documents mitigations including disabled 2G/WEP connections, blocked app sideloading, active forensic logging, unknown-number call blocking and messaging link protections. Device Protection can include optional Intrusion Logging. Google documents USB Protection for Pixel 6 and later: when the screen is locked, it blocks establishment of a new USB data connection and prompts the user to unlock before allowing new data connections.
+
+**PrivaCage coverage:** the checklist provides a user-reviewed Advanced Protection/USB Protection item and opens Android security settings and official guidance. It deliberately does not request the Android Advanced Protection status permission or claim to detect the mode.
+
+**Boundary:** Advanced Protection Mode is not exposed as a universal setting on every device. USB Protection is currently documented for Pixel 6 and later, not a guarantee for all Android OEMs. Intrusion Logging is optional and has its own local evidence/privacy considerations; users should review the system's explanation before enabling or exporting logs.
+
+
 ## 4. Direct signals, user reports and unavailable signals
 
 | Signal | Evidence class | What PrivaCage can say | What it must not claim |
@@ -195,12 +216,15 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 | Play Protect | User-reported | User checked the Play Protect scan toggle | “PrivaCage scanned or cleared every installed app” |
 | Bootloader / Verified Boot | Unavailable to this build | No result; inspect device boot warning and vendor integrity surface | “Bootloader is locked” from a hidden property |
 | Carrier port-out protection | Unavailable to this build | User must check with the carrier | “SIM swap protection is active” |
+| Theft protection controls | User-reported | User checked the available Theft Protection settings | “Remote lock or identity verification is guaranteed” |
+| Advanced Protection / USB Protection | User-reported | User checked whether the device supports and enables the feature | “All Android devices have locked USB protection” |
 
 ## 5. Implementation decision and release gates
 
 ### Built in this experimental slice
 
-- Encrypted local user-confirmed checklist using Android Keystore AES-GCM.
+- Encrypted local user-confirmed checklist using Android Keystore AES-GCM, with schema-v1 migration that preserves existing review choices.
+- User-reported review of available Theft Protection controls, Android Advanced Protection and supported USB Protection.
 - Direct Android-reported security patch date.
 - Direct KeyguardManager.isDeviceSecure() result.
 - Settings handoffs for each checklist item.
@@ -230,6 +254,7 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 - Mobile security settings present and absent, including Android 16 modems with and without IRadio 3.0 support.
 - Local checklist storage encryption, corrupted ciphertext, missing Keystore key and explicit user-status changes.
 - Shared/managed-device warning review before presenting the onboarding screen.
+- Device-specific validation of Theft Protection and Advanced Protection support; no normal-app auto-detection or verified enabled state is claimed.
 
 ## 6. Source notes
 

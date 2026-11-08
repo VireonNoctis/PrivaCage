@@ -16,7 +16,9 @@ internal data class CellularSecurityChecklist(
     val unencryptedNetworkAlerts: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED,
     val securityUpdates: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED,
     val usbDebugging: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED,
-    val playProtect: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED
+    val playProtect: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED,
+    val theftProtection: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED,
+    val advancedProtectionUsb: CellularReviewStatus = CellularReviewStatus.NOT_REVIEWED
 )
 
 internal object CellularSecurityChecklistStore {
@@ -25,7 +27,8 @@ internal object CellularSecurityChecklistStore {
     private const val KEY_ALIAS = "org.privacage.android.cellular-checklist.aes-gcm.v1"
     private const val AAD_LABEL = "cellular-checklist"
     private const val MAX_BYTES = 4096
-    private const val SCHEMA_VERSION = 1
+    private const val LEGACY_SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
 
     fun read(context: Context): CellularSecurityChecklist {
         val serialized = AndroidSensitivePreferenceVault.read(
@@ -38,7 +41,12 @@ internal object CellularSecurityChecklistStore {
             maximumPlaintextBytes = MAX_BYTES,
             validateValue = { decode(it) }
         ) ?: encode(CellularSecurityChecklist())
-        return decode(serialized)
+        val decoded = decode(serialized)
+        if (readSchemaVersion(serialized) == LEGACY_SCHEMA_VERSION) {
+            // Preserve the old five user choices; only the new items start as not reviewed.
+            save(context, decoded)
+        }
+        return decoded
     }
 
     fun save(context: Context, checklist: CellularSecurityChecklist) {
@@ -63,6 +71,8 @@ internal object CellularSecurityChecklistStore {
             .put("security_updates", checklist.securityUpdates.name)
             .put("usb_debugging", checklist.usbDebugging.name)
             .put("play_protect", checklist.playProtect.name)
+            .put("theft_protection", checklist.theftProtection.name)
+            .put("advanced_protection_usb", checklist.advancedProtectionUsb.name)
             .toString()
             .also { serialized ->
                 require(serialized.toByteArray(StandardCharsets.UTF_8).size <= MAX_BYTES) {
@@ -77,7 +87,7 @@ internal object CellularSecurityChecklistStore {
         try {
             StrictJsonKeyScanner.validate(serialized, "Cellular security checklist")
             val root = JSONObject(serialized)
-            val expectedKeys = setOf(
+            val legacyKeys = setOf(
                 "schema_version",
                 "every_sim_2g_protection",
                 "unencrypted_network_alerts",
@@ -85,11 +95,18 @@ internal object CellularSecurityChecklistStore {
                 "usb_debugging",
                 "play_protect"
             )
-            if (root.keys().asSequence().toSet() != expectedKeys ||
-                root.opt("schema_version") !is Int ||
-                root.optInt("schema_version") != SCHEMA_VERSION
-            ) {
-                throw IOException("Cellular security checklist has unsupported fields or schema version; stored data was preserved.")
+            val currentKeys = legacyKeys + setOf("theft_protection", "advanced_protection_usb")
+            val version = root.opt("schema_version") as? Int
+                ?: throw IOException("Cellular security checklist schema version must be an integer.")
+
+            when (version) {
+                LEGACY_SCHEMA_VERSION -> if (root.keys().asSequence().toSet() != legacyKeys) {
+                    throw IOException("Legacy cellular checklist fields are malformed; stored data was preserved.")
+                }
+                SCHEMA_VERSION -> if (root.keys().asSequence().toSet() != currentKeys) {
+                    throw IOException("Cellular security checklist has unsupported fields; stored data was preserved.")
+                }
+                else -> throw IOException("Cellular security checklist has an unsupported schema version; stored data was preserved.")
             }
 
             fun status(key: String): CellularReviewStatus {
@@ -107,12 +124,20 @@ internal object CellularSecurityChecklistStore {
                 unencryptedNetworkAlerts = status("unencrypted_network_alerts"),
                 securityUpdates = status("security_updates"),
                 usbDebugging = status("usb_debugging"),
-                playProtect = status("play_protect")
+                playProtect = status("play_protect"),
+                theftProtection = if (version == LEGACY_SCHEMA_VERSION) CellularReviewStatus.NOT_REVIEWED else status("theft_protection"),
+                advancedProtectionUsb = if (version == LEGACY_SCHEMA_VERSION) CellularReviewStatus.NOT_REVIEWED else status("advanced_protection_usb")
             )
         } catch (exception: IOException) {
             throw exception
         } catch (exception: Exception) {
             throw IOException("Cellular security checklist is malformed; stored data was preserved.", exception)
         }
+    }
+
+    private fun readSchemaVersion(serialized: String): Int = try {
+        JSONObject(serialized).optInt("schema_version", -1)
+    } catch (exception: Exception) {
+        throw IOException("Cellular security checklist version could not be read; stored data was preserved.", exception)
     }
 }
