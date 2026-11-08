@@ -97,9 +97,11 @@ Documents the active device-administrator component list. The result is scoped t
 <a id="s09g"></a>
 ### S09g — Android Developers / AOSP: notification-listener access setting
 https://developer.android.com/reference/android/provider/Settings.Secure
+https://developer.android.com/reference/android/app/NotificationManager#isNotificationListenerAccessGranted(android.content.ComponentName)
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/provider/Settings.java
 https://android.googlesource.com/platform/packages/apps/Settings/+/refs/heads/main/src/com/android/settings/notification/NotificationAccessSettings.java
 
-Settings.Secure is documented as readable by applications and not writable by ordinary apps. The AOSP Settings notification-access screen uses the enabled_notification_listeners secure setting to enumerate approved listener components. PrivaCage reads only this component setting and never reads notification content.
+The public Settings.Secure.getString getter returns null when a value is not present, and the Settings.Secure class describes secure settings as readable by applications and not writable by ordinary apps. However, AOSP declares the ENABLED_NOTIFICATION_LISTENERS setting key itself @hide and deprecated; it is an implementation detail, not a stable public SDK contract. The AOSP Settings notification-access screen and NotificationManagerService use it to enumerate approved listener components. The public NotificationManager.isNotificationListenerAccessGranted(ComponentName) method is limited to a listener belonging to the calling app, so it does not replace cross-app enumeration. PrivaCage reads only the component setting and never notification content; a null value is reported unavailable rather than treated as an empty list. OEM/platform behavior requires representative device validation.
 
 <a id="s09h"></a>
 ### S09h — Android Developers: ConnectivityManager and NetworkCapabilities

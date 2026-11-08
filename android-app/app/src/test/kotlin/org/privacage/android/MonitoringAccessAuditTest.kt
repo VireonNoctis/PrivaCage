@@ -7,21 +7,37 @@ import org.junit.Test
 
 class MonitoringAccessAuditTest {
     @Test
-    fun emptyAndNullSettingsRepresentNoEnabledComponents() {
-        listOf(null, "").forEach { raw ->
-            val parsed = MonitoringAccessAudit.parseEnabledComponentSetting(raw)
-            assertTrue(parsed.isComplete)
-            assertTrue(parsed.components.isEmpty())
-            assertEquals(0, parsed.invalidEntryCount)
-        }
+    fun emptySettingParsesToNoEnabledComponents() {
+        val parsed = MonitoringAccessAudit.parseEnabledComponentSetting("")
+        assertTrue(parsed.isComplete)
+        assertTrue(parsed.components.isEmpty())
+        assertEquals(0, parsed.invalidEntryCount)
+    }
+
+    @Test
+    fun missingNotificationListenerSettingIsUnavailableInsteadOfAnEmptySuccess() {
+        val observation = MonitoringAccessAudit.notificationListenerObservation(null)
+        assertEquals(MonitoringObservationStatus.UNAVAILABLE, observation.status)
+        assertTrue(observation.components.isEmpty())
+        assertTrue(observation.detail!!.contains("cannot distinguish no enabled listeners"))
+    }
+
+    @Test
+    fun explicitEmptyNotificationListenerSettingIsAvailable() {
+        val observation = MonitoringAccessAudit.notificationListenerObservation("")
+        assertEquals(MonitoringObservationStatus.AVAILABLE, observation.status)
+        assertTrue(observation.components.isEmpty())
+        assertEquals(null, observation.detail)
     }
 
     @Test
     fun whitespaceOnlySettingIsReportedAsMalformedInsteadOfEmptySuccess() {
         val parsed = MonitoringAccessAudit.parseEnabledComponentSetting("   ")
+        val observation = MonitoringAccessAudit.notificationListenerObservation("   ")
         assertFalse(parsed.isComplete)
         assertTrue(parsed.components.isEmpty())
         assertEquals(1, parsed.invalidEntryCount)
+        assertEquals(MonitoringObservationStatus.PARTIAL, observation.status)
     }
 
     @Test

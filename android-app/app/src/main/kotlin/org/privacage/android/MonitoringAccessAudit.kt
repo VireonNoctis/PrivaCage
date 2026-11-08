@@ -145,30 +145,43 @@ internal object MonitoringAccessAudit {
     private fun readNotificationListeners(context: Context): MonitoringComponentObservation {
         val source = "Settings.Secure.enabled_notification_listeners"
         return try {
-            val raw = Settings.Secure.getString(
-                context.contentResolver,
-                ENABLED_NOTIFICATION_LISTENERS_SETTING
-            )
-            val parsed = parseEnabledComponentSetting(raw)
-            val detail = when {
-                parsed.inputTooLarge ->
-                    "The setting exceeded the local input limit; no partial list is shown."
-                parsed.truncated ->
-                    "The setting contains more than " + MAX_COMPONENTS + " entries; the displayed list is incomplete."
-                parsed.invalidEntryCount > 0 ->
-                    parsed.invalidEntryCount.toString() + " malformed setting entries were omitted."
-                else -> null
-            }
-            MonitoringComponentObservation(
-                status = if (parsed.isComplete) MonitoringObservationStatus.AVAILABLE
-                    else MonitoringObservationStatus.PARTIAL,
-                components = parsed.components,
-                source = source,
-                detail = detail
+            notificationListenerObservation(
+                Settings.Secure.getString(
+                    context.contentResolver,
+                    ENABLED_NOTIFICATION_LISTENERS_SETTING
+                )
             )
         } catch (exception: SecurityException) {
             unavailable(source, "Android denied access to this setting.")
         }
+    }
+
+    internal fun notificationListenerObservation(raw: String?): MonitoringComponentObservation {
+        val source = "Settings.Secure.enabled_notification_listeners"
+        if (raw == null) {
+            return unavailable(
+                source,
+                "Android returned no stored value. An unset value cannot distinguish no enabled listeners from an unavailable or OEM-restricted setting."
+            )
+        }
+
+        val parsed = parseEnabledComponentSetting(raw)
+        val detail = when {
+            parsed.inputTooLarge ->
+                "The setting exceeded the local input limit; no partial list is shown."
+            parsed.truncated ->
+                "The setting contains more than " + MAX_COMPONENTS + " entries; the displayed list is incomplete."
+            parsed.invalidEntryCount > 0 ->
+                parsed.invalidEntryCount.toString() + " malformed setting entries were omitted."
+            else -> null
+        }
+        return MonitoringComponentObservation(
+            status = if (parsed.isComplete) MonitoringObservationStatus.AVAILABLE
+                else MonitoringObservationStatus.PARTIAL,
+            components = parsed.components,
+            source = source,
+            detail = detail
+        )
     }
 
     private fun readDefaultNetworkVpn(context: Context): MonitoringVpnObservation {
