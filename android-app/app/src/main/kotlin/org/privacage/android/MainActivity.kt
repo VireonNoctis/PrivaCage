@@ -799,7 +799,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(20), 0, dp(4))
         })
         root.addView(TextView(this).apply {
-            text = "Prepare a request draft or open official California DROP guidance. PrivaCage never submits these requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
+            text = "Prepare a direct request draft or a California DROP checklist. The DROP link opens the official consumer service; PrivaCage never submits requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
             textSize = 12f
         }, matchWidth())
         val rightsControllerInput = EditText(this).apply {
