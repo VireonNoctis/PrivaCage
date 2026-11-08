@@ -61,7 +61,7 @@ Suggested records:
 - `mechanism`: `CA-DROP`;
 - `submission_source`: user-confirmed official website;
 - `submitted_at`: set only on user confirmation / imported receipt;
-- `receipt_reference`: encrypted/local if the user wants it retained;
+- `receipt_reference`: not stored by default; for DROP, never collect or store the DROP ID in PrivaCage—the user keeps it private and checks status through the official profile;
 - `broker_outcomes`: unknown unless evidence is supplied;
 - `last_guidance_reviewed`: required.
 
