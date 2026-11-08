@@ -16,7 +16,7 @@ enum class RightsJurisdiction(
     ),
     CALIFORNIA_DROP(
         "California DROP data-broker request",
-        "https://cppa.ca.gov/data_brokers/"
+        "https://privacy.ca.gov/drop/"
     )
 }
 
@@ -54,8 +54,9 @@ data class RightsRequestDraft(
  * Generates a local draft and deadline guidance. It never sends a request, verifies identity,
  * confirms that a controller received a request, or claims the controller deleted data.
  *
- * Current source review: 27 October 2026. Deadline calculations are planning aids; applicable
- * law, eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
+ * Deadline-rule source review: 27 October 2026. The consumer-facing California DROP entrypoint
+ * was rechecked on 8 November 2026. Deadline calculations are planning aids; applicable law,
+ * eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
  */
 object PrivacyRightsRequestBuilder {
     fun createDraft(
@@ -123,9 +124,9 @@ object PrivacyRightsRequestBuilder {
             }
             RightsJurisdiction.CALIFORNIA_DROP -> buildString {
                 append("CALIFORNIA DROP — USER-GUIDED CHECKLIST\n\n")
-                append("1. Open the official CPPA information page and follow its link to the DROP service.\n")
-                append("2. Review the official eligibility, identity verification and data-handling notices.\n")
-                append("3. Submit directly through the official service; PrivaCage does not submit this request.\n")
+                append("1. Open the official CalPrivacy consumer DROP page and choose its 'Get started with DROP' link.\n")
+                append("2. Confirm that you meet California residency eligibility and review the identity-verification and data-handling notices.\n")
+                append("3. Choose what information to provide on the official service; PrivaCage does not collect or submit it.\n")
                 append("4. Save the confirmation/reference yourself only if you choose.\n")
                 append("5. Record the submission date and any later responses separately.\n\n")
                 append("Requested action: direct the official mechanism to process a deletion request for eligible, non-exempt data-broker information.\n")
