@@ -3119,12 +3119,12 @@ class MainActivity : Activity() {
                 }
             }
             .setNeutralButton(
-                if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Open official DROP service" else "Open official guidance"
+                if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Open official DROP page" else "Open official guidance"
             ) { _, _ ->
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(draft.officialGuidanceUrl)))
                 } catch (exception: Exception) {
-                    val destination = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "the official DROP service" else "official guidance"
+                    val destination = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "the official DROP page" else "official guidance"
                     statusText.text = "Could not open " + destination + ". Check the URL manually: " + draft.officialGuidanceUrl
                 }
             }
