@@ -81,6 +81,8 @@ class PrivacyRightsRequestBuilderTest {
         assertNull(draft.extendedResponseDueOn)
         assertTrue(draft.message.contains("PrivaCage does not collect or submit it"))
         assertTrue(draft.message.contains("California residency eligibility"))
+        assertTrue(draft.message.contains("Keep your DROP ID private"))
+        assertTrue(draft.message.contains("Do not paste it into PrivaCage"))
         assertEquals("https://privacy.ca.gov/drop/", draft.officialGuidanceUrl)
     }
 
