@@ -80,7 +80,8 @@ class PrivacyRightsRequestBuilderTest {
         assertNull(draft.standardResponseDueOn)
         assertNull(draft.extendedResponseDueOn)
         assertTrue(draft.message.contains("PrivaCage does not submit this request"))
-        assertTrue(draft.officialGuidanceUrl.startsWith("https://cppa.ca.gov/"))
+        assertTrue(draft.message.contains("California residency eligibility"))
+        assertEquals("https://privacy.ca.gov/drop/", draft.officialGuidanceUrl)
     }
 
     @Test
