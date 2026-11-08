@@ -58,7 +58,7 @@ class LocalRightsRequestStoreTest {
         val dropRecord = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
-            guidanceUrl = "https://cppa.ca.gov/data_brokers/"
+            guidanceUrl = "https://privacy.ca.gov/drop/"
         )
 
         val decoded = LocalRightsRequestStore.decodeRecords("[$dropRecord]").single()
@@ -82,6 +82,22 @@ class LocalRightsRequestStoreTest {
             LocalRightsRequestStore.encodeRecords(listOf(decoded))
         ).single()
         assertEquals(decoded, roundTrip)
+    }
+
+    @Test
+    fun migratesLegacyBrokerFacingDropUrlToTheConsumerEntryPoint() {
+        val legacy = record(
+            jurisdiction = "CALIFORNIA_DROP",
+            controller = "null",
+            guidanceUrl = "https://cppa.ca.gov/data_brokers/"
+        )
+
+        val decoded = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
+
+        assertEquals("https://privacy.ca.gov/drop/", decoded.officialGuidanceUrl)
+        assertEquals(decoded, LocalRightsRequestStore.decodeRecords(
+            LocalRightsRequestStore.encodeRecords(listOf(decoded))
+        ).single())
     }
 
     @Test
@@ -134,7 +150,7 @@ class LocalRightsRequestStoreTest {
         val dropDeadline = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
-            guidanceUrl = "https://cppa.ca.gov/data_brokers/"
+            guidanceUrl = "https://privacy.ca.gov/drop/"
         ).replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
 
         assertThrows(IllegalStateException::class.java) {

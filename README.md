@@ -13,6 +13,8 @@ PrivaCage is an open-source, local-first privacy auditing project. It combines e
 
 PrivaCage is **not** an anonymity product or a universal monitoring agent. Ordinary apps cannot reliably inspect every other app, override all OS permissions, decrypt arbitrary application traffic, or control firmware and manufacturer services. Those boundaries are part of the design—not fine print.
 
+> **Project status: EXPERIMENTAL — Android 0.2.0-experimental.** Treat this build as a development/evaluation release, not a production security product. New platform checks require physical-device and OEM validation. The cellular warning is informational: it cannot disable 2G, identify false base stations, or inspect the modem's encryption state.
+
 ## Contents
 
 - [Project status](#project-status)
@@ -50,6 +52,7 @@ Features do not all have the same maturity. A coded path is not the same as a te
 | Privacy-rights drafts | Android local workflow | Produces user-reviewed UK GDPR / California CCPA drafts and a user-guided DROP checklist. Nothing is sent automatically; legal review is required before release. |
 | App policy review queue | Implemented on Android; device verification pending | New launcher-visible apps detected on resume; optional app-open observations require Usage Access and are bounded to the recent 24-hour window. The user saves policy URLs, opens them in the browser and records review status; PrivaCage does not fetch or upload policy text. |
 | Monitoring-access review | First stock-Android implementation on PR #25; implementation head `6677751` passed all five workflow runs; performance measurement was skipped because the hosted runner lacked accessible `/dev/kvm`; physical-device/OEM validation pending. Subsequent documentation-only updates are validated separately. | User-triggered, local-only review of Android-reported accessibility services, active device administrators, best-effort notification-listener setting data and VPN transport on the current default network. Missing listener-setting data is unavailable, not an empty result. It is not a stalkerware diagnosis and does not identify intent or VPN ownership. |
+| Cellular downgrade warning | Experimental, informational Android observer | While PrivaCage is open, Android 12+ TelephonyCallback.DisplayInfoListener reports the packet-data network type for the default subscription; GSM 2G and legacy 2G-class types are warnings, not proof of a false base station. The check cannot read cipher state, cover every SIM/voice network, or disable 2G. Native Android settings remain the enforcement path. |
 | Selected sensitive-store encryption | Android implementation; device verification pending | Separate Android Keystore AES-GCM stores protect selected DNS, rights, permission-baseline and app-review data; not every operational preference or exported checkpoint is encrypted. |
 | Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
 | Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |

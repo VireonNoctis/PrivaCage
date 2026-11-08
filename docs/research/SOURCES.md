@@ -269,6 +269,68 @@ https://www.ftc.gov/news-events/news/press-releases/2026/05/ftc-ban-kochava-subs
 
 May 2026 announcement concerning a proposed settlement about sensitive location data. Distinguish allegations/proposed terms from a final adjudicated fact.
 
+<a id="s30"></a>
+### S30 — CalPrivacy: Delete Request and Opt-Out Platform (consumer landing page)
+https://privacy.ca.gov/drop/
+
+Consumer-facing official entrypoint, eligibility summary, link to the DROP service, data-handling overview, November 2026 initial-cycle update, recurring 45-day broker cycle and possible 90-day status-update window. Checked 8 November 2026.
+
+<a id="s31"></a>
+### S31 — CalPrivacy: How DROP works
+https://privacy.ca.gov/drop/how-drop-works/
+
+Consumer guidance for eligibility, profile creation, submission, DROP ID handling, status meanings, the 90-day status-reporting window and recurring 45-day re-check/deletion cycle. Checked 8 November 2026.
+
+<a id="s32"></a>
+### S32 — CalPrivacy: Help with DROP
+https://privacy.ca.gov/drop/help-with-drop/
+
+Official consumer help covering residency verification, privacy handling, the instruction not to share a DROP ID, status-update timing and requests made on another person's behalf. Checked 8 November 2026.
+
+<a id="s33"></a>
+### S33 — Android Open Source Project: Disable 2G
+https://source.android.com/docs/security/features/cellular-security/disable-2g
+
+Documents false-base-station downgrade risk, the 2G radio-level protection capability, emergency-call behavior, and the privileged authority required for applications to change allowed network types. Checked 8 November 2026.
+
+<a id="s34"></a>
+### S34 — Android Open Source Project: 2G connectivity toggle
+https://source.android.com/docs/security/features/cellular-security/toggle-2g
+
+Documents the per-SIM 2G control and Android 16 label/default-state changes. The switch label/description—not its visual position—must be used to confirm the intended protection state. Checked 8 November 2026.
+
+<a id="s35"></a>
+### S35 — Android Open Source Project: Mobile network security
+https://source.android.com/docs/security/features/cellular-security/mobile-network-security
+
+Documents Android 16 Safety Center notifications for unencrypted connections and device-identifier disclosures, the compatible modem/IRadio requirements, per-SIM 2G entry points and the notifications toggle's OFF default. Checked 8 November 2026.
+
+<a id="s36"></a>
+### S36 — Android Developers: TelephonyCallback and DisplayInfoListener
+https://developer.android.com/reference/android/telephony/TelephonyCallback
+https://developer.android.com/reference/android/telephony/TelephonyCallback.DisplayInfoListener
+
+Documents the API 31 callback model, registration lifecycle, and permission requirements where applicable. DisplayInfoListener does not document a runtime phone-state permission requirement. Checked 8 November 2026.
+
+<a id="s37"></a>
+### S37 — Android Developers: TelephonyDisplayInfo
+https://developer.android.com/reference/android/telephony/TelephonyDisplayInfo
+
+Documents the packet-switched network type and override type. getNetworkType() reports the actual packet-switched network type the device is camped on; the API is display-oriented and does not expose the radio's cipher/encryption algorithm. Checked 8 November 2026.
+
+<a id="s38"></a>
+### S38 — Android Developers: AccessibilityService
+https://developer.android.com/reference/android/accessibilityservice/AccessibilityService
+
+States that Accessibility services should only be used to assist users with disabilities and receive user-interface AccessibilityEvents. The API does not provide cellular radio or cipher-state control. Checked 8 November 2026.
+
+<a id="s39"></a>
+### S39 — Android Developers: Settings actions
+https://developer.android.com/reference/android/provider/Settings
+
+Documents ACTION_WIRELESS_SETTINGS for Wi-Fi/Bluetooth/mobile-network controls and ACTION_SECURITY_SETTINGS for security/location privacy settings. OEM-specific navigation remains controlled by Android Settings. Checked 8 November 2026.
+
+
 ## Evidence management note
 
 For a public release, the project should maintain machine-readable source metadata where helpful: `source_id`, title, owner, URL, source type, publication/effective date, last_checked, claims_supported, reviewer and archived snapshot/hash if lawful. Don't copy full legal documents or third-party articles into the repository when a link and concise analysis suffice.

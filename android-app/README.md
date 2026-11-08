@@ -85,6 +85,16 @@ A listed service may be legitimate assistive technology, automation, password ma
 
 Official API behavior was reviewed on 7 November 2026; see docs/research/SOURCES.md. Physical-device/OEM behavior and the safety interaction still require validation before release.
 
+## Experimental cellular downgrade warning
+
+The Android app builds as **0.2.0-experimental**. While the main activity is resumed, an Android 12+ TelephonyCallback.DisplayInfoListener reports the packet-data network type for the default subscription. GPRS, EDGE and GSM are shown as a high-priority 2G warning; CDMA/1xRTT/iDEN are labelled separately as legacy 2G-class technologies. Unknown and unsupported results remain explicitly unknown.
+
+This is only a radio-generation indicator. TelephonyDisplayInfo.getNetworkType() reports the packet-switched network type; it does not expose cellular cipher/encryption state, prove a false base station, inspect voice-only service, or cover every SIM. OEM/carrier presentation behavior requires physical-device validation.
+
+Users get Settings handoffs to review 2G protection for each SIM and Android's unencrypted-network notifications. Android 12+ can disable 2G at the radio layer on supported modems; Android 14+ programmatic changes require privileged phone-state authority. Android 16's native unencrypted-network and identifier-disclosure alerts require compatible modem APIs and are off by default. PrivaCage does not attempt to change either setting.
+
+The monitor unregisters when the activity pauses. It adds no Accessibility Service, phone-state permission, location permission, cell scan, background worker, notification, network request, or persistent radio history. Accessibility access is unrelated to cellular cipher/radio enforcement and is not requested.
+
 ## Limits
 
 - A signed checkpoint detects changes to the exported snapshot but cannot prove that unrecorded events never occurred, that the device clock is correct, or that the signer is a particular person. The public-key fingerprint must be trusted independently. Android Keystore hardware backing is device-dependent. Deleting or losing the signing key can leave old checkpoints cryptographically verifiable but no longer anchored to this installation. Checkpoint JSON is not encrypted.
