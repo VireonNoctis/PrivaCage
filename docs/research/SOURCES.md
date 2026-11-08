@@ -234,6 +234,18 @@ https://www.ftc.gov/news-events/news/press-releases/2026/05/ftc-ban-kochava-subs
 
 May 2026 announcement concerning a proposed settlement about sensitive location data. Distinguish allegations/proposed terms from a final adjudicated fact.
 
+<a id="s30"></a>
+### S30 — CalPrivacy: Delete Request and Opt-Out Platform (consumer landing page)
+https://privacy.ca.gov/drop/
+
+Consumer-facing official entrypoint, eligibility summary, link to the DROP service, data-handling overview and current processing timeline. Checked 8 November 2026.
+
+<a id="s31"></a>
+### S31 — CalPrivacy: How DROP works
+https://privacy.ca.gov/drop/how-drop-works/
+
+Consumer guidance for eligibility, profile creation, submission, DROP ID handling, status meanings, exceptions and ongoing processing. Checked 8 November 2026.
+
 ## Evidence management note
 
 For a public release, the project should maintain machine-readable source metadata where helpful: `source_id`, title, owner, URL, source type, publication/effective date, last_checked, claims_supported, reviewer and archived snapshot/hash if lawful. Don't copy full legal documents or third-party articles into the repository when a link and concise analysis suffice.
