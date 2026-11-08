@@ -47,6 +47,7 @@ internal object LocalRightsRequestStore {
     private const val MAX_RECORDS = 100
     private const val MAX_CONTROLLER_LENGTH = 256
     private const val MAX_STORE_BYTES = 512 * 1024
+    private const val LEGACY_DROP_GUIDANCE_URL = "https://cppa.ca.gov/data_brokers/"
 
     fun list(context: Context): List<StoredRightsRequest> {
         val raw = AndroidSensitivePreferenceVault.read(
@@ -317,10 +318,15 @@ internal object LocalRightsRequestStore {
             val extensionNoticeRecorded = item.opt("extension_notice_recorded") as? Boolean
                 ?: throw IllegalArgumentException("Local tracker extension flag must be a boolean.")
             val status = RightsRequestStatus.valueOf(requiredString("status"))
-            val guidanceUrl = requiredString("official_guidance_url")
-            require(guidanceUrl == jurisdiction.officialGuidanceUrl) {
+            val storedGuidanceUrl = requiredString("official_guidance_url")
+            val isLegacyDropGuidanceUrl =
+                jurisdiction == RightsJurisdiction.CALIFORNIA_DROP &&
+                    storedGuidanceUrl == LEGACY_DROP_GUIDANCE_URL
+            require(storedGuidanceUrl == jurisdiction.officialGuidanceUrl || isLegacyDropGuidanceUrl) {
                 "Local tracker guidance URL does not match the selected jurisdiction."
             }
+            // Normalize the old broker-facing DROP URL so the next successful save upgrades it.
+            val guidanceUrl = jurisdiction.officialGuidanceUrl
 
             if (receivedOn == null) {
                 require(standardDueOn == null && extendedDueOn == null && !extensionNoticeRecorded) {
