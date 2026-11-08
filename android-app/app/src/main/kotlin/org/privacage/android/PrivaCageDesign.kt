@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -50,13 +51,21 @@ internal object PrivaCageDesign {
         "INSTALL QUEUE",
         "APP POLICY REVIEW",
         "APP POLICY REVIEW QUEUE",
+        "MONITORING ACCESS REVIEW",
+        "ACCESSIBILITY SERVICES",
+        "ACTIVE DEVICE ADMINISTRATORS",
+        "NOTIFICATION LISTENERS",
+        "DEFAULT NETWORK VPN STATE",
+        "INTERPRETATION",
         "ALTERNATIVE CATALOG"
     )
 
     private val primaryActionLabels = setOf(
         "save configuration",
         "enable dns filtering",
-        "review installed and opened apps' policies"
+        "review installed and opened apps' policies",
+        "review monitoring-sensitive access",
+        "run local review"
     )
 
     private data class SectionCard(
@@ -343,7 +352,7 @@ internal object PrivaCageDesign {
         else -> heading
     }
 
-    private fun styleControl(context: Context, view: View) {
+    internal fun styleControl(context: Context, view: View) {
         when (view) {
             is EditText -> {
                 view.setTextColor(textPrimary)
@@ -397,8 +406,19 @@ internal object PrivaCageDesign {
     internal fun isPrimaryAction(label: CharSequence?): Boolean =
         label?.toString()?.trim()?.lowercase(Locale.ROOT) in primaryActionLabels
 
+    internal fun formatBrailleButtonLabel(label: CharSequence?): String {
+        val readable = label?.toString().orEmpty()
+        if (readable.isBlank() || readable.startsWith("⠿ ")) return readable
+        return "⠿ $readable"
+    }
+
     private fun styleButton(context: Context, view: Button) {
-        val primary = isPrimaryAction(view.text)
+        val actionLabel = view.text?.toString().orEmpty()
+        val primary = isPrimaryAction(actionLabel)
+        if (view.contentDescription.isNullOrBlank()) {
+            view.contentDescription = actionLabel
+        }
+        view.text = formatBrailleButtonLabel(actionLabel)
         view.isAllCaps = false
         view.textSize = 12f
         view.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -412,6 +432,26 @@ internal object PrivaCageDesign {
             roundedBackground(context, fill, Color.WHITE, 6),
             Color.WHITE
         )
+        applyPressMotion(view)
+    }
+
+    private fun applyPressMotion(view: View) {
+        if (!ValueAnimator.areAnimatorsEnabled()) return
+        view.setOnTouchListener { target, event ->
+            val pressed = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> true
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
+                else -> return@setOnTouchListener false
+            }
+            val scale = if (pressed) 0.985f else 1f
+            target.animate().cancel()
+            target.animate()
+                .scaleX(scale)
+                .scaleY(scale)
+                .setDuration(if (pressed) 70L else 110L)
+                .start()
+            false
+        }
     }
 
     private fun inputBackground(context: Context): StateListDrawable {

@@ -55,6 +55,15 @@ class PrivaCageDesignTest {
     }
 
     @Test
+    fun buttonLabelsUseBrailleMarkWithoutReplacingReadableActionText() {
+        assertEquals("⠿ Run local review", PrivaCageDesign.formatBrailleButtonLabel("Run local review"))
+        assertEquals("⠿ Save configuration", PrivaCageDesign.formatBrailleButtonLabel("Save configuration"))
+        assertEquals("⠿ Already marked", PrivaCageDesign.formatBrailleButtonLabel("⠿ Already marked"))
+        assertEquals("", PrivaCageDesign.formatBrailleButtonLabel(""))
+        assertEquals("", PrivaCageDesign.formatBrailleButtonLabel(null))
+    }
+
+    @Test
     fun onlyRoutineConfigurationActionsReceivePrimaryButtonStyling() {
         assertTrue(PrivaCageDesign.isPrimaryAction("Save configuration"))
         assertTrue(PrivaCageDesign.isPrimaryAction(" ENABLE DNS FILTERING "))

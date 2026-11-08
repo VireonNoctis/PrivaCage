@@ -1,6 +1,6 @@
 # Research Source Register
 
-**Reviewed:** 25 October 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
+**Research register last reviewed:** 25 October 2026. **Android monitoring-access sources checked:** 7 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
 
 ## Android platform
 
@@ -81,6 +81,41 @@ Documents atomic editor updates, synchronous `commit()` and its persistence resu
 https://developer.android.com/training/data-storage/shared-preferences
 
 Android's guidance warns about blocking, durability, and consistency trade-offs in SharedPreferences and recommends considering DataStore or Room for new storage needs. PrivaCage retains its existing small preferences store here; this migration is not a general recommendation to start new persistence on SharedPreferences.
+
+<a id="s09e"></a>
+### S09e — Android Developers: AccessibilityManager API
+https://developer.android.com/reference/android/view/accessibility/AccessibilityManager#getEnabledAccessibilityServiceList(int)
+
+Documents the enabled accessibility-service list returned for a requested feedback-type mask. PrivaCage requests FEEDBACK_ALL_MASK and treats the result as an OS-exposed list, not evidence of intent or service behavior.
+
+<a id="s09f"></a>
+### S09f — Android Developers: DevicePolicyManager API
+https://developer.android.com/reference/android/app/admin/DevicePolicyManager#getActiveAdmins()
+
+Documents the active device-administrator component list. The result is scoped to the calling user/profile and does not identify who controls a device.
+
+<a id="s09g"></a>
+### S09g — Android Developers / AOSP: notification-listener access setting
+https://developer.android.com/reference/android/provider/Settings.Secure
+https://developer.android.com/reference/android/app/NotificationManager#isNotificationListenerAccessGranted(android.content.ComponentName)
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/provider/Settings.java
+https://android.googlesource.com/platform/packages/apps/Settings/+/refs/heads/main/src/com/android/settings/notification/NotificationAccessSettings.java
+
+The public Settings.Secure.getString getter returns null when a value is not present, and the Settings.Secure class describes secure settings as readable by applications and not writable by ordinary apps. However, AOSP declares the ENABLED_NOTIFICATION_LISTENERS setting key itself @hide and deprecated; it is an implementation detail, not a stable public SDK contract. The AOSP Settings notification-access screen and NotificationManagerService use it to enumerate approved listener components. The public NotificationManager.isNotificationListenerAccessGranted(ComponentName) method is limited to a listener belonging to the calling app, so it does not replace cross-app enumeration. PrivaCage reads only the component setting and never notification content; a null value is reported unavailable rather than treated as an empty list. OEM/platform behavior requires representative device validation.
+
+<a id="s09h"></a>
+### S09h — Android Developers: ConnectivityManager and NetworkCapabilities
+https://developer.android.com/reference/android/net/ConnectivityManager#getActiveNetwork()
+https://developer.android.com/reference/android/net/ConnectivityManager#getNetworkCapabilities(android.net.Network)
+https://developer.android.com/reference/android/net/NetworkCapabilities
+
+Documents the active default network, its capabilities, and TRANSPORT_VPN. This supports a statement about the current default network only; it does not identify the VPN owner or every per-app/non-default route.
+
+<a id="s09i"></a>
+### S09i — Android Developers: Settings actions
+https://developer.android.com/reference/android/provider/Settings
+
+Documents OS-owned settings handoffs for accessibility, notification-listener, security and VPN settings. ACTION_APPLICATION_DETAILS_SETTINGS opens one package's app-info page using a package: URI; availability can vary by Android build, so callers must handle a missing activity. PrivaCage uses this only on an explicit user tap and does not query application labels or mutate the package.
 
 ## Apple platform
 
