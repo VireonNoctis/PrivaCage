@@ -422,7 +422,7 @@ Consumer guidance for Theft Detection Lock, Offline Device Lock, Failed Authenti
 ### S54 — Android Developers: Advanced Protection Mode
 https://developer.android.com/privacy-and-security/advanced-protection-mode
 
-Documents Android 16 Advanced Protection Mode, its at-risk-user focus, and system mitigations including disabling 2G/WEP, blocking sideloading, forensic logging, unknown-call restrictions and messaging link protection. Also documents the separate QUERY_ADVANCED_PROTECTION_MODE permission and AdvancedProtectionManager API. PrivaCage's checklist remains manual and does not request that permission. Last updated 29 July 2026; checked 8 November 2026.
+Documents Android 16 Advanced Protection Mode, its at-risk-user focus, and system mitigations including disabling 2G/WEP, blocking sideloading, forensic logging, unknown-call restrictions and messaging link protection. Also documents the separate QUERY_ADVANCED_PROTECTION_MODE permission and AdvancedProtectionManager API. PrivaCage reads only the overall mode on supported builds; device-specific USB Protection and optional Intrusion Logging remain manual. Last updated 29 July 2026; checked 8 November 2026.
 
 <a id="s55"></a>
 ### S55 — Google Android Help: Protect your Android device from USB threats with Advanced Protection Mode
@@ -436,6 +436,18 @@ https://support.google.com/android/answer/16339980?hl=en-GB
 
 Consumer setup guidance for Android Device Protection, the requirement for a screen lock, possible reboot during setup and optional Intrusion Logging during enrollment. Checked 8 November 2026.
 
+
+<a id="s57"></a>
+### S57 — Android Developers: AdvancedProtectionManager API
+https://developer.android.com/reference/android/security/advancedprotection/AdvancedProtectionManager
+
+Added in API level 36. isAdvancedProtectionEnabled() reads the overall Advanced Protection Mode enabled state and requires QUERY_ADVANCED_PROTECTION_MODE; the manager also offers a callback for state changes. The overall state does not prove that every individual device protection feature is available or active. Checked 8 November 2026.
+
+<a id="s58"></a>
+### S58 — Android Open Source Project: Android 16 framework manifest, QUERY_ADVANCED_PROTECTION_MODE
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/res/AndroidManifest.xml
+
+Android 16 declares QUERY_ADVANCED_PROTECTION_MODE with protection level normal and the android.security.aapm_api feature flag. The same manifest separately declares Intrusion Detection read/manage permissions as signature|privileged; they are not granted to ordinary apps. Checked 8 November 2026.
 
 ## Evidence management note
 

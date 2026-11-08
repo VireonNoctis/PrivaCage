@@ -2,6 +2,7 @@ package org.privacage.android
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.security.advancedprotection.AdvancedProtectionManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -26,6 +27,7 @@ class CellularSecurityOnboardingActivity : Activity() {
     private var suppressRadioChanges = false
     private lateinit var lockSignalText: TextView
     private lateinit var patchSignalText: TextView
+    private lateinit var advancedProtectionSignalText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +71,12 @@ class CellularSecurityOnboardingActivity : Activity() {
         root.addView(body(
             "Android reports whether a secure PIN, pattern or password is configured. This does not measure " +
                 "credential strength, biometric quality, coercion risk or resistance to every physical attack."
+        ))
+        advancedProtectionSignalText = body("Advanced Protection Mode: " + readAdvancedProtectionMode())
+        root.addView(advancedProtectionSignalText, matchWidth())
+        root.addView(body(
+            "This is an OS-reported API state on Android 16+. It does not prove that every optional feature " +
+                "or device-specific mitigation is available, configured or working."
         ))
         root.addView(settingsButton(Settings.ACTION_SECURITY_SETTINGS, "Open screen-lock and security settings"))
 
@@ -178,12 +186,12 @@ class CellularSecurityOnboardingActivity : Activity() {
 
         addChecklistItem(
             root = root,
-            title = "ADVANCED PROTECTION AND USB PROTECTION",
-            explanation = "On supported Android 16 devices, review Advanced Protection → Device protection. " +
-                "It applies a broader security configuration and can restrict some features. Intrusion Logging is " +
-                "an optional part of setup; review its data and export implications before enabling it. USB Protection " +
-                "is documented for Pixel 6 and later: with the screen locked, it blocks new USB data connections and " +
-                "is enabled through Device protection. Other manufacturers may not expose the same feature.",
+            title = "USB PROTECTION AND OPTIONAL INTRUSION LOGGING",
+            explanation = "Advanced Protection Mode is read directly above on Android 16+. Separately review USB " +
+                "Protection where your device supports it. Google documents USB Protection for Pixel 6 and later: " +
+                "with the screen locked, it blocks new USB data connections. Intrusion Logging is optional; review " +
+                "the data and export implications before enabling it. Mark this item confirmed only after checking " +
+                "the actual Device protection screen. Other manufacturers may not expose these features.",
             status = current.advancedProtectionUsb,
             enabled = canSave,
             openSettings = { openSettings(Settings.ACTION_SECURITY_SETTINGS, "Android Advanced Protection settings") },
@@ -235,6 +243,9 @@ class CellularSecurityOnboardingActivity : Activity() {
         if (::patchSignalText.isInitialized) {
             val patch = Build.VERSION.SECURITY_PATCH.takeIf { it.isNotBlank() } ?: "not exposed"
             patchSignalText.text = "Reported Android security patch: " + patch
+        }
+        if (::advancedProtectionSignalText.isInitialized) {
+            advancedProtectionSignalText.text = "Advanced Protection Mode: " + readAdvancedProtectionMode()
         }
     }
 
@@ -314,6 +325,24 @@ class CellularSecurityOnboardingActivity : Activity() {
         CellularReviewStatus.NOT_REVIEWED -> "not reviewed"
         CellularReviewStatus.USER_CONFIRMED -> "user confirmed"
         CellularReviewStatus.NOT_AVAILABLE -> "unavailable / could not verify"
+    }
+
+    @Suppress("NewApi")
+    private fun readAdvancedProtectionMode(): String {
+        if (Build.VERSION.SDK_INT < 36) {
+            return AdvancedProtectionModeStatus.describe(Build.VERSION.SDK_INT, null)
+        }
+        return try {
+            val manager = getSystemService(AdvancedProtectionManager::class.java)
+            AdvancedProtectionModeStatus.describe(
+                Build.VERSION.SDK_INT,
+                manager?.isAdvancedProtectionEnabled
+            )
+        } catch (exception: SecurityException) {
+            "UNAVAILABLE · Android denied the Advanced Protection status query."
+        } catch (exception: RuntimeException) {
+            "UNAVAILABLE · " + exception.javaClass.simpleName
+        }
     }
 
     private fun readSecureLockState(): String = try {

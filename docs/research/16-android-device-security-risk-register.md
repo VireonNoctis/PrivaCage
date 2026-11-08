@@ -198,9 +198,9 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 
 **Useful controls:** Android 16 Advanced Protection Mode offers a bundled, opt-in configuration for at-risk users. Android documents mitigations including disabled 2G/WEP connections, blocked app sideloading, active forensic logging, unknown-number call blocking and messaging link protections. Device Protection can include optional Intrusion Logging. Google documents USB Protection for Pixel 6 and later: when the screen is locked, it blocks establishment of a new USB data connection and prompts the user to unlock before allowing new data connections.
 
-**PrivaCage coverage:** the checklist provides a user-reviewed Advanced Protection/USB Protection item and opens Android security settings and official guidance. It deliberately does not request the Android Advanced Protection status permission or claim to detect the mode.
+**PrivaCage coverage:** on Android 16+ builds exposing the public API, PrivaCage queries the overall mode with AdvancedProtectionManager.isAdvancedProtectionEnabled() and the normal QUERY_ADVANCED_PROTECTION_MODE permission. Unsupported builds, missing service or query failure are reported as unavailable. USB Protection and optional Intrusion Logging remain separate user-reviewed checklist items.
 
-**Boundary:** Advanced Protection Mode is not exposed as a universal setting on every device. USB Protection is currently documented for Pixel 6 and later, not a guarantee for all Android OEMs. Intrusion Logging is optional and has its own local evidence/privacy considerations; users should review the system's explanation before enabling or exporting logs.
+**Boundary:** the public overall-mode API is documented from Android 16 (API 36) and requires a normal permission; feature availability can still vary by OEM/platform build. The overall flag does not establish that each bundled mitigation is present or working. USB Protection is currently documented for Pixel 6 and later, not a guarantee for all Android OEMs. Intrusion Logging is optional and has its own local evidence/privacy considerations; users should review the system's explanation before enabling or exporting logs.
 
 
 ## 4. Direct signals, user reports and unavailable signals
@@ -210,6 +210,7 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 | Packet-data generation | OS-observed | Android reports GSM 2G / another type / unknown for the default subscription | “A fake cell was detected” or “radio is encrypted” |
 | Security patch date | OS-reported | Android exposes this date string | “All firmware and OEM components are current” |
 | Secure screen lock | OS-observed | Android reports secure credential configured / not configured | “Credential is strong” or “device is uncompromised” |
+| Advanced Protection Mode | OS-observed on supported Android 16+ | AdvancedProtectionManager reports enabled / disabled / unavailable | “Every bundled mitigation is supported or working” |
 | 2G toggle per SIM | User-reported | User says every active SIM was checked | “PrivaCage independently verified all SIM policies” |
 | Native unencrypted alerts | User-reported | User says the compatible Android notification setting is enabled | “The modem supports or sent an alert” |
 | USB debugging | User-reported / otherwise unavailable | User checked Developer options | “ADB is off” from Settings.Global third-party reads |
@@ -224,7 +225,8 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 ### Built in this experimental slice
 
 - Encrypted local user-confirmed checklist using Android Keystore AES-GCM, with schema-v1 migration that preserves existing review choices.
-- User-reported review of available Theft Protection controls, Android Advanced Protection and supported USB Protection.
+- User-reported review of available Theft Protection controls, USB Protection and optional Intrusion Logging.
+- Direct Android 16+ Advanced Protection Mode status query using the normal QUERY_ADVANCED_PROTECTION_MODE permission when the platform API is exposed.
 - Direct Android-reported security patch date.
 - Direct KeyguardManager.isDeviceSecure() result.
 - Settings handoffs for each checklist item.
@@ -243,7 +245,7 @@ Build.VERSION.SECURITY_PATCH exposes Android's user-visible security patch date.
 
 - No global USB-debugging read, bootloader/Verified Boot attestation, Play Protect status API, all-app sideload inventory, all-SIM cipher inspection, rogue-base-station detection, carrier SIM-swap state, full packet firewall or general sensor/API-call monitor.
 - No Accessibility Service is added for this checklist.
-- No READ_PHONE_STATE, cell-location, location, QUERY_ALL_PACKAGES, or new runtime permission is requested for this slice.
+- No READ_PHONE_STATE, cell-location, location, QUERY_ALL_PACKAGES or new runtime permission is requested for this slice. The only additional manifest permission is QUERY_ADVANCED_PROTECTION_MODE, declared normal by Android 16 and used solely for the overall mode status query.
 - No score is computed by turning unavailable signals into a positive result.
 
 ### Required device validation
