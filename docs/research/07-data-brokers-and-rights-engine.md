@@ -1,6 +1,6 @@
 # 07 — Data Brokers and Data-Subject Rights Engine
 
-**Research status:** regulator/primary-law review, 25 October 2026  
+**Research status:** regulator/primary-law review, 8 November 2026  
 **Decision this note supports:** deliver a useful request workflow without mis-stating the law or falsely claiming deletion.
 
 > This is engineering research, not legal advice. Before release, each jurisdiction template needs review by a qualified person, current source links and a visible eligibility explanation.
@@ -49,9 +49,9 @@ Therefore:
 
 ## 4. California DROP — timely opportunity
 
-The California Privacy Protection Agency's DROP material describes a state-run mechanism for consumers to submit a single deletion request to registered data brokers for non-exempt personal information. The framework took effect on 1 January 2026. CPPA materials state that beginning 1 August 2026, data brokers must access DROP at least every 45 days to retrieve and process requests ([S23](SOURCES.md#s23), [S24](SOURCES.md#s24)).
+CalPrivacy's consumer-facing DROP service lets eligible California residents submit one request to registered data brokers for deletion of eligible, non-exempt personal information. The official consumer entrypoint is [privacy.ca.gov/drop](https://privacy.ca.gov/drop/); its page links directly to the service and explains residency eligibility, identity verification, optional information, and data handling. Consumer-facing guidance says data brokers began processing requests on 1 August 2026, must access DROP at least once every 45 days, and may take up to 90 days for status updates to appear ([S23](SOURCES.md#s23), [S24](SOURCES.md#s24), [S30](SOURCES.md#s30), [S31](SOURCES.md#s31)). The 45-day broker access cycle is not an individual consumer response deadline; the 90-day status-update description is current agency guidance, not a guaranteed outcome for each broker.
 
-**Buildable now:** a user-guided “California data broker deletion” workflow that explains the official state mechanism, prepares a checklist, opens the official service, and helps the user track their submission and subsequent statuses.
+**Buildable now:** a user-guided “California data broker deletion” workflow that opens the official consumer DROP landing page, explains California residency eligibility and the user-controlled information disclosure, prepares a checklist, and helps the user record user-reported submission/status milestones. The consumer service is external; PrivaCage does not collect identifiers or submit the request.
 
 **Not yet established by this research:** a public, supported API that permits a third-party app to submit or query DROP requests programmatically. Do not implement an undocumented API, scrape the platform, automate CAPTCHA/identity checks, or promise a one-tap fully automated deletion without verifying official technical terms and an authorized interface.
 
@@ -65,7 +65,7 @@ Suggested records:
 - `broker_outcomes`: unknown unless evidence is supplied;
 - `last_guidance_reviewed`: required.
 
-DROP is complementary to individual company requests, not proof that all data brokers have been covered or all exemptions have been removed.
+DROP is complementary to individual company requests. A broker status such as “record not found” or an exemption is not the same as verified deletion; users must review the official status explanations and may need a separate direct request for first-party data or exempt information. The consumer portal and guidance were rechecked on 8 November 2026.
 
 ## 5. Company registry and request templates
 
