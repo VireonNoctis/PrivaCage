@@ -845,7 +845,7 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(Button(this).apply {
-            text = "Open California DROP guidance / checklist"
+            text = "Prepare California DROP checklist"
             setOnClickListener {
                 createLocalRightsDraft(
                     RightsJurisdiction.CALIFORNIA_DROP,
@@ -3114,11 +3114,14 @@ class MainActivity : Activity() {
                 )
                 statusText.text = "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
             }
-            .setNeutralButton("Open official guidance") { _, _ ->
+            .setNeutralButton(
+                if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Open official DROP service" else "Open official guidance"
+            ) { _, _ ->
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(draft.officialGuidanceUrl)))
                 } catch (exception: Exception) {
-                    statusText.text = "Could not open official guidance. Check the URL manually: " + draft.officialGuidanceUrl
+                    val destination = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "the official DROP service" else "official guidance"
+                    statusText.text = "Could not open " + destination + ". Check the URL manually: " + draft.officialGuidanceUrl
                 }
             }
             .setNegativeButton("Close", null)
