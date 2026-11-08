@@ -1,6 +1,6 @@
 # 07 — Data Brokers and Data-Subject Rights Engine
 
-**Research status:** regulator/primary-law review, 8 November 2026  
+**Research status:** regulator/primary-law review; California DROP consumer sources rechecked 8 November 2026. UK/EU and California CCPA deadline research remains dated 25 October 2026.  
 **Decision this note supports:** deliver a useful request workflow without mis-stating the law or falsely claiming deletion.
 
 > This is engineering research, not legal advice. Before release, each jurisdiction template needs review by a qualified person, current source links and a visible eligibility explanation.
