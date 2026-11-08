@@ -116,7 +116,7 @@ internal class CellularSecurityMonitor(
     fun start(): CellularNetworkAssessment {
         if (registeredCallback != null) return CellularNetworkClassifier.waiting()
 
-        if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_RADIO_ACCESS)) {
+        if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
             return CellularNetworkClassifier.unsupported(
                 "This device does not expose a telephony radio to ordinary apps. Use the SIM settings handoff if this device has cellular service."
             )
