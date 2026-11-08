@@ -3113,7 +3113,7 @@ class MainActivity : Activity() {
                     ClipData.newPlainText("PrivaCage privacy rights draft", draft.message)
                 )
                 statusText.text = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) {
-                    "Checklist copied. It was not submitted. Review California eligibility and the information you choose to disclose on the official service."
+                    "Checklist copied. It was not submitted. Review California eligibility and the information you choose to disclose on the official service. Keep your DROP ID private; do not paste it into PrivaCage."
                 } else {
                     "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
                 }
