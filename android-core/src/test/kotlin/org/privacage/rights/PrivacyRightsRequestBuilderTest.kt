@@ -84,6 +84,9 @@ class PrivacyRightsRequestBuilderTest {
         assertTrue(draft.message.contains("Keep your DROP ID private"))
         assertTrue(draft.message.contains("Do not paste it into PrivaCage"))
         assertEquals("https://privacy.ca.gov/drop/", draft.officialGuidanceUrl)
+        assertTrue(draft.responsePeriodNote.contains("newly matching data at least every 45 days"))
+        assertTrue(draft.responsePeriodNote.contains("up to 90 days"))
+        assertTrue(draft.responsePeriodNote.contains("not an individual response deadline"))
     }
 
     @Test

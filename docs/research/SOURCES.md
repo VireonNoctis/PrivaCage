@@ -238,13 +238,13 @@ May 2026 announcement concerning a proposed settlement about sensitive location 
 ### S30 — CalPrivacy: Delete Request and Opt-Out Platform (consumer landing page)
 https://privacy.ca.gov/drop/
 
-Consumer-facing official entrypoint, eligibility summary, link to the DROP service, data-handling overview and current processing timeline. Checked 8 November 2026.
+Consumer-facing official entrypoint, eligibility summary, link to the DROP service, data-handling overview, November 2026 initial-cycle update, recurring 45-day broker cycle and possible 90-day status-update window. Checked 8 November 2026.
 
 <a id="s31"></a>
 ### S31 — CalPrivacy: How DROP works
 https://privacy.ca.gov/drop/how-drop-works/
 
-Consumer guidance for eligibility, profile creation, submission, DROP ID handling, status meanings, exceptions and ongoing processing. Checked 8 November 2026.
+Consumer guidance for eligibility, profile creation, submission, DROP ID handling, status meanings, the 90-day status-reporting window and recurring 45-day re-check/deletion cycle. Checked 8 November 2026.
 
 <a id="s32"></a>
 ### S32 — CalPrivacy: Help with DROP

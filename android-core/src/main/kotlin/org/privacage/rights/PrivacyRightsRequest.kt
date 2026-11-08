@@ -98,7 +98,7 @@ object PrivacyRightsRequestBuilder {
             RightsJurisdiction.CALIFORNIA_CCPA ->
                 "The CPPA states a 45-calendar-day response period for covered requests, with up to another 45 days when necessary and after notice. Its FAQ also describes confirmation within 10 business days for specified request types. Verify eligibility, exceptions and current rules."
             RightsJurisdiction.CALIFORNIA_DROP ->
-                "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. The CPPA says registered brokers must access the mechanism at least every 45 days beginning 1 August 2026; that is not a guaranteed individual response deadline."
+                "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
         }
         val message = when (jurisdiction) {
             RightsJurisdiction.UK_GDPR -> buildString {
