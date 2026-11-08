@@ -246,6 +246,12 @@ https://privacy.ca.gov/drop/how-drop-works/
 
 Consumer guidance for eligibility, profile creation, submission, DROP ID handling, status meanings, exceptions and ongoing processing. Checked 8 November 2026.
 
+<a id="s32"></a>
+### S32 — CalPrivacy: Help with DROP
+https://privacy.ca.gov/drop/help-with-drop/
+
+Official consumer help covering residency verification, privacy handling, the instruction not to share a DROP ID, status-update timing and requests made on another person's behalf. Checked 8 November 2026.
+
 ## Evidence management note
 
 For a public release, the project should maintain machine-readable source metadata where helpful: `source_id`, title, owner, URL, source type, publication/effective date, last_checked, claims_supported, reviewer and archived snapshot/hash if lawful. Don't copy full legal documents or third-party articles into the repository when a link and concise analysis suffice.
