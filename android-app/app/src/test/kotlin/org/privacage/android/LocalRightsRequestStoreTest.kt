@@ -150,7 +150,7 @@ class LocalRightsRequestStoreTest {
         val dropDeadline = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
-            guidanceUrl = "https://cppa.ca.gov/data_brokers/"
+            guidanceUrl = "https://privacy.ca.gov/drop/"
         ).replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
 
         assertThrows(IllegalStateException::class.java) {
