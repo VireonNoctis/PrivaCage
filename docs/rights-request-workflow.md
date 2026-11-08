@@ -1,6 +1,6 @@
 # Privacy-rights request assistant: behavior and legal boundaries
 
-**Source review date:** 27 October 2026  
+**Source review date:** 8 November 2026  
 **Status:** local draft/tracker implementation; not legal advice or a submission service.
 
 ## What the Android workflow does
@@ -34,9 +34,11 @@ Official sources:
 
 ### California DROP — user-guided only
 
-The assistant opens official CPPA data-broker guidance and provides a checklist for the user to complete the official service themselves. PrivaCage does not directly submit, query, scrape or automate the DROP service. The official materials say that beginning 1 August 2026 data brokers must access the platform at least once every 45 days; this is a broker operational duty, not a promise that a specific user's request will be completed within 45 days.
+The assistant now opens the **consumer-facing CalPrivacy DROP landing page** at [privacy.ca.gov/drop](https://privacy.ca.gov/drop/), which links directly to the official consumer service. The previous `cppa.ca.gov/data_brokers/` URL is a broker-facing information page, not the consumer entrypoint. The checklist states that DROP eligibility is limited to California residents and asks the user to review the official identity-verification and data-handling notices before entering any information. The user chooses what to provide on the official site; PrivaCage does not collect, submit, query, scrape or automate the service.
 
-Official source: [CPPA — Information for data brokers / DROP](https://www.cppa.ca.gov/data_brokers/).
+CalPrivacy's consumer guidance says data brokers began processing requests on 1 August 2026, must access DROP at least once every 45 days, and may take up to 90 days for status updates to appear. The 45-day cycle is a broker operational duty, not an individual response deadline; the 90-day statement is the agency's current status-update guidance, not a guarantee that every broker will report a particular outcome by that date. The user should check their own DROP profile for current status.
+
+Official sources: [CalPrivacy — DROP landing page](https://privacy.ca.gov/drop/) and [How DROP works](https://privacy.ca.gov/drop/how-drop-works/).
 
 ## Local tracker integrity
 
