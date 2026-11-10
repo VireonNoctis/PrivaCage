@@ -45,6 +45,36 @@ internal object AppPermissionAudit {
             )
         }
 
+    /**
+     * Returns null when Android cannot resolve the declared permission. Unknown metadata is
+     * not evidence that the permission is non-dangerous.
+     */
+    internal fun isDangerousPermission(readProtectionLevel: () -> Int): Boolean? =
+        try {
+            val protectionLevel = readProtectionLevel()
+            (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
+                PermissionInfo.PROTECTION_DANGEROUS
+        } catch (exception: PackageManager.NameNotFoundException) {
+            null
+        } catch (exception: SecurityException) {
+            null
+        }
+
+    /** Returns null when Android does not expose the matching grant flag. */
+    internal fun requestedPermissionGrantState(flags: IntArray?, index: Int): Boolean? =
+        flags?.getOrNull(index)?.let { permissionFlags ->
+            (permissionFlags and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+        }
+
+    internal fun isCompleteScan(
+        skippedPackages: Int,
+        unavailablePermissionClassifications: Int,
+        unavailableGrantStates: Int
+    ): Boolean =
+        skippedPackages == 0 &&
+            unavailablePermissionClassifications == 0 &&
+            unavailableGrantStates == 0
+
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
@@ -86,6 +116,8 @@ internal object AppPermissionAudit {
 
         var inspected = 0
         var skipped = 0
+        var unavailablePermissionClassifications = 0
+        var unavailableGrantStates = 0
         val rows = mutableListOf<String>()
         val labelsByPackage = mutableMapOf<String, String>()
         val observedPermissions = linkedMapOf<String, Map<String, Boolean>>()
@@ -119,19 +151,21 @@ internal object AppPermissionAudit {
             val perPackage = linkedMapOf<String, Boolean>()
             val sensitive = mutableListOf<String>()
             requested.forEachIndexed { index, permission ->
-                val isDangerous = try {
-                    val info = packageManager.getPermissionInfo(permission, 0)
-                    (info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
-                        PermissionInfo.PROTECTION_DANGEROUS
-                } catch (exception: PackageManager.NameNotFoundException) {
-                    false
-                } catch (exception: SecurityException) {
-                    false
+                val isDangerous = isDangerousPermission {
+                    packageManager.getPermissionInfo(permission, 0).protectionLevel
+                }
+                if (isDangerous == null) {
+                    unavailablePermissionClassifications++
+                    return@forEachIndexed
                 }
                 if (!isDangerous) return@forEachIndexed
 
-                val granted = flags?.getOrNull(index)
-                    ?.and(PackageInfo.REQUESTED_PERMISSION_GRANTED) == PackageInfo.REQUESTED_PERMISSION_GRANTED
+                val granted = requestedPermissionGrantState(flags, index)
+                if (granted == null) {
+                    unavailableGrantStates++
+                    sensitive += permission.substringAfterLast('.') + " — GRANT STATE UNAVAILABLE"
+                    return@forEachIndexed
+                }
                 perPackage[permission] = granted
                 sensitive += permission.substringAfterLast('.') +
                     if (granted) " — GRANTED" else " — NOT CURRENTLY GRANTED"
@@ -150,7 +184,11 @@ internal object AppPermissionAudit {
             .append("; packages skipped: ").append(skipped).append("\n\n")
 
         if (rows.isEmpty()) {
-            output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
+            if (unavailablePermissionClassifications == 0) {
+                output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
+            } else {
+                output.append("No dangerous runtime permissions could be confirmed because some declared permissions could not be classified.")
+            }
         } else {
             rows.take(MAX_APPS_IN_REPORT).forEachIndexed { index, row ->
                 if (index > 0) output.append("\n\n")
@@ -162,12 +200,32 @@ internal object AppPermissionAudit {
             }
         }
 
+        if (unavailablePermissionClassifications > 0) {
+            output.append("\n\nPermission classification unavailable for ")
+                .append(unavailablePermissionClassifications)
+                .append(" declared permission(s); these were not treated as non-dangerous.")
+        }
+        if (unavailableGrantStates > 0) {
+            output.append("\nGrant state unavailable for ")
+                .append(unavailableGrantStates)
+                .append(" declared dangerous permission(s); these were not treated as denied.")
+        }
+
         val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
         val scanCapturedAt = Instant.now()
         output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
-        if (skipped > 0) {
+        if (!isCompleteScan(skipped, unavailablePermissionClassifications, unavailableGrantStates)) {
+            val incompleteReasons = mutableListOf<String>()
+            if (skipped > 0) incompleteReasons += "$skipped package(s) could not be inspected"
+            if (unavailablePermissionClassifications > 0) {
+                incompleteReasons += "$unavailablePermissionClassifications permission declaration(s) could not be classified"
+            }
+            if (unavailableGrantStates > 0) {
+                incompleteReasons += "$unavailableGrantStates dangerous permission grant state(s) were unavailable"
+            }
             output.append("Comparison was not run and the saved baseline was not changed because ")
-                .append(skipped).append(" package(s) could not be inspected. This avoids treating an incomplete scan as a real permission change.")
+                .append(incompleteReasons.joinToString("; "))
+                .append(". This avoids treating unknown permission evidence as a real change.")
         } else {
             val baselineRead = readBaselinePreference {
                 AndroidSensitivePreferenceVault.read(
