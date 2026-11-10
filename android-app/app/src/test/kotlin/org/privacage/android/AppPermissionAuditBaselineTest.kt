@@ -1,6 +1,11 @@
 package org.privacage.android
 
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,6 +13,55 @@ import java.io.IOException
 import java.time.Instant
 
 class AppPermissionAuditBaselineTest {
+    @Test
+    fun unresolvedPermissionMetadataIsUnknownRatherThanNonDangerous() {
+        assertNull(
+            AppPermissionAudit.isDangerousPermission {
+                throw PackageManager.NameNotFoundException("permission is not known to this system")
+            }
+        )
+        assertNull(
+            AppPermissionAudit.isDangerousPermission {
+                throw SecurityException("permission metadata is not visible")
+            }
+        )
+    }
+
+    @Test
+    fun permissionClassificationUsesTheBaseProtectionLevel() {
+        assertEquals(
+            true,
+            AppPermissionAudit.isDangerousPermission { PermissionInfo.PROTECTION_DANGEROUS }
+        )
+        assertEquals(
+            false,
+            AppPermissionAudit.isDangerousPermission { PermissionInfo.PROTECTION_NORMAL }
+        )
+    }
+
+    @Test
+    fun missingOrMisalignedGrantFlagsRemainUnknown() {
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(null, 0))
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(intArrayOf(), 0))
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(intArrayOf(0), 1))
+        assertEquals(
+            true,
+            AppPermissionAudit.requestedPermissionGrantState(
+                intArrayOf(PackageInfo.REQUESTED_PERMISSION_GRANTED),
+                0
+            )
+        )
+        assertEquals(false, AppPermissionAudit.requestedPermissionGrantState(intArrayOf(0), 0))
+    }
+
+    @Test
+    fun anyMissingPermissionEvidenceBlocksBaselineComparison() {
+        assertTrue(AppPermissionAudit.isCompleteScan(0, 0, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(1, 0, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(0, 1, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(0, 0, 1))
+    }
+
     @Test
     fun missingAndValidPreferenceValuesAreNotClassifiedAsCorrupt() {
         val missing = AppPermissionAudit.readBaselinePreference { null }
