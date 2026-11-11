@@ -63,6 +63,33 @@ class AppPermissionAuditBaselineTest {
     }
 
     @Test
+    fun launcherInventoryMustFitTheSupportedBaselinePackageLimit() {
+        assertTrue(AppPermissionAudit.isWithinBaselinePackageLimit(2_000))
+        assertFalse(AppPermissionAudit.isWithinBaselinePackageLimit(2_001))
+        assertFalse(AppPermissionAudit.isWithinBaselinePackageLimit(-1))
+    }
+
+    @Test
+    fun baselineMustBeEncodableBeforeComparisonCanProceed() {
+        val validSnapshot = org.privacage.audit.PermissionGrantSnapshot(
+            mapOf("com.example.app" to mapOf("android.permission.CAMERA" to true))
+        )
+        val validPreparation = AppPermissionAudit.prepareBaselineForComparison(validSnapshot, Instant.EPOCH)
+        assertTrue(validPreparation.encoded.orEmpty().isNotBlank())
+        assertEquals(null, validPreparation.failureReason)
+        assertTrue(AppPermissionAudit.canCompareBaseline(0, 0, 0, validPreparation))
+
+        val tooManyPackages = org.privacage.audit.PermissionGrantSnapshot(
+            (0..2_000).associate { "org.example.app$it" to emptyMap() }
+        )
+        val rejectedPreparation = AppPermissionAudit.prepareBaselineForComparison(tooManyPackages, Instant.EPOCH)
+        assertEquals(null, rejectedPreparation.encoded)
+        assertTrue(rejectedPreparation.failureReason.orEmpty().contains("package count"))
+        assertFalse(AppPermissionAudit.canCompareBaseline(0, 0, 0, rejectedPreparation))
+        assertFalse(AppPermissionAudit.canCompareBaseline(1, 0, 0, validPreparation))
+    }
+
+    @Test
     fun missingAndValidPreferenceValuesAreNotClassifiedAsCorrupt() {
         val missing = AppPermissionAudit.readBaselinePreference { null }
         assertEquals(null, missing.value)

@@ -75,6 +75,33 @@ internal object AppPermissionAudit {
             unavailablePermissionClassifications == 0 &&
             unavailableGrantStates == 0
 
+    internal data class BaselinePreparation(
+        val encoded: String?,
+        val failureReason: String?
+    )
+
+    internal fun prepareBaselineForComparison(
+        snapshot: PermissionGrantSnapshot,
+        capturedAt: Instant
+    ): BaselinePreparation =
+        try {
+            BaselinePreparation(encoded = encodeBaseline(snapshot, capturedAt), failureReason = null)
+        } catch (exception: IOException) {
+            BaselinePreparation(
+                encoded = null,
+                failureReason = exception.message ?: "The snapshot exceeds supported baseline limits."
+            )
+        }
+
+    internal fun canCompareBaseline(
+        skippedPackages: Int,
+        unavailablePermissionClassifications: Int,
+        unavailableGrantStates: Int,
+        baselinePreparation: BaselinePreparation
+    ): Boolean =
+        isCompleteScan(skippedPackages, unavailablePermissionClassifications, unavailableGrantStates) &&
+            baselinePreparation.encoded != null
+
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
@@ -86,6 +113,10 @@ internal object AppPermissionAudit {
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
     private const val MAX_BASELINE_PACKAGES = 2_000
     private const val MAX_PERMISSIONS_PER_PACKAGE = 256
+
+    internal fun isWithinBaselinePackageLimit(packageCount: Int): Boolean =
+        packageCount in 0..MAX_BASELINE_PACKAGES
+
     private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
     private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
 
@@ -112,6 +143,9 @@ internal object AppPermissionAudit {
 
         if (packageNames.isEmpty()) {
             return "Android returned no launcher-visible applications. This may be a restricted profile or OEM-specific package-visibility behavior."
+        }
+        if (!isWithinBaselinePackageLimit(packageNames.size)) {
+            return "Permission audit was not run because Android exposed ${packageNames.size} launcher-visible applications, above the supported limit of $MAX_BASELINE_PACKAGES. The existing encrypted baseline was preserved; no comparison or replacement was attempted."
         }
 
         var inspected = 0
@@ -213,8 +247,16 @@ internal object AppPermissionAudit {
 
         val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
         val scanCapturedAt = Instant.now()
+        val scanEvidenceComplete = isCompleteScan(skipped, unavailablePermissionClassifications, unavailableGrantStates)
+        val baselinePreparation = prepareBaselineForComparison(currentSnapshot, scanCapturedAt)
         output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
-        if (!isCompleteScan(skipped, unavailablePermissionClassifications, unavailableGrantStates)) {
+        if (!canCompareBaseline(
+                skipped,
+                unavailablePermissionClassifications,
+                unavailableGrantStates,
+                baselinePreparation
+            )
+        ) {
             val incompleteReasons = mutableListOf<String>()
             if (skipped > 0) incompleteReasons += "$skipped package(s) could not be inspected"
             if (unavailablePermissionClassifications > 0) {
@@ -223,10 +265,16 @@ internal object AppPermissionAudit {
             if (unavailableGrantStates > 0) {
                 incompleteReasons += "$unavailableGrantStates dangerous permission grant state(s) were unavailable"
             }
+            if (scanEvidenceComplete && baselinePreparation.encoded == null) {
+                incompleteReasons += "the current snapshot exceeds supported encrypted-baseline limits: " +
+                    (baselinePreparation.failureReason ?: "encoding was unavailable")
+            }
             output.append("Comparison was not run and the saved baseline was not changed because ")
                 .append(incompleteReasons.joinToString("; "))
                 .append(". This avoids treating unknown permission evidence as a real change.")
         } else {
+            val encodedBaseline = baselinePreparation.encoded
+                ?: throw IOException("Baseline comparison was allowed without an encoded snapshot.")
             val baselineRead = readBaselinePreference {
                 AndroidSensitivePreferenceVault.read(
                     context = context,
@@ -338,7 +386,7 @@ internal object AppPermissionAudit {
                         encryptedKey = KEY_BASELINE_ENCRYPTED,
                         keyAlias = KEY_ALIAS,
                         aadLabel = AAD_LABEL,
-                        plaintext = encodeBaseline(currentSnapshot, scanCapturedAt),
+                        plaintext = encodedBaseline,
                         maximumPlaintextBytes = MAX_BASELINE_BYTES,
                         legacyKeys = setOf(KEY_BASELINE),
                         validateValue = { decodeBaselineRecord(it) }
