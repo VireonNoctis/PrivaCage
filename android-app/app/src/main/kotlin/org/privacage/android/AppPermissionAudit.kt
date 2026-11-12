@@ -69,11 +69,13 @@ internal object AppPermissionAudit {
     internal fun isCompleteScan(
         skippedPackages: Int,
         unavailablePermissionClassifications: Int,
-        unavailableGrantStates: Int
+        unavailableGrantStates: Int,
+        incompletePermissionInventories: Int = 0
     ): Boolean =
         skippedPackages == 0 &&
             unavailablePermissionClassifications == 0 &&
-            unavailableGrantStates == 0
+            unavailableGrantStates == 0 &&
+            incompletePermissionInventories == 0
 
     internal data class BaselinePreparation(
         val encoded: String?,
@@ -97,10 +99,15 @@ internal object AppPermissionAudit {
         skippedPackages: Int,
         unavailablePermissionClassifications: Int,
         unavailableGrantStates: Int,
-        baselinePreparation: BaselinePreparation
+        baselinePreparation: BaselinePreparation,
+        incompletePermissionInventories: Int = 0
     ): Boolean =
-        isCompleteScan(skippedPackages, unavailablePermissionClassifications, unavailableGrantStates) &&
-            baselinePreparation.encoded != null
+        isCompleteScan(
+            skippedPackages,
+            unavailablePermissionClassifications,
+            unavailableGrantStates,
+            incompletePermissionInventories
+        ) && baselinePreparation.encoded != null
 
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
@@ -113,9 +120,19 @@ internal object AppPermissionAudit {
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
     private const val MAX_BASELINE_PACKAGES = 2_000
     private const val MAX_PERMISSIONS_PER_PACKAGE = 256
+    private const val MAX_DECLARED_PERMISSIONS_PER_PACKAGE = 512
+    private const val MAX_DECLARED_PERMISSIONS_PER_SCAN = 50_000
 
     internal fun isWithinBaselinePackageLimit(packageCount: Int): Boolean =
         packageCount in 0..MAX_BASELINE_PACKAGES
+
+    internal fun permissionDeclarationsFitLimits(
+        packageDeclarationCount: Int,
+        totalDeclarationCount: Int
+    ): Boolean =
+        packageDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_PACKAGE &&
+            totalDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_SCAN &&
+            packageDeclarationCount <= MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclarationCount
 
     private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
     private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
@@ -152,11 +169,14 @@ internal object AppPermissionAudit {
         var skipped = 0
         var unavailablePermissionClassifications = 0
         var unavailableGrantStates = 0
+        var oversizedPermissionPackages = 0
+        var totalDeclaredPermissions = 0
+        var permissionScanStoppedAtTotalLimit = false
         val rows = mutableListOf<String>()
         val labelsByPackage = mutableMapOf<String, String>()
         val observedPermissions = linkedMapOf<String, Map<String, Boolean>>()
 
-        for (packageName in packageNames) {
+        for ((packageIndex, packageName) in packageNames.withIndex()) {
             val packageInfo = try {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
             } catch (exception: PackageManager.NameNotFoundException) {
@@ -180,6 +200,15 @@ internal object AppPermissionAudit {
                 observedPermissions[packageName] = emptyMap()
                 continue
             }
+            if (requested.size > MAX_DECLARED_PERMISSIONS_PER_PACKAGE) {
+                oversizedPermissionPackages++
+                continue
+            }
+            if (!permissionDeclarationsFitLimits(requested.size, totalDeclaredPermissions)) {
+                permissionScanStoppedAtTotalLimit = true
+                break
+            }
+            totalDeclaredPermissions += requested.size
 
             val flags = packageInfo.requestedPermissionsFlags
             val perPackage = linkedMapOf<String, Boolean>()
@@ -218,10 +247,10 @@ internal object AppPermissionAudit {
             .append("; packages skipped: ").append(skipped).append("\n\n")
 
         if (rows.isEmpty()) {
-            if (unavailablePermissionClassifications == 0) {
-                output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
+            if (unavailablePermissionClassifications > 0 || oversizedPermissionPackages > 0 || permissionScanStoppedAtTotalLimit) {
+                output.append("No dangerous-permission conclusion is available for the full launcher inventory because some declarations could not be fully inspected.")
             } else {
-                output.append("No dangerous runtime permissions could be confirmed because some declared permissions could not be classified.")
+                output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
             }
         } else {
             rows.take(MAX_APPS_IN_REPORT).forEachIndexed { index, row ->
@@ -245,16 +274,36 @@ internal object AppPermissionAudit {
                 .append(" declared dangerous permission(s); these were not treated as denied.")
         }
 
+        if (oversizedPermissionPackages > 0) {
+            output.append("\n\nPermission declarations were not inspected for ")
+                .append(oversizedPermissionPackages)
+                .append(" app(s) because each exceeded the ")
+                .append(MAX_DECLARED_PERMISSIONS_PER_PACKAGE)
+                .append("-declaration per-app safety limit.")
+        }
+        if (permissionScanStoppedAtTotalLimit) {
+            output.append("\n\nPermission inventory stopped at the ")
+                .append(MAX_DECLARED_PERMISSIONS_PER_SCAN)
+                .append("-declaration scan limit; remaining launcher-visible apps were not inspected.")
+        }
+
+        val incompletePermissionInventories = oversizedPermissionPackages + if (permissionScanStoppedAtTotalLimit) 1 else 0
         val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
         val scanCapturedAt = Instant.now()
-        val scanEvidenceComplete = isCompleteScan(skipped, unavailablePermissionClassifications, unavailableGrantStates)
+        val scanEvidenceComplete = isCompleteScan(
+            skipped,
+            unavailablePermissionClassifications,
+            unavailableGrantStates,
+            incompletePermissionInventories
+        )
         val baselinePreparation = prepareBaselineForComparison(currentSnapshot, scanCapturedAt)
         output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
         if (!canCompareBaseline(
                 skipped,
                 unavailablePermissionClassifications,
                 unavailableGrantStates,
-                baselinePreparation
+                baselinePreparation,
+                incompletePermissionInventories
             )
         ) {
             val incompleteReasons = mutableListOf<String>()
@@ -264,6 +313,9 @@ internal object AppPermissionAudit {
             }
             if (unavailableGrantStates > 0) {
                 incompleteReasons += "$unavailableGrantStates dangerous permission grant state(s) were unavailable"
+            }
+            if (incompletePermissionInventories > 0) {
+                incompleteReasons += "one or more permission inventories exceeded the scan safety limits"
             }
             if (scanEvidenceComplete && baselinePreparation.encoded == null) {
                 incompleteReasons += "the current snapshot exceeds supported encrypted-baseline limits: " +
