@@ -187,7 +187,6 @@ internal object AppPermissionAudit {
                 continue
             }
 
-            inspected++
             val label = try {
                 packageInfo.applicationInfo?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName
             } catch (exception: RuntimeException) {
@@ -197,11 +196,17 @@ internal object AppPermissionAudit {
 
             val requested = packageInfo.requestedPermissions
             if (requested == null) {
+                inspected++
                 observedPermissions[packageName] = emptyMap()
                 continue
             }
             if (requested.size > MAX_DECLARED_PERMISSIONS_PER_PACKAGE) {
                 oversizedPermissionPackages++
+                if (requested.size > MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclaredPermissions) {
+                    permissionScanStoppedAtTotalLimit = true
+                    break
+                }
+                totalDeclaredPermissions += requested.size
                 continue
             }
             if (!permissionDeclarationsFitLimits(requested.size, totalDeclaredPermissions)) {
@@ -209,6 +214,7 @@ internal object AppPermissionAudit {
                 break
             }
             totalDeclaredPermissions += requested.size
+            inspected++
 
             val flags = packageInfo.requestedPermissionsFlags
             val perPackage = linkedMapOf<String, Boolean>()
