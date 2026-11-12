@@ -5,13 +5,13 @@ This file preserves the broad product requirements and long-term direction for P
 
 > **Scope rule:** stock Android and iOS apps cannot universally inspect other apps' system calls, defeat encrypted DNS/tunnels, or force-disable privileged OS services. Root/system builds, managed-device APIs, custom operating systems, and approved iOS NetworkExtension entitlements are separate product tiers. A control that depends on unavailable authority stays clearly marked as blocked or platform-specific; it must never simulate success.
 
-## Current implementation status (9 November 2026)
+## Current implementation status (12 November 2026)
 
 | Target capability | Current state | What is real today |
 |---|---|---|
 | Live activity log | **Partial; broad cross-app activity monitoring is not implemented.** | Optional, encrypted, bounded local DNS history for the events PrivaCage's DNS path handles. No universal syscall, sensor, clipboard, or app-API interception. |
 | Pre-install privacy label | **Partial implementation.** | User-selected APK static inspection/diff: package/version/target SDK, requested permissions, exported components, hashes, signer metadata/signature integrity, and bounded DEX string matches. No execution or universal destination discovery. |
-| Per-app permission toggles | **Not implemented as described.** | Launcher-visible permission declaration/grant audit and local drift comparison; changes to other apps remain OS-controlled. |
+| Per-app permission toggles | **Not implemented as described.** | Launcher-visible permission declaration/grant audit and local drift comparison; changes to other apps remain OS-controlled. On the open PR #26 branch, scanning is additionally capped at 512 declared permissions per package and 50,000 per scan; any cap hit blocks comparison and baseline replacement pending exact-head CI. |
 | Per-app network kill switch | **Not implemented as described.** | DNS-only VPN routes supported UDP-DNS packets addressed to its virtual IPv4/IPv6 DNS endpoints. It is not a general egress VPN or firewall. |
 | Tracker database | **Implemented foundation; coverage is deliberately limited.** | Bundled, source-linked catalogue with 25 indicator records and explicit user-reviewed import. It is not a continuously updated or comprehensive global list. |
 | Data deletion requests | **Local draft workflow only.** | UK GDPR/California CCPA draft generation and a user-guided DROP checklist; requests are not sent automatically and company-side deletion is not technically verified. Legal review is a release gate. |
