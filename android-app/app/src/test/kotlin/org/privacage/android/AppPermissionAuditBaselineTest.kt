@@ -79,6 +79,10 @@ class AppPermissionAuditBaselineTest {
         assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(1, 50_000))
         assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(-1, 0))
         assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(1, -1))
+
+        assertTrue(AppPermissionAudit.totalPermissionDeclarationsFitLimit(513, 49_487))
+        assertFalse(AppPermissionAudit.totalPermissionDeclarationsFitLimit(513, 49_488))
+        assertFalse(AppPermissionAudit.totalPermissionDeclarationsFitLimit(50_001, 0))
     }
 
     @Test
