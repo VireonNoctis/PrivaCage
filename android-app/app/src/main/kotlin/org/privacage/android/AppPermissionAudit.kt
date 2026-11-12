@@ -176,7 +176,7 @@ internal object AppPermissionAudit {
         val labelsByPackage = mutableMapOf<String, String>()
         val observedPermissions = linkedMapOf<String, Map<String, Boolean>>()
 
-        for ((packageIndex, packageName) in packageNames.withIndex()) {
+        for (packageName in packageNames) {
             val packageInfo = try {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
             } catch (exception: PackageManager.NameNotFoundException) {
