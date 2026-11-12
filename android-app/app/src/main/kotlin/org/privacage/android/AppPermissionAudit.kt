@@ -247,7 +247,7 @@ internal object AppPermissionAudit {
             .append("; packages skipped: ").append(skipped).append("\n\n")
 
         if (rows.isEmpty()) {
-            if (unavailablePermissionClassifications > 0 || oversizedPermissionPackages > 0 || permissionScanStoppedAtTotalLimit) {
+            if (skipped > 0 || unavailablePermissionClassifications > 0 || oversizedPermissionPackages > 0 || permissionScanStoppedAtTotalLimit) {
                 output.append("No dangerous-permission conclusion is available for the full launcher inventory because some declarations could not be fully inspected.")
             } else {
                 output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
@@ -296,7 +296,11 @@ internal object AppPermissionAudit {
             unavailableGrantStates,
             incompletePermissionInventories
         )
-        val baselinePreparation = prepareBaselineForComparison(currentSnapshot, scanCapturedAt)
+        val baselinePreparation = if (scanEvidenceComplete) {
+            prepareBaselineForComparison(currentSnapshot, scanCapturedAt)
+        } else {
+            BaselinePreparation(encoded = null, failureReason = null)
+        }
         output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
         if (!canCompareBaseline(
                 skipped,
