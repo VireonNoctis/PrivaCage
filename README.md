@@ -157,7 +157,7 @@ It does not install or execute the APK, upload it, or dynamically observe its be
 
 ### Permission audit
 
-The local audit lists dangerous permissions declared by launcher-visible apps and Android's exposed grant flags. A local baseline can compare subsequent complete scans and report newly requested permissions, newly granted permissions, revoked grants, and permissions no longer requested. Packages that disappear from the scan are reported separately; their disappearance is not misrepresented as permission revocation.
+The local audit lists dangerous permissions declared by launcher-visible apps and Android's exposed grant flags. A local baseline can compare subsequent complete scans and report newly requested permissions, newly granted permissions, revoked grants, and permissions no longer requested. Packages that disappear from the scan are reported separately; their disappearance is not misrepresented as permission revocation. Processing is bounded to 512 declared permissions per package and 50,000 declarations per scan. If either cap is reached, the inventory is marked incomplete and the existing encrypted baseline is not compared or replaced. The baseline itself remains bounded to 4 MiB, 2,000 packages and 256 dangerous permissions per package.
 
 The audit does not use `QUERY_ALL_PACKAGES` to claim a complete device inventory. Android package visibility, work profiles, manufacturer services and privileged/headless components can limit what is visible. Permission declarations do not prove live camera, microphone or sensor use, and the grant inventory is not a network-traffic monitor.
 
