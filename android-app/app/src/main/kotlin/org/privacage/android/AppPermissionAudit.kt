@@ -126,13 +126,20 @@ internal object AppPermissionAudit {
     internal fun isWithinBaselinePackageLimit(packageCount: Int): Boolean =
         packageCount in 0..MAX_BASELINE_PACKAGES
 
+    internal fun totalPermissionDeclarationsFitLimit(
+        packageDeclarationCount: Int,
+        totalDeclarationCount: Int
+    ): Boolean =
+        packageDeclarationCount >= 0 &&
+            totalDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_SCAN &&
+            packageDeclarationCount <= MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclarationCount
+
     internal fun permissionDeclarationsFitLimits(
         packageDeclarationCount: Int,
         totalDeclarationCount: Int
     ): Boolean =
         packageDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_PACKAGE &&
-            totalDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_SCAN &&
-            packageDeclarationCount <= MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclarationCount
+            totalPermissionDeclarationsFitLimit(packageDeclarationCount, totalDeclarationCount)
 
     private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
     private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
@@ -202,7 +209,7 @@ internal object AppPermissionAudit {
             }
             if (requested.size > MAX_DECLARED_PERMISSIONS_PER_PACKAGE) {
                 oversizedPermissionPackages++
-                if (requested.size > MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclaredPermissions) {
+                if (!totalPermissionDeclarationsFitLimit(requested.size, totalDeclaredPermissions)) {
                     permissionScanStoppedAtTotalLimit = true
                     break
                 }
