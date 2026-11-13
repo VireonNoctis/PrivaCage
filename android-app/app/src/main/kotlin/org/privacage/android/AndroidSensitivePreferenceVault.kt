@@ -241,6 +241,30 @@ internal object AndroidSensitivePreferenceVault {
         return legacy
     }
 
+    /** Authenticate and schema-check the current value before any replacement write. */
+    internal fun validateExistingEncryptedValue(
+        envelope: String,
+        key: SecretKey,
+        aadLabel: String,
+        maximumPlaintextBytes: Int,
+        validateValue: (String) -> Unit
+    ) {
+        val existingPlaintext = SensitivePreferenceEnvelope.decrypt(
+            envelope,
+            key,
+            aadLabel,
+            maximumPlaintextBytes
+        )
+        try {
+            validateValue(existingPlaintext)
+        } catch (exception: Exception) {
+            throw IOException(
+                "Existing encrypted local preference failed validation; stored ciphertext was preserved.",
+                exception
+            )
+        }
+    }
+
     @Synchronized
     @Throws(IOException::class)
     fun write(
@@ -260,10 +284,18 @@ internal object AndroidSensitivePreferenceVault {
             throw IOException("Local preference was not saved because validation failed.", exception)
         }
         val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
-        val key = if (preferences.contains(encryptedKey)) {
-            loadExistingKey(keyAlias)
-        } else {
-            getOrCreateKey(keyAlias)
+        val hasExistingEnvelope = preferences.contains(encryptedKey)
+        val key = if (hasExistingEnvelope) loadExistingKey(keyAlias) else getOrCreateKey(keyAlias)
+        if (hasExistingEnvelope) {
+            val existingEnvelope = readString(preferences, encryptedKey)
+                ?: throw IOException("The encrypted local preference is missing its value; stored data was preserved.")
+            validateExistingEncryptedValue(
+                existingEnvelope,
+                key,
+                aadLabel,
+                maximumPlaintextBytes,
+                validateValue
+            )
         }
         val envelope = SensitivePreferenceEnvelope.encrypt(
             plaintext,

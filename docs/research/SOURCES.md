@@ -78,6 +78,13 @@ https://developer.android.com/reference/java/security/ProviderException
 
 Checked 13 November 2026. Android Keystore uses the standard Java `KeyStore` and `KeyGenerator` APIs. Key-access failures are represented by `GeneralSecurityException` subclasses; JCA provider faults can also surface as `ProviderException`, which is a runtime exception. PrivaCage converts only these expected key-access/provider failures into explicit I/O errors so encrypted-store callers can preserve existing ciphertext and report the failure. Unrelated runtime/programming errors remain visible.
 
+<a id="s09k"></a>
+### S09k — NIST SP 800-38D: GCM authenticated encryption and revision status
+https://csrc.nist.gov/pubs/sp/800/38/d/final
+https://csrc.nist.gov/News/2026/gcm-and-gmac-block-cipher-modes-of-operation
+
+SP 800-38D (November 2007) specifies GCM as authenticated encryption with associated data; authenticated decryption is required before an existing envelope is trusted. Checked 13 November 2026. NIST's second pre-draft revision notice was published 1 June 2026, with comments due 31 July 2026; the 2007 final remains the final publication listed by NIST at this check. Recheck the revision before release. This PrivaCage change does not alter GCM parameters, nonce generation, or tag length.
+
 <a id="s09c"></a>
 ### S09c — Android Developers: `SharedPreferences.Editor` API
 https://developer.android.com/reference/android/content/SharedPreferences.Editor
