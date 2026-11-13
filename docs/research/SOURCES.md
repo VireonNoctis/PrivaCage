@@ -70,6 +70,14 @@ https://developer.android.com/privacy-and-security/keystore
 
 Documents key-material protection, non-exportable Keystore keys, restrictions on permitted cryptographic operations, and available authentication controls. Hardware-backed protection varies by device and implementation; do not describe every generated key as hardware-backed.
 
+<a id="s09j"></a>
+### S09j — Android Developers: Android Keystore and Java security exceptions
+https://developer.android.com/privacy-and-security/keystore
+https://developer.android.com/reference/java/security/GeneralSecurityException
+https://developer.android.com/reference/java/security/ProviderException
+
+Checked 13 November 2026. Android Keystore uses the standard Java `KeyStore` and `KeyGenerator` APIs. Key-access failures are represented by `GeneralSecurityException` subclasses; JCA provider faults can also surface as `ProviderException`, which is a runtime exception. PrivaCage converts only these expected key-access/provider failures into explicit I/O errors so encrypted-store callers can preserve existing ciphertext and report the failure. Unrelated runtime/programming errors remain visible.
+
 <a id="s09c"></a>
 ### S09c — Android Developers: `SharedPreferences.Editor` API
 https://developer.android.com/reference/android/content/SharedPreferences.Editor

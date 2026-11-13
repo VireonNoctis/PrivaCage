@@ -7,12 +7,61 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.time.Instant
 
 class AppPermissionAuditBaselineTest {
+    @Test
+    fun keystoreSecurityFailuresBecomeUnreadableBaselineErrorsWithoutDroppingCause() {
+        val cause = GeneralSecurityException("key store could not load the existing key")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped.cause)
+
+        val result = AppPermissionAudit.readBaselinePreference { throw wrapped }
+        assertNull(result.value)
+        assertTrue(result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
+    fun keystoreProviderFailuresBecomeUnreadableBaselineErrors() {
+        val cause = ProviderException("provider unavailable")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped.cause)
+
+        val result = AppPermissionAudit.readBaselinePreference { throw wrapped }
+        assertNull(result.value)
+        assertTrue(result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
+    fun keystoreFailureBoundaryPreservesExistingIoExceptions() {
+        val cause = IOException("the existing key is missing")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped)
+    }
+
+    @Test
+    fun keystoreFailureBoundaryDoesNotHideUnrelatedRuntimeErrors() {
+        assertThrows(IllegalStateException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") {
+                throw IllegalStateException("unexpected programming error")
+            }
+        }
+    }
+
     @Test
     fun unresolvedPermissionMetadataIsUnknownRatherThanNonDangerous() {
         assertNull(
