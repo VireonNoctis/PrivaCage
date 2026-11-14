@@ -1,7 +1,10 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("de.mannodermaus.android-junit")
 }
+
+val dnsPerformanceOnly = providers.gradleProperty("dnsPerformanceOnly").isPresent
 
 android {
     namespace = "org.privacage.android"
@@ -10,7 +13,7 @@ android {
     sourceSets {
         getByName("main") {
             manifest.srcFile("main/AndroidManifest.xml")
-            java.setSrcDirs(listOf("main/kotlin"))
+            java.setSrcDirs(listOf("main"))
             res.setSrcDirs(listOf("main/res"))
             jniLibs.setSrcDirs(listOf("main/jniLibs"))
             assets.srcDir("../../shared/tracker-db")
@@ -18,7 +21,10 @@ android {
             assets.srcDir("../../docs/privacy")
         }
         getByName("test") {
-            java.setSrcDirs(listOf("test/java", "test/kotlin"))
+            java.setSrcDirs(if (dnsPerformanceOnly) listOf("test/dns") else listOf("test"))
+            if (!dnsPerformanceOnly) {
+                java.exclude("benchmark/**")
+            }
         }
     }
 
@@ -55,11 +61,34 @@ kotlin {
     jvmToolchain(17)
 }
 
+junitPlatform {
+    filters {
+        if (dnsPerformanceOnly) {
+            includeTags("performance")
+        } else {
+            excludeTags("performance")
+        }
+    }
+}
+
+val performanceOutput = layout.buildDirectory.file("reports/performance/dns-benchmark.json").get().asFile.absolutePath
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    classpath += files("../../shared/crypto/test-vectors")
+    systemProperty("performance.output", performanceOutput)
+}
+
 dependencies {
-    implementation(project(":android-core"))
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     implementation("com.android.tools.build:apksig:8.10.1")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+
+    testImplementation(platform("org.junit:junit-bom:5.14.1"))
+    testImplementation(kotlin("test-junit5"))
+    testImplementation("org.junit.jupiter:junit-jupiter-api")
+    testImplementation("org.junit.jupiter:junit-jupiter-params")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testImplementation("junit:junit:4.13.2")
-    // Use a real JSON implementation in local JVM tests; android.jar JSON methods are stubs.
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
     testImplementation("org.json:json:20260719")
 }

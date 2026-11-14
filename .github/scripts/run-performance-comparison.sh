@@ -58,7 +58,7 @@ run_dns_benchmark() {
 
     echo "::group::DNS benchmark ($label)"
     gradle --no-daemon --console=plain --rerun-tasks \
-        --project-dir "$workspace/apps/android" :android-core:performanceTest 2>&1 | tee "$log"
+        --project-dir "$workspace/apps/android" -PdnsPerformanceOnly :testDebugUnitTest 2>&1 | tee "$log"
     if [[ ! -s "$report" ]]; then
         echo "DNS benchmark did not create its JSON report: $report" >&2
         exit 1
@@ -71,7 +71,7 @@ run_startup_benchmark() {
     local label="$1"
     local workspace="$2"
     local output="$RESULTS/$label/startup.json"
-    local build_outputs="$workspace/apps/android/test/performance-macrobenchmark/build/outputs/connected_android_test_additional_output"
+    local build_outputs="$workspace/apps/android/test/build/outputs/connected_android_test_additional_output"
     local report=""
 
     echo "::group::Android cold-start benchmark ($label)"
@@ -88,7 +88,7 @@ run_startup_benchmark() {
     fi
     if [[ -z "$report" || ! -s "$report" ]]; then
         echo "Macrobenchmark completed without a benchmarkData.json report for $label." >&2
-        find "$workspace/apps/android/test/performance-macrobenchmark/build/outputs" -type f | head -80 >&2 || true
+        find "$workspace/apps/android/test/build/outputs" -type f | head -80 >&2 || true
         exit 1
     fi
     cp "$report" "$output"

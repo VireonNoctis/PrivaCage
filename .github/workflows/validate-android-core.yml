@@ -3,11 +3,17 @@ name: Validate Android DNS policy core
 on:
   push:
     paths:
-      - "android-core/**"
+      - "apps/android/main/dns/**"
+      - "apps/android/test/dns/**"
+      - "apps/android/build.gradle.kts"
+      - "apps/android/settings.gradle.kts"
       - ".github/workflows/validate-android-core.yml"
   pull_request:
     paths:
-      - "android-core/**"
+      - "apps/android/main/dns/**"
+      - "apps/android/test/dns/**"
+      - "apps/android/build.gradle.kts"
+      - "apps/android/settings.gradle.kts"
       - ".github/workflows/validate-android-core.yml"
   workflow_dispatch:
 
@@ -23,9 +29,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Install compile SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.14"
-      - name: Run unit tests
-        working-directory: android-core
-        run: gradle test
+      - name: Run Android DNS and application unit tests
+        working-directory: apps/android
+        run: gradle --no-daemon :testDebugUnitTest
