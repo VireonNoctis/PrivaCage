@@ -21,10 +21,23 @@ android {
             assets.srcDir("../../docs/privacy")
         }
         getByName("test") {
-            java.setSrcDirs(if (dnsPerformanceOnly) listOf("test/dns") else listOf("test"))
-            if (!dnsPerformanceOnly) {
-                java.exclude("benchmark/**")
-            }
+            java.setSrcDirs(
+                if (dnsPerformanceOnly) {
+                    listOf("test/dns")
+                } else {
+                    listOf(
+                        "test/API",
+                        "test/audit",
+                        "test/crypto",
+                        "test/dns",
+                        "test/interface",
+                        "test/legal",
+                        "test/metadata",
+                        "test/security",
+                        "test/sync"
+                    )
+                }
+            )
         }
     }
 
