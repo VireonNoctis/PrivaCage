@@ -5,17 +5,17 @@ import { describe, expect, it } from 'vitest';
 import { compareAuditCheckpoints, verifyAuditCheckpoint } from './audit-checkpoint';
 
 const sharedCheckpointVector = readFileSync(
-  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1.json'),
+  resolve(process.cwd(), '../../shared/audit/test-vectors/checkpoint-v1.json'),
   'utf8'
 );
 
 const sharedEmptyCheckpointVector = readFileSync(
-  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1-empty.json'),
+  resolve(process.cwd(), '../../shared/audit/test-vectors/checkpoint-v1-empty.json'),
   'utf8'
 );
 
 const sharedMultiEventCheckpointVector = readFileSync(
-  resolve(process.cwd(), '../shared/audit/test-vectors/checkpoint-v1-multi-event.json'),
+  resolve(process.cwd(), '../../shared/audit/test-vectors/checkpoint-v1-multi-event.json'),
   'utf8'
 );
 
