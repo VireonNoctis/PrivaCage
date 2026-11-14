@@ -93,7 +93,7 @@ The Android app and web console use a strict black-and-white interface, monospac
 
 ## Android DNS policy and packet engine
 
-The DNS engine is in `android-core/`; the Android VPN adapter is in `android-app/`.
+The DNS engine is in `android-core/`; the Android VPN adapter is in `apps/android/`.
 
 ### What it does
 
@@ -215,7 +215,7 @@ Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privac
 
 ## Web and iOS
 
-- `web/` is a Svelte 5 + TypeScript static client.
+- `apps/web/` is a Svelte 5 + TypeScript static client.
 - `web-backend/` is a Rust/Axum API serving validated tracker catalogue data.
 - The web client does not invent device events or claim that a tracker was observed on a user's device. Live-device pairing and event ingestion are not yet connected.
 - iOS work must stay within Apple's sandbox and approved NetworkExtension entitlements. An ordinary iOS app cannot scan other apps' executable binaries or override their permissions.
@@ -225,14 +225,16 @@ Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privac
 ```text
 .
 ├── android-core/                  # Kotlin/JVM DNS policy, packet engine and audit models
-├── android-app/                   # Android UI, VPN adapter, APK/permission audit
+├── apps/                           # Platform client applications
+│   ├── android/                   # Android UI, VPN adapter, APK/permission audit
+│   ├── ios/                       # iOS capability boundary; no executable target yet
+│   └── web/                       # Svelte 5 + TypeScript frontend
 ├── shared/
 │   ├── tracker-db/                # canonical evidence-backed tracker catalogue
 │   ├── app-alternatives/          # reviewed alternative-app catalogue
 │   ├── go/pcage-tools/            # tracker and Android privacy validation tools
 │   ├── rust/pcage-crypto/         # portable encrypted profile implementation
 │   └── rust/pcage-sync/           # sync protocol components
-├── web/                           # Svelte 5 + TypeScript frontend
 ├── web-backend/                   # Rust/Axum tracker API
 ├── windows/pcage-audit/           # Go auditor and reversible hardening CLI
 ├── windows/Win11Debloat/          # pinned upstream optional customization tool
@@ -261,7 +263,7 @@ gradle :app:testDebugUnitTest
 gradle assembleDebug
 
 # Windows Go CLI (run on Windows for platform-specific integration coverage)
-cd ../windows/pcage-audit
+cd ../../windows/pcage-audit
 go test ./...
 ```
 
@@ -294,7 +296,7 @@ Useful starting points:
 - [Next 100 milestones (121–220)](docs/roadmap/next-100-milestones-121-220.md)
 - [Next 1,000 engineering milestones (221–1220)](docs/roadmap/next-1000/README.md)
 - [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
-- [iOS companion capability boundary](ios/README.md)
+- [iOS companion capability boundary](apps/ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.

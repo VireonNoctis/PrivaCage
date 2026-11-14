@@ -283,11 +283,11 @@ func defaultTrackerPath() string {
 }
 
 func defaultManifestPath() string {
-	return filepath.Join(repoRoot(), "android-app", "app", "src", "main", "AndroidManifest.xml")
+	return filepath.Join(repoRoot(), "apps/android", "app", "src", "main", "AndroidManifest.xml")
 }
 
 func defaultAndroidDir() string {
-	return filepath.Join(repoRoot(), "android-app")
+	return filepath.Join(repoRoot(), "apps/android")
 }
 
 func runValidateTracker(args []string) int {

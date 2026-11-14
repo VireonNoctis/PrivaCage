@@ -19,7 +19,7 @@ The API binds to 127.0.0.1:8787 by default. To override the address for a truste
 
 In a second terminal:
 
-    cd web
+    cd apps/web
     npm install
     npm run dev
 
@@ -27,7 +27,7 @@ Vite binds to 127.0.0.1 and proxies /api/* to the Rust service. The UI never sub
 
 ## Validation
 
-    cd web
+    cd apps/web
     npm test
     npm run check
     npm run build
@@ -40,7 +40,7 @@ The API tests verify that summary counts are computed from the bundled source, e
 
 ## Production deployment
 
-Build the static browser app with npm run build. Serve web/dist using a static web server and reverse-proxy same-origin /api/* requests to the Rust service. Keep the Rust service on loopback behind the reverse proxy unless an authenticated transport is deliberately added. There is no authentication or web device-pairing flow in this first web release.
+Build the static browser app with npm run build. Serve apps/web/dist using a static web server and reverse-proxy same-origin /api/* requests to the Rust service. Keep the Rust service on loopback behind the reverse proxy unless an authenticated transport is deliberately added. There is no authentication or web device-pairing flow in this first web release.
 
 ## Implemented screens
 

@@ -1,11 +1,11 @@
 # Web UI
-web/node_modules/
-web/dist/
-web/coverage/
-web/.svelte-kit/
-web/.env
-web/.env.*
-!web/.env.example
+apps/web/node_modules/
+apps/web/dist/
+apps/web/coverage/
+apps/web/.svelte-kit/
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
 
 # Rust web API
 web-backend/target/

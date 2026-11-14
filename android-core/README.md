@@ -1,6 +1,6 @@
 # PrivaCage Android DNS policy core
 
-This is the pure Kotlin/JVM DNS policy and packet engine used by the early Android VPN adapter in `../android-app`.
+This is the pure Kotlin/JVM DNS policy and packet engine used by the early Android VPN adapter in `../apps/android`.
 
 ## Implemented core
 
@@ -44,7 +44,7 @@ The caller supplies the dataset snapshot date; this core does not authenticate t
 Requires JDK 17 and Gradle with access to declared dependencies:
 
 ```sh
-cd android-app
+cd apps/android
 gradle :android-core:test
 gradle :app:testDebugUnitTest
 gradle assembleDebug

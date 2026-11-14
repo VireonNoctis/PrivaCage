@@ -21,13 +21,13 @@ cargo bench --manifest-path shared/rust/tracker-intelligence/Cargo.toml --bench 
 For DNS microbenchmarks:
 
 ```sh
-gradle --no-daemon --project-dir android-app :android-core:performanceTest
+gradle --no-daemon --project-dir apps/android :android-core:performanceTest
 ```
 
 For startup timing, connect a physical Android device (API 28 or newer), keep the screen on, and run:
 
 ```sh
-gradle --no-daemon --project-dir android-app :performance-macrobenchmark:connectedBenchmarkAndroidTest
+gradle --no-daemon --project-dir apps/android :performance-macrobenchmark:connectedBenchmarkAndroidTest
 ```
 
 The target app's `benchmark` build variant is non-debuggable and built from the app's release build type. The separate Macrobenchmark test runner is debuggable, which is normal for test instrumentation. Startup benchmarking requires a profileable APK and ProfileInstaller; the app manifest declares `<profileable android:shell="true" />` for this measurement. Profileable does not enable app debugging.

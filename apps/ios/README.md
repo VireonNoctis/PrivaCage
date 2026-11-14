@@ -25,7 +25,7 @@ Do not add UI controls that purport to revoke another app's permissions, inspect
 5. Unit tests plus simulator and physical-device validation for file imports, settings handoffs, privacy, and failure states.
 6. Privacy disclosure and retention review for any user-imported reports.
 
-**Current blocker:** this repository has no `ios/` app project, the current environment cannot build/sign Xcode targets, and no Network Extension entitlement has been verified. Therefore this milestone records the supported design boundary and acceptance criteria only. It does not claim iOS runtime functionality.
+**Current blocker:** this repository has no executable iOS app project, the current environment cannot build/sign Xcode targets, and no Network Extension entitlement has been verified. Therefore this milestone records the supported design boundary and acceptance criteria only. It does not claim iOS runtime functionality.
 
 ## Current Apple documentation checked
 

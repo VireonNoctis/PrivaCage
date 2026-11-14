@@ -40,10 +40,10 @@ class PrivacyPolicyDocumentsTest {
             assertTrue(name + " must have a Markdown heading", content.startsWith("# "))
         }
 
-        val gradle = File(repositoryRoot, "android-app/app/build.gradle.kts").readText(Charsets.UTF_8)
+        val gradle = File(repositoryRoot, "apps/android/app/build.gradle.kts").readText(Charsets.UTF_8)
         assertTrue(
             "The local policy documents must be packaged as Android assets.",
-            gradle.contains("""assets.srcDir("../../docs/privacy")""")
+            gradle.contains("""assets.srcDir("../../../docs/privacy")""")
         )
     }
 
@@ -51,7 +51,7 @@ class PrivacyPolicyDocumentsTest {
     fun inAppPolicyReaderLoadsPackagedAssetsWithoutAnHttpClient() {
         val source = File(
             repositoryRoot,
-            "android-app/app/src/main/kotlin/org/privacage/android/LegalPrivacyActivity.kt"
+            "apps/android/app/src/main/kotlin/org/privacage/android/LegalPrivacyActivity.kt"
         ).readText(Charsets.UTF_8)
 
         assertTrue(source.contains("assets.open(name)"))
@@ -85,7 +85,7 @@ class PrivacyPolicyDocumentsTest {
 
     @Test
     fun appPolicyReviewRemainsLocalAndHasNoProviderAutomationEntryPoint() {
-        val appRoot = File(repositoryRoot, "android-app/app/src/main")
+        val appRoot = File(repositoryRoot, "apps/android/app/src/main")
         val main = File(
             appRoot,
             "kotlin/org/privacage/android/MainActivity.kt"

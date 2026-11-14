@@ -9,15 +9,15 @@ android {
 
     sourceSets {
         getByName("main") {
-            assets.srcDir("../../shared/tracker-db")
-            assets.srcDir("../../shared/app-alternatives")
-            assets.srcDir("../../docs/privacy")
+            assets.srcDir("../../../shared/tracker-db")
+            assets.srcDir("../../../shared/app-alternatives")
+            assets.srcDir("../../../docs/privacy")
         }
     }
 
     testOptions {
         unitTests.all {
-            it.systemProperty("privacage.repo-root", rootProject.projectDir.parentFile.absolutePath)
+            it.systemProperty("privacage.repo-root", rootProject.projectDir.parentFile.parentFile.absolutePath)
         }
     }
 

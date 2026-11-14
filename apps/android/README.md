@@ -1,6 +1,6 @@
 # PrivaCage Android app adapter
 
-This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `../android-core`.
+This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `../../android-core`.
 
 ## Implemented
 

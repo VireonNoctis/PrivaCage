@@ -25,11 +25,11 @@ build_native_benchmark_libraries() {
     # JNI dependencies that the normal Android validation workflow packages.
     (
         cd "$workspace/shared/rust/pcage-sync-jni"
-        cargo ndk -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+        cargo ndk -t x86_64 -o ../../../apps/android/app/src/main/jniLibs build --release
     )
     (
         cd "$workspace/shared/rust/pcage-metadata-jni"
-        cargo ndk -t x86_64 -o ../../../android-app/app/src/main/jniLibs build --release
+        cargo ndk -t x86_64 -o ../../../apps/android/app/src/main/jniLibs build --release
     )
 }
 
@@ -58,7 +58,7 @@ run_dns_benchmark() {
 
     echo "::group::DNS benchmark ($label)"
     gradle --no-daemon --console=plain --rerun-tasks \
-        --project-dir "$workspace/android-app" :android-core:performanceTest 2>&1 | tee "$log"
+        --project-dir "$workspace/apps/android" :android-core:performanceTest 2>&1 | tee "$log"
     if [[ ! -s "$report" ]]; then
         echo "DNS benchmark did not create its JSON report: $report" >&2
         exit 1
@@ -71,7 +71,7 @@ run_startup_benchmark() {
     local label="$1"
     local workspace="$2"
     local output="$RESULTS/$label/startup.json"
-    local build_outputs="$workspace/android-app/performance-macrobenchmark/build/outputs/connected_android_test_additional_output"
+    local build_outputs="$workspace/apps/android/performance-macrobenchmark/build/outputs/connected_android_test_additional_output"
     local report=""
 
     echo "::group::Android cold-start benchmark ($label)"
@@ -79,7 +79,7 @@ run_startup_benchmark() {
     rm -rf "$build_outputs"
 
     gradle --no-daemon --console=plain --rerun-tasks \
-        --project-dir "$workspace/android-app" \
+        --project-dir "$workspace/apps/android" \
         :performance-macrobenchmark:connectedBenchmarkAndroidTest \
         -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
 
@@ -88,7 +88,7 @@ run_startup_benchmark() {
     fi
     if [[ -z "$report" || ! -s "$report" ]]; then
         echo "Macrobenchmark completed without a benchmarkData.json report for $label." >&2
-        find "$workspace/android-app/performance-macrobenchmark/build/outputs" -type f | head -80 >&2 || true
+        find "$workspace/apps/android/performance-macrobenchmark/build/outputs" -type f | head -80 >&2 || true
         exit 1
     fi
     cp "$report" "$output"

@@ -3,7 +3,7 @@ name: Validate Android privacy suite
 on:
   push:
     paths:
-      - "android-app/**"
+      - "apps/android/**"
       - "android-core/**"
       - "shared/app-alternatives/**"
       - "shared/tracker-db/**"
@@ -11,7 +11,7 @@ on:
       - ".github/workflows/validate-android-privacy-suite.yml"
   pull_request:
     paths:
-      - "android-app/**"
+      - "apps/android/**"
       - "android-core/**"
       - "shared/app-alternatives/**"
       - "shared/tracker-db/**"
@@ -54,7 +54,7 @@ jobs:
           gradle-version: "8.14"
 
       - name: Run Android DNS and privacy-model tests
-        working-directory: android-app
+        working-directory: apps/android
         run: gradle --no-daemon :android-core:test :app:testDebugUnitTest
 
   shared-data-validation:

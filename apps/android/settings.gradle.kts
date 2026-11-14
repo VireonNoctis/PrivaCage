@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "privacage-android"
 include(":app", ":android-core", ":performance-macrobenchmark")
-project(":android-core").projectDir = file("../android-core")
+project(":android-core").projectDir = file("../../android-core")

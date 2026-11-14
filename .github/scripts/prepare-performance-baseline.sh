@@ -30,14 +30,14 @@ copy_into_baseline "android-core/build.gradle.kts"
 copy_into_baseline "android-core/src/test/kotlin/org/privacage/dns/DnsPerformanceBenchmarkTest.kt"
 copy_into_baseline "shared/rust/tracker-intelligence/Cargo.toml"
 copy_into_baseline "shared/rust/tracker-intelligence/benches/apk_scan.rs"
-copy_into_baseline "android-app/settings.gradle.kts"
-copy_into_baseline "android-app/gradle.properties"
-copy_into_baseline "android-app/app/build.gradle.kts"
-copy_into_baseline "android-app/app/src/main/AndroidManifest.xml"
+copy_into_baseline "apps/android/settings.gradle.kts"
+copy_into_baseline "apps/android/gradle.properties"
+copy_into_baseline "apps/android/app/build.gradle.kts"
+copy_into_baseline "apps/android/app/src/main/AndroidManifest.xml"
 
-mkdir -p "$BASELINE/android-app/performance-macrobenchmark"
-cp -R "$ROOT/android-app/performance-macrobenchmark/." \
-    "$BASELINE/android-app/performance-macrobenchmark/"
+mkdir -p "$BASELINE/apps/android/performance-macrobenchmark"
+cp -R "$ROOT/apps/android/performance-macrobenchmark/." \
+    "$BASELINE/apps/android/performance-macrobenchmark/"
 
 echo "Baseline worktree: $BASELINE"
 echo "Baseline commit: $PERFORMANCE_BASELINE_SHA"

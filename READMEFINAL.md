@@ -1,7 +1,7 @@
 # PrivaCage — Product Vision and Completion Specification
 **Goal: make the privacy behavior a device can actually expose understandable, auditable, and controllable.**
 
-This file preserves the broad product requirements and long-term direction for PrivaCage. It is **not** a claim that every item is already implemented. The current implementation overview is in README.md; the current architecture is in docs/architecture.md; Android-specific behavior and limits are in android-app/README.md. A roadmap item may be called verified only when its source code, tests, and required platform checks support the claim.
+This file preserves the broad product requirements and long-term direction for PrivaCage. It is **not** a claim that every item is already implemented. The current implementation overview is in README.md; the current architecture is in docs/architecture.md; Android-specific behavior and limits are in apps/android/README.md. A roadmap item may be called verified only when its source code, tests, and required platform checks support the claim.
 
 > **Scope rule:** stock Android and iOS apps cannot universally inspect other apps' system calls, defeat encrypted DNS/tunnels, or force-disable privileged OS services. Root/system builds, managed-device APIs, custom operating systems, and approved iOS NetworkExtension entitlements are separate product tiers. A control that depends on unavailable authority stays clearly marked as blocked or platform-specific; it must never simulate success.
 
@@ -102,7 +102,7 @@ flowchart TD
 
 ## Original proposed repo structure (historical design reference)
 
-The tree below preserves the original concept, but several paths and frameworks no longer match the actual repository. Check README.md's repository map before creating files; the current Android project is android-app/, the shared Kotlin/JVM engine is android-core/, the web client is web/, and the Rust API is web-backend/.
+The tree below preserves the original concept, but several paths and frameworks no longer match the actual repository. Check README.md's repository map before creating files; the platform clients live under apps/ (Android: apps/android/, iOS capability notes: apps/ios/, web: apps/web/), the shared Kotlin/JVM engine is android-core/, and the Rust API is web-backend/.
 
 ```
 privacage/
