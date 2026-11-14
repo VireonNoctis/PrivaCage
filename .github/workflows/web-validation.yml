@@ -48,6 +48,12 @@ jobs:
       - name: Build production frontend
         run: npm run build
 
+      - name: Verify static-host 404 document is published
+        run: |
+          test -s dist/404.html
+          grep -Fq '<title>404 — Page not found | PrivaCage</title>' dist/404.html
+          grep -Fq 'HTTP 404 / ROUTE NOT FOUND' dist/404.html
+
   rust-api:
     name: Rust API format and tests
     runs-on: ubuntu-latest
