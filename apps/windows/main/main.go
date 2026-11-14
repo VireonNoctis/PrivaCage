@@ -25,7 +25,7 @@ func main() {
 
 func execute(args []string, stdout, stderr io.Writer, goos string) error {
 	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
-		return runWindowsCommand(args, stdout, stderr)
+		return runWindowsCommand([]string{"help"}, stdout, stderr)
 	}
 	if goos != "windows" {
 		return errors.New("this read-only audit requires Windows 10/11 and Windows PowerShell; no system changes were made")
