@@ -57,7 +57,7 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun emptyRangeIsUnavailableRatherThanANoMatch() {
-        Files.writeString(temporaryDirectory.resolve("$prefix.txt"), "", StandardCharsets.US_ASCII)
+        Files.write(temporaryDirectory.resolve("$prefix.txt"), ByteArray(0))
         val password = "password".toCharArray()
         assertFailsWith<IOException> {
             PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
@@ -134,6 +134,6 @@ class PwnedPasswordRangeLookupTest {
     }
 
     private fun writeRange(content: String) {
-        Files.writeString(temporaryDirectory.resolve("$prefix.txt"), content, StandardCharsets.US_ASCII)
+        Files.write(temporaryDirectory.resolve("$prefix.txt"), content.toByteArray(StandardCharsets.US_ASCII))
     }
 }
