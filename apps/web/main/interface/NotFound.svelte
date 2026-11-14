@@ -1,3 +1,8 @@
+<script lang="ts">
+  const homeHref = '/#overview';
+  const reportHref = 'https://github.com/VireonNoctis/PrivaCage/issues';
+</script>
+
 <svelte:head>
   <title>404 — Page not found | PrivaCage</title>
   <meta name="description" content="The requested PrivaCage page does not exist." />
@@ -17,8 +22,8 @@
       The page may have moved, the address may be incomplete, or it may never have existed.
     </p>
     <div class="not-found__actions">
-      <a class="not-found__home" href="/#overview">Return to overview <span aria-hidden="true">↗</span></a>
-      <a class="not-found__github" href="https://github.com/VireonNoctis/PrivaCage/issues">Report a broken link</a>
+      <a class="not-found__home" href={homeHref}>Return to overview <span aria-hidden="true">↗</span></a>
+      <a class="not-found__github" href={reportHref}>Report a broken link</a>
     </div>
   </section>
 

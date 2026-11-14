@@ -360,7 +360,11 @@ async fn apply_rate_limit(
 
         response.headers_mut().insert(
             header::RETRY_AFTER,
-            decision.reset_after_seconds.to_string().parse::<HeaderValue>().expect("numeric Retry-After header is valid"),
+            decision
+                .reset_after_seconds
+                .to_string()
+                .parse::<HeaderValue>()
+                .expect("numeric Retry-After header is valid"),
         );
         response
     };
