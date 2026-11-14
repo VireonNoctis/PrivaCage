@@ -15,7 +15,11 @@ From the repository root, start the API:
 
     cargo run --manifest-path web-backend/Cargo.toml
 
-The API binds to 127.0.0.1:8787 by default. To override the address for a trusted local deployment, set PRIVACAGE_WEB_BIND. Do not bind this unauthenticated API to a public interface.
+The API binds to 127.0.0.1:8787 by default. To override the address for a trusted local deployment, set `PRIVACAGE_WEB_BIND`. Do not bind this unauthenticated API directly to a public interface.
+
+The backend applies a default per-client-IP sliding-window limit of 120 requests per 60 seconds. Configure `PRIVACAGE_RATE_LIMIT_REQUESTS` and `PRIVACAGE_RATE_LIMIT_WINDOW_SECONDS` to change it. The configuration is validated at startup. It returns `429` with `Retry-After` and `RateLimit-*` headers when a client exceeds its limit. The limiter is in-memory and applies to one API process; it is not a distributed DDoS protection layer.
+
+See [`web-backend/.env.example`](../../web-backend/.env.example) for the environment template and [web deployment](../../docs/deployment/web-console.md) for the reverse-proxy and 404 requirements.
 
 In a second terminal:
 
@@ -40,7 +44,7 @@ The API tests verify that summary counts are computed from the bundled source, e
 
 ## Production deployment
 
-Build the static browser app with npm run build. Serve apps/web/dist using a static web server and reverse-proxy same-origin /api/* requests to the Rust service. Keep the Rust service on loopback behind the reverse proxy unless an authenticated transport is deliberately added. There is no authentication or web device-pairing flow in this first web release.
+Build the static browser app with `npm run build`. Serve `apps/web/dist/` using a static web server and reverse-proxy same-origin `/api/*` requests to the Rust service. Vite copies `public/404.html` to the output so static hosts can show the branded page with an actual HTTP 404; the Svelte entry also selects the same custom 404 component for unknown paths when the host serves the SPA entry. The Rust API has a separate JSON 404 fallback. Keep the Rust service on loopback behind the reverse proxy unless an authenticated transport is deliberately added. Configure proxy trust only for known proxy peer IPs; the proxy must overwrite `X-Real-IP`. There is no authentication or web device-pairing flow in this first web release.
 
 ## Implemented screens
 
@@ -50,6 +54,7 @@ Build the static browser app with npm run build. Serve apps/web/dist using a sta
 - **Audit trail:** locally verifies Android signed audit checkpoint JSON (signature, exact payload digest, schema, redaction claims, counters, and every event hash-chain link) without uploading the file.
 - **Platform boundaries:** accurate distinction between web catalog availability and platform-local controls.
 - **Settings:** motion preference, connection status, catalog version, and privacy posture.
+- **404:** a custom monochrome not-found view, with a home route and a link for reporting broken links.
 
 The dashboard's catalog counts describe source-backed database entries, not detected devices, live tracking, or blocked traffic. The Android adapter remains device-local and is not automatically connected to this web workspace.
 
@@ -68,3 +73,5 @@ The verifier, schema checks, and checkpoint-comparison relationships are covered
 
 - `main/` contains direct `API/`, `audit/` and `interface/` feature folders, plus the Svelte entry point `main.ts`.
 - `test/` contains matching `API/`, `audit/` and `interface/` test folders. Tests import the real modules from `main/`; no second copy or mock implementation is kept as production code.
+
+The frontend is Svelte 5 + TypeScript. Next.js uses React/TSX; it is not a Svelte compiler or a compatible component syntax. PrivaCage keeps the existing Svelte client rather than shipping two competing frontend runtimes.

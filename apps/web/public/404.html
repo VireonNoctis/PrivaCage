@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>404 — Page not found | PrivaCage</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { min-width: 320px; min-height: 100%; margin: 0; background: #000; }
+      body { min-height: 100vh; color: #fff; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+      main { display: flex; min-height: 100vh; flex-direction: column; padding: clamp(22px, 5vw, 64px); }
+      .brand, .eyebrow, footer, .report { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+      .brand { width: fit-content; color: #fff; font-weight: 700; text-decoration: none; }
+      .brand span { color: #777; }
+      section { width: min(100%, 760px); margin: auto; padding: 10vh 0; }
+      .eyebrow { margin: 0 0 25px; color: #888; }
+      .code { color: #fff; font-size: clamp(96px, 22vw, 220px); font-weight: 700; letter-spacing: -.12em; line-height: .9; }
+      h1 { max-width: 650px; margin: 32px 0 12px; color: #fff; font-size: clamp(25px, 4vw, 42px); font-weight: 500; letter-spacing: -.07em; line-height: 1.08; }
+      .description { max-width: 480px; margin: 0; color: #929292; font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 14px; line-height: 1.7; }
+      .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; margin-top: 34px; }
+      .home { display: inline-flex; min-height: 46px; align-items: center; gap: 24px; padding: 0 17px; border: 1px solid #fff; color: #000; background: #fff; font-size: 11px; font-weight: 700; text-decoration: none; text-transform: uppercase; }
+      .home:hover { color: #fff; background: #000; }
+      .report { color: #aaa; text-decoration: underline; text-underline-offset: 4px; }
+      .report:hover { color: #fff; }
+      footer { display: flex; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid #444; color: #777; }
+      @media (max-width: 520px) { footer { flex-direction: column; } .actions { align-items: flex-start; flex-direction: column; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="brand" href="/" aria-label="PrivaCage home"><span>[</span> PRIVACAGE <span>]</span></a>
+      <section aria-labelledby="not-found-title">
+        <p class="eyebrow">HTTP 404 / ROUTE NOT FOUND</p>
+        <div class="code" aria-hidden="true">404</div>
+        <h1 id="not-found-title">This address is outside the system.</h1>
+        <p class="description">The page may have moved, the address may be incomplete, or it may never have existed.</p>
+        <div class="actions">
+          <a class="home" href="/">Return to overview <span aria-hidden="true">↗</span></a>
+          <a class="report" href="https://github.com/VireonNoctis/PrivaCage/issues">Report a broken link</a>
+        </div>
+      </section>
+      <footer><span>PRIVACAGE / LOCAL-FIRST BY DESIGN</span><span>STATUS: NO MATCH</span></footer>
+    </main>
+  </body>
+</html>

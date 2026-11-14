@@ -163,6 +163,11 @@ async function getJson<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const delay = retryAfter && /^\d+$/.test(retryAfter) ? ' Retry in ' + retryAfter + ' seconds.' : '';
+      throw new ApiError('The Rust API rate limit was reached.' + delay, 429);
+    }
     throw new ApiError('The Rust API returned HTTP ' + response.status + '.', response.status);
   }
 

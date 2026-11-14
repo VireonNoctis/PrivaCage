@@ -1,7 +1,14 @@
-use std::collections::{BTreeMap, HashSet};
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use axum::extract::State;
+use axum::body::Body;
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderValue, Request, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -83,6 +90,321 @@ pub struct WorkspaceCapability {
 #[derive(Clone, Debug, Serialize)]
 pub struct WorkspaceCapabilities {
     pub capabilities: Vec<WorkspaceCapability>,
+}
+
+
+const DEFAULT_RATE_LIMIT_REQUESTS: u32 = 120;
+const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
+const MAX_RATE_LIMIT_REQUESTS: u32 = 10_000;
+const MAX_RATE_LIMIT_WINDOW_SECONDS: u64 = 3_600;
+const MAX_RATE_LIMIT_CLIENTS: usize = 4_096;
+
+#[derive(Clone, Debug)]
+pub struct RateLimitConfig {
+    pub max_requests: u32,
+    pub window: Duration,
+    pub trusted_proxies: HashSet<IpAddr>,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_requests: DEFAULT_RATE_LIMIT_REQUESTS,
+            window: Duration::from_secs(DEFAULT_RATE_LIMIT_WINDOW_SECONDS),
+            trusted_proxies: HashSet::new(),
+        }
+    }
+}
+
+impl RateLimitConfig {
+    /// Reads optional rate-limit settings. Invalid values stop API startup instead of
+    /// silently weakening the configured protection.
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let max_requests = read_env_u32(
+            "PRIVACAGE_RATE_LIMIT_REQUESTS",
+            DEFAULT_RATE_LIMIT_REQUESTS,
+            1,
+            MAX_RATE_LIMIT_REQUESTS,
+        )?;
+        let window_seconds = read_env_u64(
+            "PRIVACAGE_RATE_LIMIT_WINDOW_SECONDS",
+            DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+            1,
+            MAX_RATE_LIMIT_WINDOW_SECONDS,
+        )?;
+
+        let trusted_proxies = match std::env::var("PRIVACAGE_TRUSTED_PROXY_IPS") {
+            Ok(value) => {
+                let mut addresses = HashSet::new();
+                for item in value.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+                    let address = item.parse::<IpAddr>().map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!(
+                                "PRIVACAGE_TRUSTED_PROXY_IPS contains an invalid IP address: {item}"
+                            ),
+                        )
+                    })?;
+                    addresses.insert(address);
+                }
+                addresses
+            }
+            Err(std::env::VarError::NotPresent) => HashSet::new(),
+            Err(error) => {
+                return Err(io::Error::other(format!(
+                    "Could not read PRIVACAGE_TRUSTED_PROXY_IPS: {error}"
+                ))
+                .into());
+            }
+        };
+
+        Ok(Self {
+            max_requests,
+            window: Duration::from_secs(window_seconds),
+            trusted_proxies,
+        })
+    }
+}
+
+fn read_env_u32(
+    name: &str,
+    default: u32,
+    minimum: u32,
+    maximum: u32,
+) -> Result<u32, io::Error> {
+    match std::env::var(name) {
+        Ok(value) => {
+            let parsed = value.trim().parse::<u32>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{name} must be an integer between {minimum} and {maximum}."),
+                )
+            })?;
+            if !(minimum..=maximum).contains(&parsed) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{name} must be between {minimum} and {maximum}."),
+                ));
+            }
+            Ok(parsed)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(io::Error::other(format!("Could not read {name}: {error}"))),
+    }
+}
+
+fn read_env_u64(
+    name: &str,
+    default: u64,
+    minimum: u64,
+    maximum: u64,
+) -> Result<u64, io::Error> {
+    match std::env::var(name) {
+        Ok(value) => {
+            let parsed = value.trim().parse::<u64>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{name} must be an integer between {minimum} and {maximum}."),
+                )
+            })?;
+            if !(minimum..=maximum).contains(&parsed) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{name} must be between {minimum} and {maximum}."),
+                ));
+            }
+            Ok(parsed)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(io::Error::other(format!("Could not read {name}: {error}"))),
+    }
+}
+
+struct ClientWindow {
+    requests: VecDeque<Instant>,
+    last_seen: Instant,
+}
+
+struct RateLimitDecision {
+    allowed: bool,
+    remaining: u32,
+    reset_after_seconds: u64,
+}
+
+struct RateLimiter {
+    max_requests: usize,
+    window: Duration,
+    trusted_proxies: HashSet<IpAddr>,
+    clients: Mutex<HashMap<IpAddr, ClientWindow>>,
+}
+
+impl RateLimiter {
+    fn new(config: RateLimitConfig) -> Self {
+        Self {
+            max_requests: config.max_requests as usize,
+            window: config.window,
+            trusted_proxies: config.trusted_proxies,
+            clients: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn client_ip(&self, request: &Request<Body>) -> IpAddr {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|connect_info| connect_info.0.ip())
+            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
+
+        // Forwarded identity is accepted only from an explicitly trusted proxy.
+        // The proxy must overwrite X-Real-IP with the actual socket peer address.
+        if self.trusted_proxies.contains(&peer) {
+            if let Some(forwarded) = request
+                .headers()
+                .get("x-real-ip")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<IpAddr>().ok())
+            {
+                return forwarded;
+            }
+        }
+
+        peer
+    }
+
+    fn check(&self, client_ip: IpAddr) -> RateLimitDecision {
+        let now = Instant::now();
+        let mut clients = self
+            .clients
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        // Bound memory use even if a caller rotates source addresses.
+        clients.retain(|_, client| now.saturating_duration_since(client.last_seen) < self.window);
+        if !clients.contains_key(&client_ip) && clients.len() >= MAX_RATE_LIMIT_CLIENTS {
+            if let Some(oldest_ip) = clients
+                .iter()
+                .min_by_key(|(_, client)| client.last_seen)
+                .map(|(ip, _)| *ip)
+            {
+                clients.remove(&oldest_ip);
+            }
+        }
+
+        let client = clients.entry(client_ip).or_insert_with(|| ClientWindow {
+            requests: VecDeque::new(),
+            last_seen: now,
+        });
+
+        while client
+            .requests
+            .front()
+            .is_some_and(|timestamp| now.saturating_duration_since(*timestamp) >= self.window)
+        {
+            client.requests.pop_front();
+        }
+
+        client.last_seen = now;
+        let allowed = client.requests.len() < self.max_requests;
+        if allowed {
+            client.requests.push_back(now);
+        }
+
+        let remaining = self
+            .max_requests
+            .saturating_sub(client.requests.len()) as u32;
+        let reset_after_seconds = client
+            .requests
+            .front()
+            .map(|timestamp| {
+                let remaining = self
+                    .window
+                    .saturating_sub(now.saturating_duration_since(*timestamp));
+                remaining.as_secs() + if remaining.subsec_nanos() > 0 { 1 } else { 0 }
+            })
+            .unwrap_or(self.window.as_secs())
+            .max(1);
+
+        RateLimitDecision {
+            allowed,
+            remaining,
+            reset_after_seconds,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ApiErrorResponse {
+    error: &'static str,
+    message: &'static str,
+}
+
+async fn api_not_found() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        Json(ApiErrorResponse {
+            error: "not_found",
+            message: "No API route matches this path.",
+        }),
+    )
+}
+
+async fn apply_rate_limit(
+    State(limiter): State<Arc<RateLimiter>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let client_ip = limiter.client_ip(&request);
+    let decision = limiter.check(client_ip);
+
+    let mut response = if decision.allowed {
+        next.run(request).await
+    } else {
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiErrorResponse {
+                error: "rate_limited",
+                message: "Too many requests. Retry after the advertised delay.",
+            }),
+        )
+            .into_response();
+
+        response.headers_mut().insert(
+            header::RETRY_AFTER,
+            decision
+                .reset_after_seconds
+                .to_string()
+                .parse::<HeaderValue>()
+                .expect("numeric Retry-After header is valid"),
+        );
+        response
+    };
+
+    response.headers_mut().insert(
+        "RateLimit-Limit",
+        limiter
+            .max_requests
+            .to_string()
+            .parse::<HeaderValue>()
+            .expect("numeric rate-limit header is valid"),
+    );
+    response.headers_mut().insert(
+        "RateLimit-Remaining",
+        decision
+            .remaining
+            .to_string()
+            .parse::<HeaderValue>()
+            .expect("numeric rate-limit header is valid"),
+    );
+    response.headers_mut().insert(
+        "RateLimit-Reset",
+        decision
+            .reset_after_seconds
+            .to_string()
+            .parse::<HeaderValue>()
+            .expect("numeric rate-limit header is valid"),
+    );
+
+    response
 }
 
 pub fn load_embedded_catalog() -> Result<TrackerCatalog, Box<dyn std::error::Error + Send + Sync>> {
@@ -233,16 +555,23 @@ fn is_iso_date(value: &str) -> bool {
 }
 
 pub fn build_app(catalog: TrackerCatalog) -> Router {
+    build_app_with_rate_limit(catalog, RateLimitConfig::default())
+}
+
+pub fn build_app_with_rate_limit(catalog: TrackerCatalog, config: RateLimitConfig) -> Router {
     let state = ApiState {
         catalog: Arc::new(catalog),
     };
+    let limiter = Arc::new(RateLimiter::new(config));
 
     Router::new()
         .route("/api/health", get(health))
         .route("/api/v1/summary", get(summary))
         .route("/api/v1/tracker-catalog", get(tracker_catalog))
         .route("/api/v1/capabilities", get(capabilities))
+        .fallback(api_not_found)
         .with_state(state)
+        .layer(middleware::from_fn_with_state(limiter, apply_rate_limit))
 }
 
 async fn health() -> Json<HealthResponse> {

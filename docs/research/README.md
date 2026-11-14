@@ -24,7 +24,8 @@ This library is deliberately not a claim that every described capability is alre
 15. [Android local-history encryption](15-android-local-history-encryption.md) — encrypted DNS-history storage, migration behavior, failure cases, and the device-validation checklist.
 16. [Android device and application security risk register](16-android-device-security-risk-register.md) — update lag, Verified Boot, screen lock, special access, sideloading, radio risks, debugging, wireless, components and realistic stock-app coverage.
 17. [Offline password exposure lookup](17-offline-password-exposure.md) — official HIBP corpus scope, downloader format, local-only matching and account-breach limitations.
-18. [Sources](SOURCES.md) — annotated source register with stable links.
+18. [PrivacySentry assessment](18-privacy-sentry-assessment.md) — Android build-time ASM instrumentation, coverage boundaries, toolchain compatibility and why it is not a whole-device monitor.
+19. [Sources](SOURCES.md) — annotated source register with stable links.
 
 ## Evidence labels
 

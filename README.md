@@ -58,7 +58,7 @@ Features do not all have the same maturity. A coded path is not the same as a te
 | Selected sensitive-store encryption | Android implementation; device verification pending | Separate Android Keystore AES-GCM stores protect selected DNS, rights, permission-baseline, cellular-checklist and app-review data; not every operational preference or exported checkpoint is encrypted. PR #26 adds authenticate-and-schema-validate-before-replacement for existing ciphertext; exact head `2e63825` passed all six workflows; device Keystore lifecycle validation remains pending. |
 | Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
 | Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |
-| Web console | Svelte 5 + TypeScript, Rust/Axum API | Displays tracker intelligence. It is not yet a live-device event ingestion dashboard. |
+| Web console | Svelte 5 + TypeScript, Rust/Axum API | Static console with branded 404 handling, evidence-backed tracker views, and per-client API rate limiting. It is not a live-device event ingestion dashboard. |
 | iOS | Planned / constrained | Must use public APIs and approved NetworkExtension capabilities; an ordinary iOS app cannot inspect other apps' binaries or override their permissions. |
 
 ## Design language
@@ -215,9 +215,11 @@ Read the [Windows tool guide](apps/windows/README.md) and [Windows privacy resea
 
 ## Web and iOS
 
-- `apps/web/` is a Svelte 5 + TypeScript static client.
-- `web-backend/` is a Rust/Axum API serving validated tracker catalogue data.
+- `apps/web/` is a Svelte 5 + TypeScript static client with a custom branded 404 page for unknown website routes.
+- `web-backend/` is a Rust/Axum API serving validated tracker catalogue data, JSON 404 responses and a bounded per-client-IP sliding-window rate limit.
+- The default API limit is 120 requests per IP per 60 seconds. The in-memory limit is per process; it is not a distributed DDoS control. Reverse-proxy client IPs are trusted only when the proxy peer is explicitly listed in `PRIVACAGE_TRUSTED_PROXY_IPS` and overwrites `X-Real-IP`.
 - The web client does not invent device events or claim that a tracker was observed on a user's device. Live-device pairing and event ingestion are not yet connected.
+- The website remains Svelte 5. Next.js/TSX is a React framework and is not mixed into the existing Svelte component tree.
 - iOS work must stay within Apple's sandbox and approved NetworkExtension entitlements. An ordinary iOS app cannot scan other apps' executable binaries or override their permissions.
 
 ## Architecture and repository map
@@ -296,6 +298,8 @@ Useful starting points:
 - [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
 - [iOS companion capability boundary](apps/ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
+- [PrivacySentry integration assessment](docs/research/18-privacy-sentry-assessment.md)
+- [Web deployment, 404 and rate-limit configuration](docs/deployment/web-console.md)
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
 

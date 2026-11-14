@@ -322,4 +322,20 @@ describe('PrivaCage API client', () => {
     });
   });
 
+  it('explains rate limits and preserves the retry delay for the user', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: { get: vi.fn((name: string) => name.toLowerCase() === 'retry-after' ? '17' : null) },
+      body: null,
+      text: vi.fn().mockResolvedValue('')
+    } as unknown as Response);
+
+    await expect(fetchTrackerCatalog()).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'The Rust API rate limit was reached. Retry in 17 seconds.',
+      status: 429
+    });
+  });
+
 });
