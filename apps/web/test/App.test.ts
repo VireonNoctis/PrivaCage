@@ -2,19 +2,19 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import App from './App.svelte';
-import { fetchCapabilities, fetchCatalogSummary, fetchHealth, fetchTrackerCatalog } from './lib/api';
-import { verifyAuditCheckpoint } from './lib/audit-checkpoint';
-import type { CatalogSummary, HealthResponse, TrackerCatalog } from './lib/types';
+import App from '../main/App.svelte';
+import { fetchCapabilities, fetchCatalogSummary, fetchHealth, fetchTrackerCatalog } from '../main/lib/api';
+import { verifyAuditCheckpoint } from '../main/lib/audit-checkpoint';
+import type { CatalogSummary, HealthResponse, TrackerCatalog } from '../main/lib/types';
 
-vi.mock('./lib/api', () => ({
+vi.mock('../main/lib/api', () => ({
   fetchCapabilities: vi.fn(),
   fetchCatalogSummary: vi.fn(),
   fetchHealth: vi.fn(),
   fetchTrackerCatalog: vi.fn()
 }));
 
-vi.mock('./lib/audit-checkpoint', () => ({
+vi.mock('../main/lib/audit-checkpoint', () => ({
   verifyAuditCheckpoint: vi.fn()
 }));
 

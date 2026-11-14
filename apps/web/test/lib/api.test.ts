@@ -4,7 +4,7 @@ import {
   fetchCatalogSummary,
   fetchHealth,
   fetchTrackerCatalog
-} from './api';
+} from '../../main/lib/api';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return {

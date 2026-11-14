@@ -29,29 +29,29 @@ These policies have a narrower scope than the whole machine. They do not create 
 
 Requires Windows 10/11, Windows PowerShell (powershell.exe), Go 1.27 or newer to build, and the NetSecurity module when firewall state or controls are used.
 
-From this directory:
+From the repository root:
 
-    go test ./...
-    go run . audit --format text
-    go run . audit --format json
+    go -C apps/windows test ./...
+    go -C apps/windows run ./main audit --format text
+    go -C apps/windows run ./main audit --format json
 
 The read-only audit includes nine bounded checks: the Domain/Private/Public firewall profile state, the machine diagnostic-data policy, Windows App Privacy policies for location/camera/microphone, configured adapter DNS resolver addresses, and the current user's WinINET proxy flags.
 
 DNS resolver addresses are included in the local report as an inventory. That is a potentially sensitive detail about the local network, so keep exported reports private. The audit cannot determine whether a specific request used encrypted DNS, which resolver wins for a given query, whether an application bypasses system DNS, or whether a VPN/enterprise policy changes the effective path. The proxy check reports whether the current-user WinINET toggle and server/PAC settings are present, but does not print the proxy hostname or PAC URL. It does not cover WinHTTP or per-application proxy behavior.
 
-    go run . plan --profile balanced
-    go run . plan --profile strict
-    go run . apply --profile balanced --confirm
-    go run . verify
-    go run . restore --confirm-restore
+    go -C apps/windows run ./main plan --profile balanced
+    go -C apps/windows run ./main plan --profile strict
+    go -C apps/windows run ./main apply --profile balanced --confirm
+    go -C apps/windows run ./main verify
+    go -C apps/windows run ./main restore --confirm-restore
 
-Run go run . in an interactive terminal to open the monochrome console.
+Run go -C apps/windows run ./main in an interactive terminal to open the monochrome console.
 
 Apply and restore request UAC elevation when the current process is not an administrator. Applying requires --confirm. A second profile cannot overwrite a pending backup; restore the active profile first.
 
 ## Full Windows customization toolkit
 
-The broader Windows customization workflow is provided by the pinned, MIT-licensed [Win11Debloat](`https://github.com/Raphire/Win11Debloat`) component at `windows/Win11Debloat/`. It is deliberately kept separate from PrivaCage's narrower policy allowlist: Win11Debloat includes app removal, registry and UI changes, optional Windows feature controls, CLI presets, import/export, localization, and its own restore/backup workflow.
+The broader Windows customization workflow is provided by the pinned, MIT-licensed [Win11Debloat](`https://github.com/Raphire/Win11Debloat`) component at `apps/windows/main/Win11Debloat/`. It is deliberately kept separate from PrivaCage's narrower policy allowlist: Win11Debloat includes app removal, registry and UI changes, optional Windows feature controls, CLI presets, import/export, localization, and its own restore/backup workflow.
 
 Initialize the submodule after a regular clone:
 
@@ -62,10 +62,10 @@ git submodule update --init --recursive
 Launch its GUI from this module directory:
 
 ```powershell
-go run . debloat
+go -C apps/windows run ./main debloat
 ```
 
-The PrivaCage interactive console also offers **10 — Open Win11Debloat customization GUI**. Optional upstream command-line parameters can be forwarded, for example `go run . debloat -CLI`; consult the upstream README/wiki for the full parameter list.
+The PrivaCage interactive console also offers **10 — Open Win11Debloat customization GUI**. Optional upstream command-line parameters can be forwarded, for example `go -C apps/windows run ./main debloat -CLI`; consult the upstream README/wiki for the full parameter list.
 
 This launch command does not select a preset or modify settings on its own. Win11Debloat's features can remove apps and change Windows settings, services, registry values, shell behavior, and optional features. Review the selected changes before applying them, use its restore-point/backup options where appropriate, and do not assume every tweak is reversible on every Windows build. The separate PrivaCage `apply/verify/restore` transaction remains limited to the policies documented above; it does not wrap or automatically roll back every Win11Debloat operation.
 
@@ -77,15 +77,15 @@ Network changes are separate from the balanced/strict privacy profiles and requi
 
 Set all three firewall profiles' default outbound action to Block:
 
-    go run . plan --profile balanced --block-outbound-by-default --confirm-network-disruption
-    go run . apply --profile balanced --block-outbound-by-default --confirm --confirm-network-disruption
+    go -C apps/windows run ./main plan --profile balanced --block-outbound-by-default --confirm-network-disruption
+    go -C apps/windows run ./main apply --profile balanced --block-outbound-by-default --confirm --confirm-network-disruption
 
 This is not a universal block: explicit allow rules can continue to permit selected traffic.
 
 Emergency network isolation adds a named outbound block rule for all programs and enables the Domain, Private, and Public firewall profiles:
 
-    go run . plan --profile balanced --isolate-network --confirm-network-disruption
-    go run . apply --profile balanced --isolate-network --confirm --confirm-network-disruption
+    go -C apps/windows run ./main plan --profile balanced --isolate-network --confirm-network-disruption
+    go -C apps/windows run ./main apply --profile balanced --isolate-network --confirm --confirm-network-disruption
 
 This can immediately break DNS, internet access, downloads, Windows Update, cloud services, remote administration, and network-dependent apps. Use it only when a physical/local console is available and the user understands how to run restore. It cannot prove that kernel, driver, firmware, hypervisor, separate-device, externally managed, or out-of-band traffic is silent.
 
@@ -118,3 +118,10 @@ If an apply fails, the tool attempts rollback. If rollback cannot be completed, 
 - Administrator rights do not override the kernel, firmware, OEM services, hardware management engines, external firewalls/routers, a remote MDM/domain administrator, or all network paths. PrivaCage is a privacy-hardening aid, not proof of absolute non-communication.
 
 Read the sourced analysis in docs/research-notes/windows-privacy-hardening-2026-10-25.md before applying a profile.
+
+
+## Source layout
+
+- `main/` contains the Go CLI and its package-level unit tests.
+- `test/` contains black-box integration tests.
+- Go's package tests that exercise unexported helpers must remain alongside the package in `main/`; the separate integration test package lives in `test/`.

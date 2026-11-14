@@ -62,3 +62,9 @@ A successful result proves consistency with the public key embedded in that file
 The audit view can also compare two checkpoints entirely in the browser. Both files must independently verify and use the same signer-key fingerprint, date range, time zone, selected categories, and redaction settings. The comparison reports identical record-hash sequences, prefix/extension relationships, or divergence using hashes only; it does not display event hostnames or owner labels. It does not establish identity, trusted time, or event completeness.
 
 The verifier, schema checks, and checkpoint-comparison relationships are covered by `npm test`; the regular frontend validation workflow also runs `npm run check` and `npm run build`.
+
+
+## Source layout
+
+- `main/` contains the Svelte application entry point, screens, styles and reusable components.
+- `test/` contains Vitest component and unit tests. Tests import the real modules from `main/`; no second copy or mock implementation is kept as production code.

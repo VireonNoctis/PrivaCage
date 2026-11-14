@@ -201,7 +201,7 @@ This is **not** a Google-services disable switch, a network monitor, or proof th
 
 ## Windows privacy audit and hardening
 
-The Go tool under `windows/pcage-audit/` provides a read-only local audit and a reversible policy-hardening workflow. The read-only report covers the three firewall profiles, selected diagnostic-data and Windows App Privacy policies, adapter DNS resolver addresses, and current-user WinINET proxy-state flags. It does not print proxy hostnames/PAC URLs or claim that resolver transport is encrypted. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
+The Go tool under `apps/windows/main/` provides a read-only local audit and a reversible policy-hardening workflow. The read-only report covers the three firewall profiles, selected diagnostic-data and Windows App Privacy policies, adapter DNS resolver addresses, and current-user WinINET proxy-state flags. It does not print proxy hostnames/PAC URLs or claim that resolver transport is encrypted. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
 
 ### Profiles and policy boundaries
 
@@ -211,7 +211,7 @@ The Go tool under `windows/pcage-audit/` provides a read-only local audit and a 
 
 Microsoft documents that the “Diagnostic data off” value for the described policy is supported only on specified Enterprise, Education and Server editions; the extra diagnostic-log and dump controls apply to Windows 11 and Windows Server 2022. Local policy values can be overridden by domain policy or MDM. None of these settings guarantees zero Windows communications or controls all desktop applications, services, drivers, firmware or external network paths.
 
-Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privacy research](docs/research-notes/windows-privacy-hardening-2026-10-25.md) before applying changes. The separately pinned [Win11Debloat component](windows/Win11Debloat/) is user-selected software and is not covered by the audit CLI's rollback transaction.
+Read the [Windows tool guide](apps/windows/README.md) and [Windows privacy research](docs/research-notes/windows-privacy-hardening-2026-10-25.md) before applying changes. The separately pinned [Win11Debloat component](apps/windows/main/Win11Debloat/) is user-selected software and is not covered by the audit CLI's rollback transaction.
 
 ## Web and iOS
 
@@ -224,11 +224,20 @@ Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privac
 
 ```text
 .
+├── apps/
+│   ├── android/
+│   │   ├── main/                  # Android manifest, source, resources and JNI libraries
+│   │   └── test/                  # Android unit and macrobenchmark tests
+│   ├── ios/
+│   │   ├── main/                  # iOS capability and implementation boundary
+│   │   └── test/                  # iOS acceptance criteria; no test target yet
+│   ├── web/
+│   │   ├── main/                  # Svelte application source and components
+│   │   └── test/                  # Vitest component and unit tests
+│   └── windows/
+│       ├── main/                  # Go CLI, package unit tests and pinned Win11Debloat
+│       └── test/                  # Go black-box integration tests
 ├── android-core/                  # Kotlin/JVM DNS policy, packet engine and audit models
-├── apps/                           # Platform client applications
-│   ├── android/                   # Android UI, VPN adapter, APK/permission audit
-│   ├── ios/                       # iOS capability boundary; no executable target yet
-│   └── web/                       # Svelte 5 + TypeScript frontend
 ├── shared/
 │   ├── tracker-db/                # canonical evidence-backed tracker catalogue
 │   ├── app-alternatives/          # reviewed alternative-app catalogue
@@ -236,15 +245,7 @@ Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privac
 │   ├── rust/pcage-crypto/         # portable encrypted profile implementation
 │   └── rust/pcage-sync/           # sync protocol components
 ├── web-backend/                   # Rust/Axum tracker API
-├── windows/pcage-audit/           # Go auditor and reversible hardening CLI
-├── windows/Win11Debloat/          # pinned upstream optional customization tool
-├── docs/
-│   ├── architecture.md
-│   ├── security-boundaries.md
-│   ├── encrypted-profile-format.md
-│   ├── e2ee-sync-protocol.md
-│   └── research-notes/
-└── tests/                         # cross-module / workflow test material where present
+└── docs/                          # architecture, security, formats and research
 ```
 
 ## Development and validation
@@ -257,14 +258,12 @@ go -C shared/go/pcage-tools test ./...
 go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
 
 # Android policy/packet core and app tests (JDK 17 + Gradle required)
-cd android-app
-gradle :android-core:test
-gradle :app:testDebugUnitTest
-gradle assembleDebug
+gradle --project-dir apps/android :android-core:test
+gradle --project-dir apps/android testDebugUnitTest
+gradle --project-dir apps/android assembleDebug
 
 # Windows Go CLI (run on Windows for platform-specific integration coverage)
-cd ../../windows/pcage-audit
-go test ./...
+go -C apps/windows test ./...
 ```
 
 The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. `app-alternatives-report` gates the catalogue-level `updated_at` date and identifies affected entries; schema v1 has no per-entry source-review date, so the report explicitly cannot claim that individual URLs or trade-offs were recently re-checked. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.

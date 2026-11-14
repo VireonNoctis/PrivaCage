@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { compareAuditCheckpoints, verifyAuditCheckpoint } from './audit-checkpoint';
+import { compareAuditCheckpoints, verifyAuditCheckpoint } from '../../main/lib/audit-checkpoint';
 
 const sharedCheckpointVector = readFileSync(
   resolve(process.cwd(), '../../shared/audit/test-vectors/checkpoint-v1.json'),

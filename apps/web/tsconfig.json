@@ -25,8 +25,9 @@
     ]
   },
   "include": [
-    "src/**/*.ts",
-    "src/**/*.svelte",
+    "main/**/*.ts",
+    "main/**/*.svelte",
+    "test/**/*.ts",
     "vite.config.ts",
     "vitest.config.ts"
   ]

@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import BrailleSpinner from './BrailleSpinner.svelte';
+import BrailleSpinner from '../../main/lib/BrailleSpinner.svelte';
 
 describe('BrailleSpinner', () => {
   it('exposes the current operation through an accessible status label', () => {

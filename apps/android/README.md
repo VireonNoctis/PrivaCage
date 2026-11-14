@@ -57,7 +57,7 @@ For the privacy-policy asset and no-telemetry regression tests, run from the rep
 go -C shared/go/pcage-tools test ./...
 ```
 
-The Android CI workflow also runs `:app:testDebugUnitTest` and builds the debug APK; a successful Go validator test alone is not an Android build result.
+The Android CI workflow also runs `testDebugUnitTest` and builds the debug APK; a successful Go validator test alone is not an Android build result.
 
 ## Build
 
@@ -65,7 +65,7 @@ Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.
 
     gradle assembleDebug
     gradle :android-core:test
-    gradle :app:testDebugUnitTest
+    gradle testDebugUnitTest
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -141,3 +141,10 @@ The checklist does not request Accessibility, phone-state, cell-location, locati
 - Android's [UsageStatsManager API reference](https://developer.android.com/reference/android/app/usage/UsageStatsManager) documents that `queryEvents` requires `PACKAGE_USAGE_STATS` and that usage events are retained by the system for only a few days. PrivaCage requests no app-open observations until the user grants Usage Access in Android Settings and bounds each scan to a recent 24-hour window.
 - Android's [package visibility guide](https://developer.android.com/training/package-visibility) describes the manifest `<queries>` declarations used to discover launcher activities without requesting `QUERY_ALL_PACKAGES`. The resulting inventory remains launcher-visible only.
 - Android's [`SigningInfo` API reference](https://developer.android.com/reference/android/content/pm/SigningInfo) documents the ordered, oldest-to-current signing history for single-signer packages and the separate multiple-signer model. PrivaCage uses that history only when the independent APK signature verifier accepts the file; otherwise lineage remains unavailable.
+
+
+## Source layout
+
+- `main/` contains the Android manifest, Kotlin application sources, resources and generated native libraries.
+- `test/` contains the Kotlin/JVM unit tests and the separate Android Macrobenchmark test module.
+- The Android application is the Gradle root project; there is no nested `app/` module.

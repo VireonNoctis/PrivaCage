@@ -421,7 +421,7 @@ func TestRepositoryTrackerReportIncludesLimitationsAndEntries(t *testing.T) {
 }
 
 func TestBackupManifestRequiresExplicitFalse(t *testing.T) {
-	actual := filepath.Join(repoRoot(), "apps/android", "app", "src", "main", "AndroidManifest.xml")
+	actual := filepath.Join(repoRoot(), "apps", "android", "main", "AndroidManifest.xml")
 	if errorsFound := validateBackupManifest(actual); len(errorsFound) != 0 {
 		t.Fatalf("repository manifest rejected: %v", errorsFound)
 	}
@@ -454,7 +454,7 @@ func TestBackupManifestRequiresExplicitFalse(t *testing.T) {
 }
 
 func TestAndroidPrivacyManifestAndGradleMarkers(t *testing.T) {
-	actual := filepath.Join(repoRoot(), "apps/android", "app", "src", "main", "AndroidManifest.xml")
+	actual := filepath.Join(repoRoot(), "apps", "android", "main", "AndroidManifest.xml")
 	if errorsFound := validatePrivacyManifest(actual); len(errorsFound) != 0 {
 		t.Fatalf("repository manifest rejected: %v", errorsFound)
 	}

@@ -7,8 +7,8 @@
 The current fixture is consumed by:
 
 - `shared/rust/pcage-audit/src/lib.rs` — Rust portable verifier tests.
-- `apps/web/src/lib/audit-checkpoint.test.ts` — browser Web Crypto verifier tests.
-- `apps/android/app/src/test/kotlin/org/privacage/android/LocalAuditCheckpointSignerTest.kt` — Android checkpoint verifier tests.
+- `apps/web/test/lib/audit-checkpoint.test.ts` — browser Web Crypto verifier tests.
+- `apps/android/test/kotlin/org/privacage/android/LocalAuditCheckpointSignerTest.kt` — Android checkpoint verifier tests.
 
 All three implementations consume the same three acceptance vectors and detect the same payload mutation: replacing `[REDACTED]` with `private.example` without updating the signed digest. These vectors use test-only keys generated for fixtures; their private keys are not checked in.
 

@@ -1,9 +1,23 @@
 # Platform applications
 
-This directory contains PrivaCage's platform-facing client projects.
+Every platform client follows the same high-level layout:
 
-- `android/` — Android application and its Gradle modules.
-- `ios/` — iOS capability boundary and acceptance notes; no executable iOS target exists yet.
-- `web/` — Svelte 5 + TypeScript browser console.
+```text
+apps/
+├── android/
+│   ├── main/
+│   └── test/
+├── ios/
+│   ├── main/
+│   └── test/
+├── web/
+│   ├── main/
+│   └── test/
+└── windows/
+    ├── main/
+    └── test/
+```
 
-Shared libraries, catalogues, and server-side services remain outside this directory: `android-core/`, `shared/`, and `web-backend/`. Keep platform-specific manifests, source sets, assets, and build configuration inside the corresponding app project.
+Platform build configuration and project-specific documentation live at the platform root. Shared libraries, catalogues, and server-side services remain outside this directory: `android-core/`, `shared/`, and `web-backend/`.
+
+Platform source and test contents belong in the corresponding `main/` and `test/` folders. The language-specific exception is Windows Go unit tests: package tests that inspect unexported implementation details remain alongside their package in `windows/main/`, as required by Go. `windows/test/` holds cross-package integration tests.

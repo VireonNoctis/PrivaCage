@@ -61,9 +61,9 @@ func findWin11DebloatScriptFrom(workingDirectory, executablePath string) (string
 	seen := make(map[string]struct{})
 	for _, root := range roots {
 		candidates := []string{
-			filepath.Join(root, "windows", "Win11Debloat", win11DebloatEntryPoint),
+			filepath.Join(root, "main", "Win11Debloat", win11DebloatEntryPoint),
 			filepath.Join(root, "Win11Debloat", win11DebloatEntryPoint),
-			filepath.Join(root, "..", "Win11Debloat", win11DebloatEntryPoint),
+			filepath.Join(root, "..", "main", "Win11Debloat", win11DebloatEntryPoint),
 		}
 		for _, candidate := range candidates {
 			absolute, err := filepath.Abs(candidate)

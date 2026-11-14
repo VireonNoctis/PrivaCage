@@ -9,8 +9,8 @@ import (
 
 func TestFindWin11DebloatScriptFromAuditDirectory(t *testing.T) {
 	root := t.TempDir()
-	auditDirectory := filepath.Join(root, "windows", "pcage-audit")
-	script := filepath.Join(root, "windows", "Win11Debloat", "Win11Debloat.ps1")
+	auditDirectory := filepath.Join(root, "apps", "windows")
+	script := filepath.Join(root, "apps", "windows", "main", "Win11Debloat", "Win11Debloat.ps1")
 	if err := os.MkdirAll(auditDirectory, 0o755); err != nil {
 		t.Fatal(err)
 	}

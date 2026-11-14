@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BRAILLE_DIGITS, BRAILLE_NUMBER_SIGN, brailleDigit, braillePunctuation } from "./braille-numbers";
+import { BRAILLE_DIGITS, BRAILLE_NUMBER_SIGN, brailleDigit, braillePunctuation } from "../../main/lib/braille-numbers";
 
 describe("Braille numeric display", () => {
   it("maps all ten decimal digits to the standard Braille digit cells", () => {

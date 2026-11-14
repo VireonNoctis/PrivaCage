@@ -55,7 +55,7 @@ jobs:
 
       - name: Run Android DNS and privacy-model tests
         working-directory: apps/android
-        run: gradle --no-daemon :android-core:test :app:testDebugUnitTest
+        run: gradle --no-daemon :android-core:test :testDebugUnitTest
 
   shared-data-validation:
     runs-on: ubuntu-latest

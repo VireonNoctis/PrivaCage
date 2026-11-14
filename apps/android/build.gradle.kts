@@ -1,3 +1,65 @@
 plugins {
-    id("com.android.application") apply false
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "org.privacage.android"
+    compileSdk = 36
+
+    sourceSets {
+        getByName("main") {
+            manifest.srcFile("main/AndroidManifest.xml")
+            java.setSrcDirs(listOf("main/kotlin"))
+            res.setSrcDirs(listOf("main/res"))
+            jniLibs.setSrcDirs(listOf("main/jniLibs"))
+            assets.srcDir("../../shared/tracker-db")
+            assets.srcDir("../../shared/app-alternatives")
+            assets.srcDir("../../docs/privacy")
+        }
+        getByName("test") {
+            java.setSrcDirs(listOf("test/java", "test/kotlin"))
+        }
+    }
+
+    testOptions {
+        unitTests.all {
+            it.systemProperty("privacage.repo-root", rootProject.projectDir.parentFile.parentFile.absolutePath)
+        }
+    }
+
+    defaultConfig {
+        applicationId = "org.privacage.android"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 2
+        versionName = "0.2.0-experimental"
+    }
+
+    buildTypes {
+        create("benchmark") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+dependencies {
+    implementation(project(":android-core"))
+    implementation("com.android.tools.build:apksig:8.10.1")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    testImplementation("junit:junit:4.13.2")
+    // Use a real JSON implementation in local JVM tests; android.jar JSON methods are stubs.
+    testImplementation("org.json:json:20260719")
 }

@@ -17,7 +17,7 @@ The Rust API exposes:
 
 Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history remains device-local. The web client does not pair with devices or ingest live events, but it can locally verify and compare signed checkpoint files that the user explicitly selects; those files are processed in the browser and are not uploaded by the verifier.
 
-The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
+Platform client code is grouped under `apps/{android,ios,web,windows}/`, with each platform using `main/` and `test/` folders. The Windows Go package tests that inspect unexported helpers remain beside the package in `apps/windows/main/`, while black-box integration tests live in `apps/windows/test/`. The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
 ## Android app policy review observations
 
@@ -79,7 +79,7 @@ Use public Apple APIs and approved entitlements only. NetworkExtension design de
 
 ## Windows
 
-The Windows Go CLI in `windows/pcage-audit/` now supports a read-only baseline, edition-aware hardening previews, explicit apply, verify, and restore. It queries Domain/Private/Public firewall profiles and selected machine policy values through Windows PowerShell. The balanced profile targets documented diagnostic-data limits, advertising ID, Activity Feed/User Activity sharing, online speech personalization, tailored experiences, and supported Windows 11 diagnostic log/dump limits. The strict profile disables clipboard history and adds selected Windows-app capability force-denials plus Windows Error Reporting policy.
+The Windows Go CLI in `apps/windows/main/` now supports a read-only baseline, edition-aware hardening previews, explicit apply, verify, and restore. It queries Domain/Private/Public firewall profiles and selected machine policy values through Windows PowerShell. The balanced profile targets documented diagnostic-data limits, advertising ID, Activity Feed/User Activity sharing, online speech personalization, tailored experiences, and supported Windows 11 diagnostic log/dump limits. The strict profile disables clipboard history and adds selected Windows-app capability force-denials plus Windows Error Reporting policy.
 
 Apply is not implicit: the CLI requires `--confirm`, requests UAC elevation, and refuses to overwrite an active backup. Registry writes are limited to an allowlist and DWORD values. It snapshots prior key/value existence and the old DWORDs before changing policy, restricts the ProgramData backup directory to SYSTEM and Administrators, verifies values after writes, and attempts rollback on failure. Restore restores captured registry values and optional firewall profile state, verifies the result, and removes the backup only after successful readback. A pending backup deliberately prevents applying another profile.
 
@@ -135,8 +135,8 @@ The core preserves JPEG APP markers other than APP1, APP13, and COM; preserves u
 
 The Windows workspace exposes two intentionally separate control surfaces:
 
-- `windows/pcage-audit/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
-- `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
+- `apps/windows/main/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
+- `apps/windows/main/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
 
 The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.
 

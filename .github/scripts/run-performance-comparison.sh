@@ -25,11 +25,11 @@ build_native_benchmark_libraries() {
     # JNI dependencies that the normal Android validation workflow packages.
     (
         cd "$workspace/shared/rust/pcage-sync-jni"
-        cargo ndk -t x86_64 -o ../../../apps/android/app/src/main/jniLibs build --release
+        cargo ndk -t x86_64 -o ../../../apps/android/main/jniLibs build --release
     )
     (
         cd "$workspace/shared/rust/pcage-metadata-jni"
-        cargo ndk -t x86_64 -o ../../../apps/android/app/src/main/jniLibs build --release
+        cargo ndk -t x86_64 -o ../../../apps/android/main/jniLibs build --release
     )
 }
 
@@ -71,7 +71,7 @@ run_startup_benchmark() {
     local label="$1"
     local workspace="$2"
     local output="$RESULTS/$label/startup.json"
-    local build_outputs="$workspace/apps/android/performance-macrobenchmark/build/outputs/connected_android_test_additional_output"
+    local build_outputs="$workspace/apps/android/test/performance-macrobenchmark/build/outputs/connected_android_test_additional_output"
     local report=""
 
     echo "::group::Android cold-start benchmark ($label)"
@@ -88,7 +88,7 @@ run_startup_benchmark() {
     fi
     if [[ -z "$report" || ! -s "$report" ]]; then
         echo "Macrobenchmark completed without a benchmarkData.json report for $label." >&2
-        find "$workspace/apps/android/performance-macrobenchmark/build/outputs" -type f | head -80 >&2 || true
+        find "$workspace/apps/android/test/performance-macrobenchmark/build/outputs" -type f | head -80 >&2 || true
         exit 1
     fi
     cp "$report" "$output"

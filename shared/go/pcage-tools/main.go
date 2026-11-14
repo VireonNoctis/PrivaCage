@@ -958,7 +958,7 @@ func validateAndroidDependencies(androidDir string) []string {
 			errorsFound = append(errorsFound, fmt.Sprintf("cannot resolve Android source path %s: %v", path, relativeErr))
 			return nil
 		}
-		inApplicationSource := strings.Contains(filepath.ToSlash(relativePath), "/src/main/") &&
+		inApplicationSource := strings.HasPrefix(filepath.ToSlash(relativePath), "main/") &&
 			(strings.HasSuffix(name, ".kt") || strings.HasSuffix(name, ".java") || strings.HasSuffix(name, ".xml"))
 		if !isGradleFile && !inApplicationSource {
 			return nil

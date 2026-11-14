@@ -3,8 +3,8 @@ name: Validate Windows privacy baseline auditor
 on:
   push:
     paths:
-      - "windows/pcage-audit/**"
-      - "windows/Win11Debloat"
+      - "apps/windows/**"
+      - "apps/windows/main/Win11Debloat"
       - ".gitmodules"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
@@ -13,8 +13,8 @@ on:
       - "docs/research-notes/windows-privacy-hardening-2026-10-25.md"
   pull_request:
     paths:
-      - "windows/pcage-audit/**"
-      - "windows/Win11Debloat"
+      - "apps/windows/**"
+      - "apps/windows/main/Win11Debloat"
       - ".gitmodules"
       - ".github/workflows/validate-windows-audit.yml"
       - "README.md"
@@ -40,19 +40,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: windows/pcage-audit
+        working-directory: apps/windows
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - uses: actions/setup-go@v7
         with:
-          go-version-file: windows/pcage-audit/go.mod
-          cache-dependency-path: windows/pcage-audit/go.mod
+          go-version-file: apps/windows/go.mod
+          cache-dependency-path: apps/windows/go.mod
       - name: Run tests
         run: go test ./...
       - name: Build executable
-        run: go build ./...
+        run: go build ./main
 
   windows-smoke:
     name: Run Windows privacy checks and validate Win11Debloat source
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: windows/pcage-audit
+        working-directory: apps/windows
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +68,7 @@ jobs:
           submodules: recursive
       - name: Validate pinned Win11Debloat PowerShell source
         run: |
-          $debloatRoot = (Resolve-Path ..\Win11Debloat).Path
+          $debloatRoot = (Resolve-Path .\main\Win11Debloat).Path
           $entryPoint = Join-Path $debloatRoot 'Win11Debloat.ps1'
           $licensePath = Join-Path $debloatRoot 'LICENSE'
           if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
@@ -91,28 +91,28 @@ jobs:
           Write-Host "Parsed $($scripts.Count) Win11Debloat PowerShell files without syntax errors."
       - name: Run Win11Debloat upstream Pester suite
         shell: powershell
-        run: ..\Win11Debloat\Scripts\Run-Tests.ps1 -Bootstrap
+        run: .\main\Win11Debloat\Scripts\Run-Tests.ps1 -Bootstrap
       - name: Run Win11Debloat PSScriptAnalyzer
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -Confirm:$false
           Import-Module PSScriptAnalyzer
-          Invoke-ScriptAnalyzer -Path ..\Win11Debloat -Recurse -Severity Error -EnableExit
+          Invoke-ScriptAnalyzer -Path .\main\Win11Debloat -Recurse -Severity Error -EnableExit
       - uses: actions/setup-go@v7
         with:
-          go-version-file: windows/pcage-audit/go.mod
-          cache-dependency-path: windows/pcage-audit/go.mod
+          go-version-file: apps/windows/go.mod
+          cache-dependency-path: apps/windows/go.mod
       - name: Execute audit and validate no-change hardening plans
         run: |
-          $reportLines = go run . audit --format json
+          $reportLines = go run ./main audit --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $report = ($reportLines -join [Environment]::NewLine) | ConvertFrom-Json
           if ($report.schema_version -ne 1 -or $report.platform -ne "windows" -or $report.read_only -ne $true -or $report.checks.Count -lt 7) {
             throw "The audit returned unexpected metadata or too few checks."
           }
 
-          $balancedLines = go run . plan --profile balanced --format json
+          $balancedLines = go run ./main plan --profile balanced --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $balanced = ($balancedLines -join [Environment]::NewLine) | ConvertFrom-Json
           if ($balanced.schema_version -ne 1 -or $balanced.profile -ne "balanced" -or $balanced.changes.Count -lt 1 -or $balanced.block_outbound_by_default -or $balanced.isolate_outbound) {
@@ -122,7 +122,7 @@ jobs:
             throw "The balanced plan is missing its edition-aware diagnostic-data control."
           }
 
-          $strictLines = go run . plan --profile strict --format json
+          $strictLines = go run ./main plan --profile strict --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $strict = ($strictLines -join [Environment]::NewLine) | ConvertFrom-Json
           if ($strict.schema_version -ne 1 -or $strict.profile -ne "strict") {
@@ -140,7 +140,7 @@ jobs:
             throw "The strict preview omitted the documented Windows-app location denial on a supported client edition."
           }
 
-          $isolationLines = go run . plan --profile balanced --isolate-network --confirm-network-disruption --format json
+          $isolationLines = go run ./main plan --profile balanced --isolate-network --confirm-network-disruption --format json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $isolation = ($isolationLines -join [Environment]::NewLine) | ConvertFrom-Json
           if (-not $isolation.isolate_outbound -or $isolation.block_outbound_by_default -or @($isolation.warnings).Count -eq 0) {

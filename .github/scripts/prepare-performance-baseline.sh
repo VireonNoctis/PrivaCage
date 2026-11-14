@@ -32,12 +32,12 @@ copy_into_baseline "shared/rust/tracker-intelligence/Cargo.toml"
 copy_into_baseline "shared/rust/tracker-intelligence/benches/apk_scan.rs"
 copy_into_baseline "apps/android/settings.gradle.kts"
 copy_into_baseline "apps/android/gradle.properties"
-copy_into_baseline "apps/android/app/build.gradle.kts"
-copy_into_baseline "apps/android/app/src/main/AndroidManifest.xml"
+copy_into_baseline "apps/android/build.gradle.kts"
+copy_into_baseline "apps/android/main/AndroidManifest.xml"
 
-mkdir -p "$BASELINE/apps/android/performance-macrobenchmark"
-cp -R "$ROOT/apps/android/performance-macrobenchmark/." \
-    "$BASELINE/apps/android/performance-macrobenchmark/"
+mkdir -p "$BASELINE/apps/android/test/performance-macrobenchmark"
+cp -R "$ROOT/apps/android/test/performance-macrobenchmark/." \
+    "$BASELINE/apps/android/test/performance-macrobenchmark/"
 
 echo "Baseline worktree: $BASELINE"
 echo "Baseline commit: $PERFORMANCE_BASELINE_SHA"

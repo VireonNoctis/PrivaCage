@@ -1,4 +1,4 @@
-# iOS companion: implementation boundary
+# iOS main — capability and implementation boundary
 
 **Status:** no executable iOS app target exists in this repository yet. This file is a capability/acceptance boundary, not a SwiftUI implementation.
 
