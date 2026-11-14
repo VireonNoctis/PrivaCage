@@ -472,7 +472,7 @@ For a public release, the project should maintain machine-readable source metada
 ### S59 — Have I Been Pwned: API documentation (Pwned Passwords and account search)
 https://haveibeenpwned.com/API/V3
 
-The official API documentation distinguishes account-breach search from Pwned Passwords. Account search by email requires an API key; email hash-range k-anonymity is a subscription feature exposed through the IncludesKAnon capability. Pwned Passwords is separately available without a subscription, stores SHA-1 and NTLM hashes of UTF-8 passwords, supports five-character hash-prefix range lookup, and documents downloading the complete password-hash corpus for offline use. The Pwned Passwords corpus is not an email/account breach database. Checked 14 November 2026.
+The official API documentation distinguishes account-breach search from Pwned Passwords. Account search by email requires an API key; email hash-range k-anonymity is a subscription feature exposed through the IncludesKAnon capability. Pwned Passwords is separately available without a subscription, publishes SHA-1 and NTLM password-hash sets; the implemented SHA-1 path encodes input as UTF-8, supports five-character hash-prefix range lookup, and documents downloading the complete password-hash corpus for offline use. The Pwned Passwords corpus is not an email/account breach database. Checked 14 November 2026.
 
 <a id="s60"></a>
 ### S60 — Have I Been Pwned: Pwned Passwords
@@ -486,4 +486,4 @@ https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
-The official downloader's directory mode writes one file per five-character uppercase SHA-1 prefix (PREFIX.txt). Each non-empty line contains the full 40-character uppercase hash, a colon, and its occurrence count. Its optional sha1.index stores prefix/ETag pairs for conditional refresh; the index is not a completeness manifest. The downloader verifies each downloaded range against the API's Content-MD5 header and atomically replaces range files. The inspected upstream commit 9939f083fdf05c07d83e3dbbe156feda1a781fa0 was published 12 November 2026. Checked 14 November 2026.
+The official downloader's directory mode writes one file per five-character uppercase SHA-1 prefix (PREFIX.txt). Each non-empty line contains the full 40-character uppercase hash, a colon, and its occurrence count. It also writes sha1.index with prefix/ETag pairs for conditional refresh; the index is not a completeness manifest. The downloader verifies each downloaded range against the API's Content-MD5 header and atomically replaces range files. The inspected upstream commit 9939f083fdf05c07d83e3dbbe156feda1a781fa0 was published 12 November 2026. Checked 14 November 2026.

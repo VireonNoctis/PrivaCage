@@ -8,7 +8,7 @@
 Have I Been Pwned documents two different data products:
 
 - **Account breach search:** searches breach records associated with an email address. The direct account endpoint requires an API key. The email hash-range k-anonymity endpoint is subscription-gated through the account's IncludesKAnon capability.
-- **Pwned Passwords:** a separate corpus of previously exposed password hashes. It is available without an API subscription and can be downloaded for offline use. The published corpus contains SHA-1 and NTLM hashes of UTF-8 passwords, not email addresses or account-to-breach records (S59, S60).
+- **Pwned Passwords:** a separate corpus of previously exposed password hashes. It is available without an API subscription and can be downloaded for offline use. The published corpus contains SHA-1 and NTLM password hashes, not email addresses or account-to-breach records. This core uses the SHA-1 variant over UTF-8 input (S59, S60).
 
 Therefore PrivaCage must not call the first local implementation an offline email/account breach lookup. The buildable first slice is a password-exposure check against the official Pwned Passwords corpus. It does not identify which account was breached, the source breach, or whether a password is otherwise strong.
 
@@ -34,7 +34,7 @@ A missing, empty, unreadable, malformed, oversized or unsorted range throws an e
 
 - SHA-1 is used only as the identifier required by the published corpus. It is not used to store, protect or authenticate passwords.
 - The caller supplies the snapshot date. The current core does not authenticate that date, verify a signed manifest, validate the entire dataset's completeness, or prove freshness.
-- The matcher validates the one range file it needs. A valid no-match means only that the password hash was absent from that supplied range snapshot.
+- The matcher validates the one range file it needs. A valid no-match means only that the password hash was absent from that supplied range file. A syntactically valid but truncated file cannot yet be detected; until an import/manifest path authenticates range digests and coverage, a no-match is only a local-file observation, not an authoritative corpus result.
 - A no-match is not proof that the password is strong, unique, safe, or absent from every breach.
 - The corpus contains password hashes, not email/account breach records. No email address or identifier is sent.
 - Android UI, secure text-field lifecycle, Storage Access Framework import, dataset-size planning, provenance manifest and device-level memory review remain unfinished.
