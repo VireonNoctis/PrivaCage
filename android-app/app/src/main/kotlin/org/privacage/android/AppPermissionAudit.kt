@@ -45,6 +45,70 @@ internal object AppPermissionAudit {
             )
         }
 
+    /**
+     * Returns null when Android cannot resolve the declared permission. Unknown metadata is
+     * not evidence that the permission is non-dangerous.
+     */
+    internal fun isDangerousPermission(readProtectionLevel: () -> Int): Boolean? =
+        try {
+            val protectionLevel = readProtectionLevel()
+            (protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
+                PermissionInfo.PROTECTION_DANGEROUS
+        } catch (exception: PackageManager.NameNotFoundException) {
+            null
+        } catch (exception: SecurityException) {
+            null
+        }
+
+    /** Returns null when Android does not expose the matching grant flag. */
+    internal fun requestedPermissionGrantState(flags: IntArray?, index: Int): Boolean? =
+        flags?.getOrNull(index)?.let { permissionFlags ->
+            (permissionFlags and PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+        }
+
+    internal fun isCompleteScan(
+        skippedPackages: Int,
+        unavailablePermissionClassifications: Int,
+        unavailableGrantStates: Int,
+        incompletePermissionInventories: Int = 0
+    ): Boolean =
+        skippedPackages == 0 &&
+            unavailablePermissionClassifications == 0 &&
+            unavailableGrantStates == 0 &&
+            incompletePermissionInventories == 0
+
+    internal data class BaselinePreparation(
+        val encoded: String?,
+        val failureReason: String?
+    )
+
+    internal fun prepareBaselineForComparison(
+        snapshot: PermissionGrantSnapshot,
+        capturedAt: Instant
+    ): BaselinePreparation =
+        try {
+            BaselinePreparation(encoded = encodeBaseline(snapshot, capturedAt), failureReason = null)
+        } catch (exception: IOException) {
+            BaselinePreparation(
+                encoded = null,
+                failureReason = exception.message ?: "The snapshot exceeds supported baseline limits."
+            )
+        }
+
+    internal fun canCompareBaseline(
+        skippedPackages: Int,
+        unavailablePermissionClassifications: Int,
+        unavailableGrantStates: Int,
+        baselinePreparation: BaselinePreparation,
+        incompletePermissionInventories: Int = 0
+    ): Boolean =
+        isCompleteScan(
+            skippedPackages,
+            unavailablePermissionClassifications,
+            unavailableGrantStates,
+            incompletePermissionInventories
+        ) && baselinePreparation.encoded != null
+
     private const val MAX_APPS_IN_REPORT = 60
     private const val MAX_CHANGES_IN_REPORT = 100
     private const val PREFERENCES_NAME = "privacage_permission_audit"
@@ -56,6 +120,27 @@ internal object AppPermissionAudit {
     private const val MAX_BASELINE_BYTES = 4 * 1024 * 1024
     private const val MAX_BASELINE_PACKAGES = 2_000
     private const val MAX_PERMISSIONS_PER_PACKAGE = 256
+    private const val MAX_DECLARED_PERMISSIONS_PER_PACKAGE = 512
+    private const val MAX_DECLARED_PERMISSIONS_PER_SCAN = 50_000
+
+    internal fun isWithinBaselinePackageLimit(packageCount: Int): Boolean =
+        packageCount in 0..MAX_BASELINE_PACKAGES
+
+    internal fun totalPermissionDeclarationsFitLimit(
+        packageDeclarationCount: Int,
+        totalDeclarationCount: Int
+    ): Boolean =
+        packageDeclarationCount >= 0 &&
+            totalDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_SCAN &&
+            packageDeclarationCount <= MAX_DECLARED_PERMISSIONS_PER_SCAN - totalDeclarationCount
+
+    internal fun permissionDeclarationsFitLimits(
+        packageDeclarationCount: Int,
+        totalDeclarationCount: Int
+    ): Boolean =
+        packageDeclarationCount in 0..MAX_DECLARED_PERMISSIONS_PER_PACKAGE &&
+            totalPermissionDeclarationsFitLimit(packageDeclarationCount, totalDeclarationCount)
+
     private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
     private val PERMISSION_NAME_PATTERN = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
 
@@ -83,9 +168,17 @@ internal object AppPermissionAudit {
         if (packageNames.isEmpty()) {
             return "Android returned no launcher-visible applications. This may be a restricted profile or OEM-specific package-visibility behavior."
         }
+        if (!isWithinBaselinePackageLimit(packageNames.size)) {
+            return "Permission audit was not run because Android exposed ${packageNames.size} launcher-visible applications, above the supported limit of $MAX_BASELINE_PACKAGES. The existing encrypted baseline was preserved; no comparison or replacement was attempted."
+        }
 
         var inspected = 0
         var skipped = 0
+        var unavailablePermissionClassifications = 0
+        var unavailableGrantStates = 0
+        var oversizedPermissionPackages = 0
+        var totalDeclaredPermissions = 0
+        var permissionScanStoppedAtTotalLimit = false
         val rows = mutableListOf<String>()
         val labelsByPackage = mutableMapOf<String, String>()
         val observedPermissions = linkedMapOf<String, Map<String, Boolean>>()
@@ -101,7 +194,6 @@ internal object AppPermissionAudit {
                 continue
             }
 
-            inspected++
             val label = try {
                 packageInfo.applicationInfo?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName
             } catch (exception: RuntimeException) {
@@ -111,27 +203,45 @@ internal object AppPermissionAudit {
 
             val requested = packageInfo.requestedPermissions
             if (requested == null) {
+                inspected++
                 observedPermissions[packageName] = emptyMap()
                 continue
             }
+            if (requested.size > MAX_DECLARED_PERMISSIONS_PER_PACKAGE) {
+                oversizedPermissionPackages++
+                if (!totalPermissionDeclarationsFitLimit(requested.size, totalDeclaredPermissions)) {
+                    permissionScanStoppedAtTotalLimit = true
+                    break
+                }
+                totalDeclaredPermissions += requested.size
+                continue
+            }
+            if (!permissionDeclarationsFitLimits(requested.size, totalDeclaredPermissions)) {
+                permissionScanStoppedAtTotalLimit = true
+                break
+            }
+            totalDeclaredPermissions += requested.size
+            inspected++
 
             val flags = packageInfo.requestedPermissionsFlags
             val perPackage = linkedMapOf<String, Boolean>()
             val sensitive = mutableListOf<String>()
             requested.forEachIndexed { index, permission ->
-                val isDangerous = try {
-                    val info = packageManager.getPermissionInfo(permission, 0)
-                    (info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE) ==
-                        PermissionInfo.PROTECTION_DANGEROUS
-                } catch (exception: PackageManager.NameNotFoundException) {
-                    false
-                } catch (exception: SecurityException) {
-                    false
+                val isDangerous = isDangerousPermission {
+                    packageManager.getPermissionInfo(permission, 0).protectionLevel
+                }
+                if (isDangerous == null) {
+                    unavailablePermissionClassifications++
+                    return@forEachIndexed
                 }
                 if (!isDangerous) return@forEachIndexed
 
-                val granted = flags?.getOrNull(index)
-                    ?.and(PackageInfo.REQUESTED_PERMISSION_GRANTED) == PackageInfo.REQUESTED_PERMISSION_GRANTED
+                val granted = requestedPermissionGrantState(flags, index)
+                if (granted == null) {
+                    unavailableGrantStates++
+                    sensitive += permission.substringAfterLast('.') + " — GRANT STATE UNAVAILABLE"
+                    return@forEachIndexed
+                }
                 perPackage[permission] = granted
                 sensitive += permission.substringAfterLast('.') +
                     if (granted) " — GRANTED" else " — NOT CURRENTLY GRANTED"
@@ -150,7 +260,11 @@ internal object AppPermissionAudit {
             .append("; packages skipped: ").append(skipped).append("\n\n")
 
         if (rows.isEmpty()) {
-            output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
+            if (skipped > 0 || unavailablePermissionClassifications > 0 || oversizedPermissionPackages > 0 || permissionScanStoppedAtTotalLimit) {
+                output.append("No dangerous-permission conclusion is available for the full launcher inventory because some declarations could not be fully inspected.")
+            } else {
+                output.append("No dangerous runtime permissions were found in the requested-permission declarations of the inspected launcher apps.")
+            }
         } else {
             rows.take(MAX_APPS_IN_REPORT).forEachIndexed { index, row ->
                 if (index > 0) output.append("\n\n")
@@ -162,13 +276,74 @@ internal object AppPermissionAudit {
             }
         }
 
+        if (unavailablePermissionClassifications > 0) {
+            output.append("\n\nPermission classification unavailable for ")
+                .append(unavailablePermissionClassifications)
+                .append(" declared permission(s); these were not treated as non-dangerous.")
+        }
+        if (unavailableGrantStates > 0) {
+            output.append("\nGrant state unavailable for ")
+                .append(unavailableGrantStates)
+                .append(" declared dangerous permission(s); these were not treated as denied.")
+        }
+
+        if (oversizedPermissionPackages > 0) {
+            output.append("\n\nPermission declarations were not inspected for ")
+                .append(oversizedPermissionPackages)
+                .append(" app(s) because each exceeded the ")
+                .append(MAX_DECLARED_PERMISSIONS_PER_PACKAGE)
+                .append("-declaration per-app safety limit.")
+        }
+        if (permissionScanStoppedAtTotalLimit) {
+            output.append("\n\nPermission inventory stopped at the ")
+                .append(MAX_DECLARED_PERMISSIONS_PER_SCAN)
+                .append("-declaration scan limit; remaining launcher-visible apps were not inspected.")
+        }
+
+        val incompletePermissionInventories = oversizedPermissionPackages + if (permissionScanStoppedAtTotalLimit) 1 else 0
         val currentSnapshot = PermissionGrantSnapshot(observedPermissions)
         val scanCapturedAt = Instant.now()
-        output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
-        if (skipped > 0) {
-            output.append("Comparison was not run and the saved baseline was not changed because ")
-                .append(skipped).append(" package(s) could not be inspected. This avoids treating an incomplete scan as a real permission change.")
+        val scanEvidenceComplete = isCompleteScan(
+            skipped,
+            unavailablePermissionClassifications,
+            unavailableGrantStates,
+            incompletePermissionInventories
+        )
+        val baselinePreparation = if (scanEvidenceComplete) {
+            prepareBaselineForComparison(currentSnapshot, scanCapturedAt)
         } else {
+            BaselinePreparation(encoded = null, failureReason = null)
+        }
+        output.append("\n\nPERMISSION SNAPSHOT COMPARISON (LOCAL ONLY)\n")
+        if (!canCompareBaseline(
+                skipped,
+                unavailablePermissionClassifications,
+                unavailableGrantStates,
+                baselinePreparation,
+                incompletePermissionInventories
+            )
+        ) {
+            val incompleteReasons = mutableListOf<String>()
+            if (skipped > 0) incompleteReasons += "$skipped package(s) could not be inspected"
+            if (unavailablePermissionClassifications > 0) {
+                incompleteReasons += "$unavailablePermissionClassifications permission declaration(s) could not be classified"
+            }
+            if (unavailableGrantStates > 0) {
+                incompleteReasons += "$unavailableGrantStates dangerous permission grant state(s) were unavailable"
+            }
+            if (incompletePermissionInventories > 0) {
+                incompleteReasons += "one or more permission inventories exceeded the scan safety limits"
+            }
+            if (scanEvidenceComplete && baselinePreparation.encoded == null) {
+                incompleteReasons += "the current snapshot exceeds supported encrypted-baseline limits: " +
+                    (baselinePreparation.failureReason ?: "encoding was unavailable")
+            }
+            output.append("Comparison was not run and the saved baseline was not changed because ")
+                .append(incompleteReasons.joinToString("; "))
+                .append(". This avoids treating unknown permission evidence as a real change.")
+        } else {
+            val encodedBaseline = baselinePreparation.encoded
+                ?: throw IOException("Baseline comparison was allowed without an encoded snapshot.")
             val baselineRead = readBaselinePreference {
                 AndroidSensitivePreferenceVault.read(
                     context = context,
@@ -280,7 +455,7 @@ internal object AppPermissionAudit {
                         encryptedKey = KEY_BASELINE_ENCRYPTED,
                         keyAlias = KEY_ALIAS,
                         aadLabel = AAD_LABEL,
-                        plaintext = encodeBaseline(currentSnapshot, scanCapturedAt),
+                        plaintext = encodedBaseline,
                         maximumPlaintextBytes = MAX_BASELINE_BYTES,
                         legacyKeys = setOf(KEY_BASELINE),
                         validateValue = { decodeBaselineRecord(it) }

@@ -10,6 +10,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.security.KeyStore
 import java.util.Base64
 import javax.crypto.Cipher
@@ -137,7 +138,9 @@ internal object SensitivePreferenceEnvelope {
         } catch (exception: IOException) {
             throw exception
         } catch (exception: GeneralSecurityException) {
-            throw IOException("Android Keystore could not authenticate local data; stored ciphertext was preserved.", exception)
+            throw IOException("Cryptographic provider could not authenticate local data; stored ciphertext was preserved.", exception)
+        } catch (exception: ProviderException) {
+            throw IOException("Cryptographic provider failed while authenticating local data; stored ciphertext was preserved.", exception)
         } finally {
             iv.fill(0)
             ciphertext.fill(0)
@@ -238,6 +241,30 @@ internal object AndroidSensitivePreferenceVault {
         return legacy
     }
 
+    /** Authenticate and schema-check the current value before any replacement write. */
+    internal fun validateExistingEncryptedValue(
+        envelope: String,
+        key: SecretKey,
+        aadLabel: String,
+        maximumPlaintextBytes: Int,
+        validateValue: (String) -> Unit
+    ) {
+        val existingPlaintext = SensitivePreferenceEnvelope.decrypt(
+            envelope,
+            key,
+            aadLabel,
+            maximumPlaintextBytes
+        )
+        try {
+            validateValue(existingPlaintext)
+        } catch (exception: Exception) {
+            throw IOException(
+                "Existing encrypted local preference failed validation; stored ciphertext was preserved.",
+                exception
+            )
+        }
+    }
+
     @Synchronized
     @Throws(IOException::class)
     fun write(
@@ -257,10 +284,18 @@ internal object AndroidSensitivePreferenceVault {
             throw IOException("Local preference was not saved because validation failed.", exception)
         }
         val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
-        val key = if (preferences.contains(encryptedKey)) {
-            loadExistingKey(keyAlias)
-        } else {
-            getOrCreateKey(keyAlias)
+        val hasExistingEnvelope = preferences.contains(encryptedKey)
+        val key = if (hasExistingEnvelope) loadExistingKey(keyAlias) else getOrCreateKey(keyAlias)
+        if (hasExistingEnvelope) {
+            val existingEnvelope = readString(preferences, encryptedKey)
+                ?: throw IOException("The encrypted local preference is missing its value; stored data was preserved.")
+            validateExistingEncryptedValue(
+                existingEnvelope,
+                key,
+                aadLabel,
+                maximumPlaintextBytes,
+                validateValue
+            )
         }
         val envelope = SensitivePreferenceEnvelope.encrypt(
             plaintext,
@@ -295,33 +330,38 @@ internal object AndroidSensitivePreferenceVault {
         throw IOException("Encrypted local preference has an unexpected stored type; data was preserved.", exception)
     }
 
-    private fun loadExistingKey(alias: String): SecretKey {
-        validateAlias(alias)
-        val key = androidKeyStore().getKey(alias, null) as? SecretKey
-        return key ?: throw IOException(
-            "The Android Keystore key for existing encrypted data is missing. Stored ciphertext was preserved; no replacement key was created."
-        )
-    }
-
-    private fun getOrCreateKey(alias: String): SecretKey {
-        validateAlias(alias)
-        val store = androidKeyStore()
-        val existing = store.getKey(alias, null) as? SecretKey
-        if (existing != null) return existing
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                alias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+    private fun loadExistingKey(alias: String): SecretKey =
+        withKeyStoreFailureBoundary("load the existing key") {
+            validateAlias(alias)
+            val key = androidKeyStore().getKey(alias, null) as? SecretKey
+            key ?: throw IOException(
+                "The Android Keystore key for existing encrypted data is missing. Stored ciphertext was preserved; no replacement key was created."
             )
-                .setKeySize(256)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
-    }
+        }
+
+    private fun getOrCreateKey(alias: String): SecretKey =
+        withKeyStoreFailureBoundary("create or access a local key") {
+            validateAlias(alias)
+            val store = androidKeyStore()
+            val existing = store.getKey(alias, null) as? SecretKey
+            if (existing != null) {
+                existing
+            } else {
+                val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+                generator.init(
+                    KeyGenParameterSpec.Builder(
+                        alias,
+                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                    )
+                        .setKeySize(256)
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(true)
+                        .build()
+                )
+                generator.generateKey()
+            }
+        }
 
     private fun androidKeyStore(): KeyStore =
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
@@ -332,3 +372,25 @@ internal object AndroidSensitivePreferenceVault {
         }
     }
 }
+
+
+/**
+ * Converts expected Android Keystore/JCA provider failures into the vault's checked
+ * error contract. Unrelated runtime/programming errors deliberately remain visible.
+ */
+internal fun <T> withKeyStoreFailureBoundary(operation: String, action: () -> T): T =
+    try {
+        action()
+    } catch (exception: IOException) {
+        throw exception
+    } catch (exception: GeneralSecurityException) {
+        throw IOException(
+            "Android Keystore could not $operation; existing encrypted data was preserved.",
+            exception
+        )
+    } catch (exception: ProviderException) {
+        throw IOException(
+            "Android Keystore provider failed while trying to $operation; existing encrypted data was preserved.",
+            exception
+        )
+    }

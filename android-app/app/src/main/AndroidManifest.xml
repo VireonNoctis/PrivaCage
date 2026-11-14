@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
@@ -46,12 +47,13 @@
         <package android:name="com.google.android.gsf" />
         <package android:name="com.android.vending" />
     </queries>
-    <application android:allowBackup="false" android:label="PrivaCage" android:supportsRtl="true"
+    <application android:allowBackup="false" android:label="PrivaCage Experimental" android:supportsRtl="true"
         android:theme="@style/PrivaCageTheme">
         <profileable android:shell="true" tools:targetApi="29" />
         <activity android:name=".AppAlternativesActivity" android:exported="false" />
         <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
         <activity android:name=".MonitoringAccessReviewActivity" android:exported="false" />
+        <activity android:name=".CellularSecurityOnboardingActivity" android:exported="false" />
         <activity android:name=".LegalPrivacyActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

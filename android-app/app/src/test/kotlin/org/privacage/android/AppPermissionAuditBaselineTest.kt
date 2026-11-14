@@ -1,13 +1,160 @@
 package org.privacage.android
 
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.time.Instant
 
 class AppPermissionAuditBaselineTest {
+    @Test
+    fun keystoreSecurityFailuresBecomeUnreadableBaselineErrorsWithoutDroppingCause() {
+        val cause = GeneralSecurityException("key store could not load the existing key")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped.cause)
+
+        val result = AppPermissionAudit.readBaselinePreference { throw wrapped }
+        assertNull(result.value)
+        assertTrue(result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
+    fun keystoreProviderFailuresBecomeUnreadableBaselineErrors() {
+        val cause = ProviderException("provider unavailable")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped.cause)
+
+        val result = AppPermissionAudit.readBaselinePreference { throw wrapped }
+        assertNull(result.value)
+        assertTrue(result.unreadable)
+        assertTrue(result.warning.orEmpty().contains("preserved"))
+    }
+
+    @Test
+    fun keystoreFailureBoundaryPreservesExistingIoExceptions() {
+        val cause = IOException("the existing key is missing")
+        val wrapped = assertThrows(IOException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") { throw cause }
+        }
+        assertSame(cause, wrapped)
+    }
+
+    @Test
+    fun keystoreFailureBoundaryDoesNotHideUnrelatedRuntimeErrors() {
+        assertThrows(IllegalStateException::class.java) {
+            withKeyStoreFailureBoundary("load the existing key") {
+                throw IllegalStateException("unexpected programming error")
+            }
+        }
+    }
+
+    @Test
+    fun unresolvedPermissionMetadataIsUnknownRatherThanNonDangerous() {
+        assertNull(
+            AppPermissionAudit.isDangerousPermission {
+                throw PackageManager.NameNotFoundException("permission is not known to this system")
+            }
+        )
+        assertNull(
+            AppPermissionAudit.isDangerousPermission {
+                throw SecurityException("permission metadata is not visible")
+            }
+        )
+    }
+
+    @Test
+    fun permissionClassificationUsesTheBaseProtectionLevel() {
+        assertEquals(
+            true,
+            AppPermissionAudit.isDangerousPermission { PermissionInfo.PROTECTION_DANGEROUS }
+        )
+        assertEquals(
+            false,
+            AppPermissionAudit.isDangerousPermission { PermissionInfo.PROTECTION_NORMAL }
+        )
+    }
+
+    @Test
+    fun missingOrMisalignedGrantFlagsRemainUnknown() {
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(null, 0))
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(intArrayOf(), 0))
+        assertNull(AppPermissionAudit.requestedPermissionGrantState(intArrayOf(0), 1))
+        assertEquals(
+            true,
+            AppPermissionAudit.requestedPermissionGrantState(
+                intArrayOf(PackageInfo.REQUESTED_PERMISSION_GRANTED),
+                0
+            )
+        )
+        assertEquals(false, AppPermissionAudit.requestedPermissionGrantState(intArrayOf(0), 0))
+    }
+
+    @Test
+    fun anyMissingPermissionEvidenceBlocksBaselineComparison() {
+        assertTrue(AppPermissionAudit.isCompleteScan(0, 0, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(1, 0, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(0, 1, 0))
+        assertFalse(AppPermissionAudit.isCompleteScan(0, 0, 1))
+        assertFalse(AppPermissionAudit.isCompleteScan(0, 0, 0, 1))
+    }
+
+    @Test
+    fun launcherInventoryMustFitTheSupportedBaselinePackageLimit() {
+        assertTrue(AppPermissionAudit.isWithinBaselinePackageLimit(2_000))
+        assertFalse(AppPermissionAudit.isWithinBaselinePackageLimit(2_001))
+        assertFalse(AppPermissionAudit.isWithinBaselinePackageLimit(-1))
+    }
+
+    @Test
+    fun declaredPermissionScanningIsBoundedPerPackageAndAcrossTheWholeScan() {
+        assertTrue(AppPermissionAudit.permissionDeclarationsFitLimits(512, 0))
+        assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(513, 0))
+        assertTrue(AppPermissionAudit.permissionDeclarationsFitLimits(1, 49_999))
+        assertTrue(AppPermissionAudit.permissionDeclarationsFitLimits(0, 50_000))
+        assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(1, 50_000))
+        assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(-1, 0))
+        assertFalse(AppPermissionAudit.permissionDeclarationsFitLimits(1, -1))
+
+        assertTrue(AppPermissionAudit.totalPermissionDeclarationsFitLimit(513, 49_487))
+        assertFalse(AppPermissionAudit.totalPermissionDeclarationsFitLimit(513, 49_488))
+        assertFalse(AppPermissionAudit.totalPermissionDeclarationsFitLimit(50_001, 0))
+    }
+
+    @Test
+    fun baselineMustBeEncodableBeforeComparisonCanProceed() {
+        val validSnapshot = org.privacage.audit.PermissionGrantSnapshot(
+            mapOf("com.example.app" to mapOf("android.permission.CAMERA" to true))
+        )
+        val validPreparation = AppPermissionAudit.prepareBaselineForComparison(validSnapshot, Instant.EPOCH)
+        assertTrue(validPreparation.encoded.orEmpty().isNotBlank())
+        assertEquals(null, validPreparation.failureReason)
+        assertTrue(AppPermissionAudit.canCompareBaseline(0, 0, 0, validPreparation))
+
+        val tooManyPackages = org.privacage.audit.PermissionGrantSnapshot(
+            (0..2_000).associate { "org.example.app$it" to emptyMap() }
+        )
+        val rejectedPreparation = AppPermissionAudit.prepareBaselineForComparison(tooManyPackages, Instant.EPOCH)
+        assertEquals(null, rejectedPreparation.encoded)
+        assertTrue(rejectedPreparation.failureReason.orEmpty().contains("package count"))
+        assertFalse(AppPermissionAudit.canCompareBaseline(0, 0, 0, rejectedPreparation))
+        assertFalse(AppPermissionAudit.canCompareBaseline(1, 0, 0, validPreparation))
+        assertFalse(AppPermissionAudit.canCompareBaseline(0, 0, 0, validPreparation, 1))
+    }
+
     @Test
     fun missingAndValidPreferenceValuesAreNotClassifiedAsCorrupt() {
         val missing = AppPermissionAudit.readBaselinePreference { null }

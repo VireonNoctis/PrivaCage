@@ -33,6 +33,12 @@ EDNS(0) wire layout follows [RFC 6891 §6.1.2](https://www.rfc-editor.org/rfc/rf
 - **Not device-verified yet.** Unit tests cover selected packet and policy cases, but do not prove Android routes both address families as expected on every OEM build. Emulator/physical-device validation remains required for VPN permission/revocation, IPv4/IPv6 routing, resolver compatibility, network changes, captive portals, lifecycle termination, and real application traffic.
 - **No claims of absolute privacy.** A match identifies a known endpoint/class marker, not maliciousness, the initiating app, or proof that personal data was transmitted. A missing match is not evidence of no tracking.
 
+## Offline password exposure lookup (experimental on PR #26)
+
+The Kotlin/JVM core includes a local-only reader for the official Have I Been Pwned Pwned Passwords SHA-1 range-directory format. It hashes a dedicated CharArray as UTF-8, opens only the matching PREFIX.txt file, validates the complete bounded range file, and returns either a match count or NOT_FOUND_IN_SNAPSHOT. The supplied character array is cleared on every exit path. Missing, empty, malformed, oversized, unsorted, or invalid range data raises an explicit error; it is never converted into a no-match result.
+
+The caller supplies the dataset snapshot date; this core does not authenticate that date, verify a signed dataset manifest, import a dataset, or provide an Android UI. It does not make network requests or persist the raw password. It checks password hashes only, not email/account breach records. A no-match means only that the password was absent from the supplied, readable range snapshot; it is not a password-strength verdict or proof that an account has never been breached.
+
 ## Run tests
 
 Requires JDK 17 and Gradle with access to declared dependencies:

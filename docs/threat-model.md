@@ -12,6 +12,8 @@ This is a working threat model, not a security audit. Update it as executable co
 - Trust in the accuracy of product warnings.
 - App package names, app-open timestamps, and user-supplied policy links in the local review queue.
 - Transient Android monitoring-access observations shown on the review screen.
+- Password characters and derived hashes during an explicitly requested local exposure check.
+- User-supplied offline password-hash range files and their claimed snapshot date.
 
 ## Threats
 
@@ -26,6 +28,8 @@ This is a working threat model, not a security audit. Update it as executable co
 - A legal workflow implies that a company deleted data when it has not.
 - A user mistakes a bounded Usage Access observation window for a complete app-usage history.
 - A user interprets a legitimate accessibility service, device administrator, notification listener, or VPN as proof of abuse.
+- A missing, stale, truncated, or malformed password range is misreported as a clean result.
+- A user mistakes a password-hash corpus for an email/account breach database or treats a no-match as proof of password safety.
 
 ## Mitigations
 
@@ -40,6 +44,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Verify enforcement outcomes through the OS and surface failures.
 - Require evidence for app recommendations and prohibit paid placement.
 - Track request-submission evidence separately from company responses and confirmed deletion.
+- The local password matcher consumes a dedicated CharArray, clears it and intermediate byte arrays, validates the entire bounded range file, and fails closed on missing/corrupt ranges. Its result is explicitly limited to the supplied snapshot and is not an account-breach or password-strength verdict.
 
 ## Additional mitigations
 
@@ -65,10 +70,18 @@ Stalkerware signals must be framed carefully: an enabled accessibility service, 
 
 | Asset / process | Threat | Mitigation and remaining boundary |
 |---|---|---|
-| Local DNS settings, rights tracker and permission baseline | Device storage inspection or offline file modification | Separate AES-256-GCM encrypted preference envelopes, per-purpose Android Keystore keys and authenticated purpose labels. Authentication failures preserve ciphertext. This does not protect plaintext in memory, a rooted/compromised OS, unlocked-device access, or every operational preference. |
+| Local DNS settings, rights tracker, permission baseline and cellular checklist | Device storage inspection, offline modification, corrupted ciphertext, or an update overwriting unreadable data | Separate AES-256-GCM encrypted preference envelopes, per-purpose Android Keystore keys and authenticated purpose labels. Reads and replacement writes authenticate the existing envelope and validate its schema before use/overwrite; failures preserve the prior ciphertext. This does not protect plaintext in memory, a rooted/compromised OS, unlocked-device access, or every operational preference. |
+| Permission audit evidence | Missing metadata is mistaken for a negative result, or an unusually large package inventory consumes excessive resources or is truncated into a false comparison | Unresolved protection levels and missing/misaligned grant flags are reported as unknown. Scanning is capped at 512 declared permissions per package and 50,000 declarations per scan; any cap hit marks the scan incomplete and blocks comparison/baseline replacement. The encrypted snapshot is also checked against the 4 MiB, 2,000-package, 256-dangerous-permission-per-package and name limits before comparison. The prior encrypted baseline is preserved on every incomplete/over-limit path. This still covers only launcher-visible packages and Android-exposed metadata. |
 | Product telemetry | Analytics/crash SDK or custom source code added by a future dependency/change | Strict no-telemetry policy and CI scan across Android Gradle dependencies, main Kotlin/Java/XML source and manifest. Manual review remains necessary for unknown SDKs, hand-written requests, platform/OEM diagnostics and transitive behaviour outside the marker list. |
 | Functional network requests | DNS resolver, relay, reverse proxy or host observes information needed for the feature | Explicit destination selection/confirmation where appropriate; DNS and sync data boundaries are documented. Provider/host policies and logs remain outside the local client. Relay content is encrypted, but metadata is visible. |
 | Legal demand | Operator is required by applicable law to provide information it holds | No voluntary disclosure; review validity/jurisdiction/scope, challenge or narrow where legally available, disclose only the minimum held data legally required, and notify when lawful/safe. No claim of immunity from valid legal process. |
-| Local key loss | Keystore key invalidated, removed or unavailable | Never generate a replacement for an existing ciphertext record. Preserve the ciphertext and report the error; independent encrypted export/recovery is required where available. |
+| Local key loss | Keystore key invalidated, removed or unavailable | Normalize expected Keystore `GeneralSecurityException` and provider `ProviderException` failures into explicit I/O errors. Preserve ciphertext on read and replacement-write failures; never generate a replacement key while accessing an existing encrypted record. Writes authenticate and schema-validate the old envelope before replacement. An explicit clear is required to discard unreadable data; independent encrypted export/recovery is required where available. |
 
 The project does not build an authority-access API or maintain a central PrivaCage user-account dataset. App-policy review links and status remain in the encrypted local queue; the app does not transmit policy contents. A separately hosted relay or public web endpoint may have ordinary connection metadata under its operator's control. DNS resolvers and user-configured relay hosts are separate recipients. Their own legal obligations and disclosures cannot be controlled by the PrivaCage client.
+
+
+## Offline password exposure lookup
+
+| Asset / process | Threat | Mitigation and remaining boundary |
+|---|---|---|
+| Password characters and local Pwned Passwords range data | Password remains in memory longer than needed, a partial/corrupt range creates a false negative, or a stale/untrusted corpus is presented as authoritative | The experimental Kotlin/JVM matcher accepts a dedicated CharArray, clears it on every exit path, clears intermediate byte arrays, performs no network request, and persists no raw password. It validates the full bounded range file before returning a match/no-match and treats missing, empty, malformed, oversized or unsorted data as unavailable. The caller-supplied snapshot date and dataset provenance are not authenticated; no-match applies only to the supplied range snapshot. This is password-only, not email/account breach lookup. |

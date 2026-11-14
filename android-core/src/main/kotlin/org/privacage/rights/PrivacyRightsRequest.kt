@@ -16,7 +16,7 @@ enum class RightsJurisdiction(
     ),
     CALIFORNIA_DROP(
         "California DROP data-broker request",
-        "https://cppa.ca.gov/data_brokers/"
+        "https://privacy.ca.gov/drop/"
     )
 }
 
@@ -54,8 +54,9 @@ data class RightsRequestDraft(
  * Generates a local draft and deadline guidance. It never sends a request, verifies identity,
  * confirms that a controller received a request, or claims the controller deleted data.
  *
- * Current source review: 27 October 2026. Deadline calculations are planning aids; applicable
- * law, eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
+ * Deadline-rule source review: 27 October 2026. The consumer-facing California DROP entrypoint
+ * was rechecked on 8 November 2026. Deadline calculations are planning aids; applicable law,
+ * eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
  */
 object PrivacyRightsRequestBuilder {
     fun createDraft(
@@ -97,7 +98,7 @@ object PrivacyRightsRequestBuilder {
             RightsJurisdiction.CALIFORNIA_CCPA ->
                 "The CPPA states a 45-calendar-day response period for covered requests, with up to another 45 days when necessary and after notice. Its FAQ also describes confirmation within 10 business days for specified request types. Verify eligibility, exceptions and current rules."
             RightsJurisdiction.CALIFORNIA_DROP ->
-                "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. The CPPA says registered brokers must access the mechanism at least every 45 days beginning 1 August 2026; that is not a guaranteed individual response deadline."
+                "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
         }
         val message = when (jurisdiction) {
             RightsJurisdiction.UK_GDPR -> buildString {
@@ -123,10 +124,10 @@ object PrivacyRightsRequestBuilder {
             }
             RightsJurisdiction.CALIFORNIA_DROP -> buildString {
                 append("CALIFORNIA DROP — USER-GUIDED CHECKLIST\n\n")
-                append("1. Open the official CPPA information page and follow its link to the DROP service.\n")
-                append("2. Review the official eligibility, identity verification and data-handling notices.\n")
-                append("3. Submit directly through the official service; PrivaCage does not submit this request.\n")
-                append("4. Save the confirmation/reference yourself only if you choose.\n")
+                append("1. Open the official CalPrivacy consumer DROP page and choose its 'Get started with DROP' link.\n")
+                append("2. Review California residency eligibility for the person whose request is being made, any representative/guardian rules, and the identity-verification and data-handling notices.\n")
+                append("3. Choose what information to provide on the official service; PrivaCage does not collect or submit it.\n")
+                append("4. Keep your DROP ID private. Do not paste it into PrivaCage or share it; use the official profile to check status.\n")
                 append("5. Record the submission date and any later responses separately.\n\n")
                 append("Requested action: direct the official mechanism to process a deletion request for eligible, non-exempt data-broker information.\n")
                 append("This checklist is not a submission receipt or proof of deletion.")

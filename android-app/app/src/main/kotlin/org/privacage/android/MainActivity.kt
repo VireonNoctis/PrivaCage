@@ -79,6 +79,9 @@ class MainActivity : Activity() {
     private lateinit var devicePrivacyText: TextView
     private lateinit var googleServicesStatusText: TextView
     private lateinit var appPermissionAuditText: TextView
+    private lateinit var cellularSecurityText: TextView
+    @Suppress("NewApi")
+    private var cellularSecurityMonitor: CellularSecurityMonitor? = null
     private var apkTrackerCatalog: List<TrackerSignature> = emptyList()
     @Volatile private var trackerCatalogLoadComplete = false
     @Volatile private var trackerCatalogLoadFailure: String? = null
@@ -134,6 +137,44 @@ class MainActivity : Activity() {
             text = "Local-first privacy controls. Android still owns OS-level permissions and system telemetry."
             setPadding(0, dp(8), 0, dp(12))
         })
+        root.addView(TextView(this).apply {
+            text = "EXPERIMENTAL BUILD · CELLULAR SECURITY"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "A false base station can try to lure a phone onto legacy 2G. This live check is only a warning signal for the reported data-network generation; it cannot identify a fake cell or read the radio cipher."
+            textSize = 13f
+        })
+        cellularSecurityText = TextView(this).apply {
+            text = CellularNetworkClassifier.waiting().render()
+            textSize = 13f
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        root.addView(cellularSecurityText, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open mobile network settings"
+            setOnClickListener {
+                openSystemSettings(Settings.ACTION_WIRELESS_SETTINGS, "Mobile network settings")
+            }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Open Android security settings"
+            setOnClickListener {
+                openSystemSettings(Settings.ACTION_SECURITY_SETTINGS, "Security settings")
+            }
+        }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "On supported Android 12+ devices, disable 2G separately for every SIM in mobile-network settings. On supported Android 16 modems, enable Mobile network security notifications for unencrypted connections and identifier disclosures; Android ships that notification switch off by default. PrivaCage cannot change either system setting."
+            textSize = 12f
+            setPadding(0, dp(4), 0, dp(12))
+        })
+        root.addView(Button(this).apply {
+            text = "Complete cellular security checklist"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, CellularSecurityOnboardingActivity::class.java))
+            }
+        }, matchWidth())
         if (storedDnsConfiguration == null && (
                 prefs.contains(PrivacyDnsVpnService.KEY_RESOLVER_IP) ||
                     prefs.contains(PrivacyDnsVpnService.KEY_BLOCKED_DOMAINS) ||
@@ -815,7 +856,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(20), 0, dp(4))
         })
         root.addView(TextView(this).apply {
-            text = "Prepare a request draft or open official California DROP guidance. PrivaCage never submits these requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
+            text = "Prepare a direct request draft or a California DROP checklist. The DROP link opens the official consumer service; PrivaCage never submits requests. The tracker stores only controller/jurisdiction/status/deadline metadata—never the draft message, your contact details or identity documents."
             textSize = 12f
         }, matchWidth())
         val rightsControllerInput = EditText(this).apply {
@@ -861,7 +902,7 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
         root.addView(Button(this).apply {
-            text = "Open California DROP guidance / checklist"
+            text = "Prepare California DROP checklist"
             setOnClickListener {
                 createLocalRightsDraft(
                     RightsJurisdiction.CALIFORNIA_DROP,
@@ -1272,6 +1313,7 @@ class MainActivity : Activity() {
         if (::devicePrivacyText.isInitialized) refreshDevicePrivacySnapshot()
         if (::vpnStateText.isInitialized) refreshVpnState()
         if (::dnsDiagnosticText.isInitialized) refreshDnsRouteDiagnostic()
+        startCellularSecurityMonitor()
         Thread({
             val scan = try {
                 AppPolicyReviewMonitor.capture(this@MainActivity) to null
@@ -1301,6 +1343,11 @@ class MainActivity : Activity() {
         }, "PrivaCage-app-policy-monitor").start()
     }
 
+    override fun onPause() {
+        stopCellularSecurityMonitor()
+        super.onPause()
+    }
+
     @Deprecated("Uses platform-compatible activity result callbacks")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -1326,6 +1373,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        stopCellularSecurityMonitor()
         pendingEncryptedBackup?.fill(0)
         pendingEncryptedBackup = null
         pendingImportBackup?.fill(0)
@@ -3128,13 +3176,20 @@ class MainActivity : Activity() {
                 getSystemService(ClipboardManager::class.java).setPrimaryClip(
                     ClipData.newPlainText("PrivaCage privacy rights draft", draft.message)
                 )
-                statusText.text = "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
+                statusText.text = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) {
+                    "Checklist copied. It was not submitted. Review California eligibility and the information you choose to disclose on the official service. Keep your DROP ID private; do not paste it into PrivaCage."
+                } else {
+                    "Draft copied. It was not sent. Review recipient, legal applicability and data disclosures before submitting it yourself."
+                }
             }
-            .setNeutralButton("Open official guidance") { _, _ ->
+            .setNeutralButton(
+                if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "Open official DROP page" else "Open official guidance"
+            ) { _, _ ->
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(draft.officialGuidanceUrl)))
                 } catch (exception: Exception) {
-                    statusText.text = "Could not open official guidance. Check the URL manually: " + draft.officialGuidanceUrl
+                    val destination = if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) "the official DROP page" else "official guidance"
+                    statusText.text = "Could not open " + destination + ". Check the URL manually: " + draft.officialGuidanceUrl
                 }
             }
             .setNegativeButton("Close", null)
@@ -3692,6 +3747,27 @@ class MainActivity : Activity() {
                 }
             }
             .show()
+    }
+
+    @Suppress("NewApi")
+    private fun startCellularSecurityMonitor() {
+        if (!::cellularSecurityText.isInitialized) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            cellularSecurityText.text = CellularNetworkClassifier.unsupported(
+                "Live cellular-generation callbacks require Android 12 or newer. Use the SIM settings handoff to review 2G protection manually."
+            ).render()
+            return
+        }
+        val monitor = cellularSecurityMonitor ?: CellularSecurityMonitor(this) { assessment ->
+            if (!isFinishing && !isDestroyed && ::cellularSecurityText.isInitialized) {
+                cellularSecurityText.text = assessment.render()
+            }
+        }.also { cellularSecurityMonitor = it }
+        cellularSecurityText.text = monitor.start().render()
+    }
+
+    private fun stopCellularSecurityMonitor() {
+        cellularSecurityMonitor?.stop()
     }
 
     private fun openSystemSettings(action: String, label: String) {
