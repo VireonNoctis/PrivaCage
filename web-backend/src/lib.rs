@@ -92,7 +92,6 @@ pub struct WorkspaceCapabilities {
     pub capabilities: Vec<WorkspaceCapability>,
 }
 
-
 const DEFAULT_RATE_LIMIT_REQUESTS: u32 = 120;
 const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 const MAX_RATE_LIMIT_REQUESTS: u32 = 10_000;
@@ -144,7 +143,9 @@ impl RateLimitConfig {
                     let address = item.parse::<IpAddr>().map_err(|_| {
                         io::Error::new(
                             io::ErrorKind::InvalidInput,
-                            format!("PRIVACAGE_TRUSTED_PROXY_IPS contains an invalid IP address: {item}"),
+                            format!(
+                                "PRIVACAGE_TRUSTED_PROXY_IPS contains an invalid IP address: {item}"
+                            ),
                         )
                     })?;
                     addresses.insert(address);
