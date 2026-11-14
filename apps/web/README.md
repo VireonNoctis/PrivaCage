@@ -17,6 +17,9 @@ From the repository root, start the API:
 
 The API binds to 127.0.0.1:8787 by default. To override the address for a trusted local deployment, set `PRIVACAGE_WEB_BIND`. Do not bind this unauthenticated API directly to a public interface.
 
+
+The API client handles HTTP 429 responses explicitly and displays the numeric `Retry-After` delay when the backend supplies it. This is an explanation for the user, not an automatic retry loop; requests are not silently replayed.
+
 The backend applies a default per-client-IP sliding-window limit of 120 requests per 60 seconds. Configure `PRIVACAGE_RATE_LIMIT_REQUESTS` and `PRIVACAGE_RATE_LIMIT_WINDOW_SECONDS` to change it. The configuration is validated at startup. It returns `429` with `Retry-After` and `RateLimit-*` headers when a client exceeds its limit. The limiter is in-memory and applies to one API process; it is not a distributed DDoS protection layer.
 
 See [`web-backend/.env.example`](../../web-backend/.env.example) for the environment template and [web deployment](../../docs/deployment/web-console.md) for the reverse-proxy and 404 requirements.
