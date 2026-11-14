@@ -1,5 +1,6 @@
 package org.privacage.crypto
 
+import java.io.File
 import java.security.GeneralSecurityException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -13,20 +14,29 @@ class EncryptedBackupEnvelopeTest {
 
     @Test
     fun decryptsSharedRustInteroperabilityVector() {
-        val envelopeHex = requireNotNull(javaClass.getResourceAsStream("/pcage-v1-envelope.hex"))
-            .bufferedReader(Charsets.US_ASCII).use { it.readText() }
+        val repositoryRoot = File(
+            requireNotNull(System.getProperty("privacage.repo-root")) {
+                "Gradle must provide the repository root for shared crypto test vectors."
+            }
+        )
+        val vectorDirectory = File(repositoryRoot, "shared/crypto/test-vectors")
+        val envelopeHex = File(vectorDirectory, "pcage-v1-envelope.hex")
+            .readText(Charsets.US_ASCII)
             .filterNot(Char::isWhitespace)
+        require(envelopeHex.isNotEmpty() && envelopeHex.length % 2 == 0) {
+            "The shared PCAGE envelope vector must contain complete hexadecimal bytes."
+        }
         val envelope = envelopeHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val expectedPlaintext = requireNotNull(javaClass.getResourceAsStream("/pcage-v1-plaintext.json"))
-            .use { it.readBytes() }
-        val passphrase = "correct horse battery staple".toCharArray()
+        val expectedPlaintext = File(vectorDirectory, "pcage-v1-plaintext.json").readBytes()
+        val vectorPassphrase = "correct horse battery staple".toCharArray()
         try {
-            val plaintext = EncryptedBackupEnvelope.decrypt(envelope, passphrase)
+            val plaintext = EncryptedBackupEnvelope.decrypt(envelope, vectorPassphrase)
             assertContentEquals(expectedPlaintext, plaintext)
             plaintext.fill(0)
         } finally {
-            passphrase.fill(0.toChar())
+            vectorPassphrase.fill('\u0000')
             envelope.fill(0)
+            expectedPlaintext.fill(0)
         }
     }
 

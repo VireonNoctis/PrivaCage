@@ -51,7 +51,7 @@ class PrivacyPolicyDocumentsTest {
     fun inAppPolicyReaderLoadsPackagedAssetsWithoutAnHttpClient() {
         val source = File(
             repositoryRoot,
-            "apps/android/main/kotlin/org/privacage/android/LegalPrivacyActivity.kt"
+            "apps/android/main/interface/LegalPrivacyActivity.kt"
         ).readText(Charsets.UTF_8)
 
         assertTrue(source.contains("assets.open(name)"))
@@ -86,19 +86,10 @@ class PrivacyPolicyDocumentsTest {
     @Test
     fun appPolicyReviewRemainsLocalAndHasNoProviderAutomationEntryPoint() {
         val appRoot = File(repositoryRoot, "apps/android/main")
-        val main = File(
-            appRoot,
-            "kotlin/org/privacage/android/MainActivity.kt"
-        ).readText(Charsets.UTF_8)
-        val policyQueue = File(
-            appRoot,
-            "kotlin/org/privacage/android/AppPolicyReviewActivity.kt"
-        ).readText(Charsets.UTF_8)
+        val main = File(appRoot, "interface/MainActivity.kt").readText(Charsets.UTF_8)
+        val policyQueue = File(appRoot, "interface/AppPolicyReviewActivity.kt").readText(Charsets.UTF_8)
         val manifest = File(appRoot, "AndroidManifest.xml").readText(Charsets.UTF_8)
-        val androidPackage = File(
-            appRoot,
-            "kotlin/org/privacage/android"
-        )
+        val mainFiles = appRoot.walkTopDown().filter { it.isFile }.toList()
 
         assertFalse(main.contains("ApiAutomationActivity"))
         assertFalse(main.contains("showApiSetupPromptOnce"))
@@ -106,9 +97,9 @@ class PrivacyPolicyDocumentsTest {
         assertFalse(policyQueue.contains("ApiAutomationActivity"))
         assertFalse(policyQueue.contains("Analyse pasted document"))
         assertFalse(manifest.contains("ApiAutomationActivity"))
-        assertFalse(File(androidPackage, "ApiAutomationActivity.kt").exists())
-        assertFalse(File(androidPackage, "ApiTokenVault.kt").exists())
-        assertFalse(File(androidPackage, "PrivacyAutomationClient.kt").exists())
+        assertFalse(mainFiles.any { it.name == "ApiAutomationActivity.kt" })
+        assertFalse(mainFiles.any { it.name == "ApiTokenVault.kt" })
+        assertFalse(mainFiles.any { it.name == "PrivacyAutomationClient.kt" })
     }
 
     @Test
