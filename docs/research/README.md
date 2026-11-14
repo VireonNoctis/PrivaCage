@@ -1,6 +1,7 @@
 # PrivaCage Research Library
 
 **Research baseline:** 25 October 2026  
+**Most recent source review:** 14 November 2026 (PrivacySentry assessment)  
 **Purpose:** turn the PrivaCage concept into a technically honest, evidence-backed privacy roadmap.
 
 This library is deliberately not a claim that every described capability is already implemented. It separates platform facts, engineering conclusions, candidate features, and unresolved questions. Each research note should be reviewed when operating-system behavior, law, or source material changes.
@@ -57,4 +58,4 @@ The first useful release should prioritize Android APK inspection, local VPN-bas
 
 ## Source maintenance
 
-The sources were checked on 25 October 2026. The dates shown refer to source publication/effective status where available, not a promise that the linked page will remain unchanged. Before a legal template or OS-specific implementation ships, re-open the current official source and add a review date to the corresponding implementation issue.
+The original research sources were checked on 25 October 2026; the PrivacySentry assessment's repository, license and toolchain sources were re-opened on 14 November 2026. The dates shown refer to source publication/effective status where available, not a promise that the linked page will remain unchanged. Before a legal template or OS-specific implementation ships, re-open the current official source and add a review date to the corresponding implementation issue.
