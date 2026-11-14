@@ -5,7 +5,6 @@ on:
     paths:
       - "apps/android/**"
       - "shared/audit/**"
-      - "android-core/**"
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
       - "shared/rust/pcage-crypto/**"
@@ -27,7 +26,6 @@ on:
     paths:
       - "apps/android/**"
       - "shared/audit/**"
-      - "android-core/**"
       - "shared/rust/tracker-intelligence/**"
       - "shared/rust/pcage-sync-jni/**"
       - "shared/rust/pcage-sync/**"
@@ -101,10 +99,7 @@ jobs:
       - name: Build debug APK
         working-directory: apps/android
         run: gradle --no-daemon assembleDebug
-      - name: Run DNS core unit tests
-        working-directory: apps/android
-        run: gradle --no-daemon :android-core:test
-      - name: Run app unit tests
+      - name: Run Android app and DNS policy unit tests
         working-directory: apps/android
         run: gradle --no-daemon :testDebugUnitTest
       - name: Validate Go tooling and Android privacy baseline

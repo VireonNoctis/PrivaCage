@@ -17,7 +17,7 @@ The Rust API exposes:
 
 Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history remains device-local. The web client does not pair with devices or ingest live events, but it can locally verify and compare signed checkpoint files that the user explicitly selects; those files are processed in the browser and are not uploaded by the verifier.
 
-Platform client code is grouped under `apps/{android,ios,web,windows}/`, with each platform using `main/` and `test/` folders. The Windows Go package tests that inspect unexported helpers remain beside the package in `apps/windows/main/`, while black-box integration tests live in `apps/windows/test/`. The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
+Platform client code is grouped under `apps/{android,ios,web,windows}/`, with each platform using `main/` and `test/` folders. Source and tests are grouped in direct feature folders under those roots instead of mirroring language package paths. The Android DNS policy engine and privacy models are part of the Android app module under `apps/android/main/`; there is no separate `android-core/` Gradle project. The Windows Go package tests that inspect unexported helpers remain beside the package in `apps/windows/main/`, while black-box integration tests live in `apps/windows/test/`. The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
 ## Android app policy review observations
 
@@ -51,7 +51,7 @@ Events should distinguish observed facts, static indicators, inferences, enforce
 
 ## Android DNS slice
 
-The Kotlin/JVM core includes a DNS policy evaluator, IPv4 and constrained IPv6 UDP packet codecs, packet processor, validated UDP forwarder, protected TCP fallback for truncated upstream responses, and packet-to-packet coordinator. The Android app provides a user-configured `VpnService` adapter around that core:
+The Android `main/dns/` feature includes a Kotlin DNS policy evaluator, IPv4 and constrained IPv6 UDP packet codecs, packet processor, validated UDP forwarder, protected TCP fallback for truncated upstream responses, and packet-to-packet coordinator. The Android app provides a user-configured `VpnService` adapter around that engine:
 
 - The user explicitly approves VPN access and enters a numeric IPv4 resolver plus one or more domain rules.
 - The service creates a TUN interface with a virtual DNS endpoint and routes only that endpoint into the interface.

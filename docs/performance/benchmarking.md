@@ -48,6 +48,6 @@ A missing emulator, missing measurement report or failed assertion remains a fai
 
 ## Benchmark implementation
 
-- DNS performance tests are tagged `performance`, run through `:android-core:performanceTest`, and excluded from the regular `:android-core:test` task to avoid making normal unit tests slower.
+- DNS performance tests are tagged `performance`, run through `-PdnsPerformanceOnly :testDebugUnitTest`, and excluded from the regular `:testDebugUnitTest` run to avoid making normal unit tests slower.
 - The baseline worktree receives only the benchmark harness/build configuration. The source code under test remains pinned to the baseline commit.
 - Raw JSON and logs are uploaded as the `privacage-performance-comparison` artifact for 30 days. The Markdown summary contains the baseline and candidate commit IDs, measured values, and caveats. The benchmark job runs as part of the existing Android validation workflow for PRs and pushes that touch Android/DNS or benchmark files.

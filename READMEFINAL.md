@@ -102,7 +102,7 @@ flowchart TD
 
 ## Original proposed repo structure (historical design reference)
 
-The tree below preserves the original concept, but several paths and frameworks no longer match the actual repository. Check README.md's repository map before creating files; the platform clients live under apps/ (Android: apps/android/, iOS capability notes: apps/ios/, web: apps/web/), the shared Kotlin/JVM engine is android-core/, and the Rust API is web-backend/.
+The tree below preserves the original concept, but several paths and frameworks no longer match the actual repository. Check README.md's repository map before creating files; the platform clients live under apps/ (Android: apps/android/, iOS capability notes: apps/ios/, web: apps/web/), the Kotlin/JVM engine is part of the Android app under `apps/android/main/<feature>/`, with tests under `apps/android/test/<feature>/`, and the Rust API is web-backend/.
 
 ```
 privacage/

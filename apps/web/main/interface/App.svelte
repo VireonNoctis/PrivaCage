@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import RollingNumber from './interface/RollingNumber.svelte';
-  import BrailleSpinner from './interface/BrailleSpinner.svelte';
-  import AuditCheckpointComparison from './interface/AuditCheckpointComparison.svelte';
-  import { verifyAuditCheckpoint, type AuditCheckpointReport } from './audit/audit-checkpoint';
+  import RollingNumber from './RollingNumber.svelte';
+  import BrailleSpinner from './BrailleSpinner.svelte';
+  import AuditCheckpointComparison from './AuditCheckpointComparison.svelte';
+  import { verifyAuditCheckpoint, type AuditCheckpointReport } from '../audit/audit-checkpoint';
   import {
     fetchCapabilities,
     fetchCatalogSummary,
     fetchHealth,
     fetchTrackerCatalog
-  } from './API/api';
+  } from '../API/api';
   import type {
     CapabilityStatus,
     CatalogSummary,
@@ -17,7 +17,7 @@
     TrackerCatalog,
     TrackerStatus,
     WorkspaceCapability
-  } from './API/types';
+  } from '../API/types';
 
   type View = 'overview' | 'tracker' | 'activity' | 'audit' | 'platforms' | 'settings';
 

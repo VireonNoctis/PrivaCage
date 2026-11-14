@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("de.mannodermaus.android-junit")
+    id("de.mannodermaus.android-junit") version "2.0.2"
 }
 
 val dnsPerformanceOnly = providers.gradleProperty("dnsPerformanceOnly").isPresent

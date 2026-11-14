@@ -3,7 +3,7 @@
     compareAuditCheckpoints,
     type AuditCheckpointComparisonReport,
     type AuditCheckpointRelationship
-  } from './audit-checkpoint';
+  } from '../audit/audit-checkpoint';
 
   let firstInput = $state<HTMLInputElement | undefined>(undefined);
   let secondInput = $state<HTMLInputElement | undefined>(undefined);

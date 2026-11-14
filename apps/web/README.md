@@ -66,5 +66,5 @@ The verifier, schema checks, and checkpoint-comparison relationships are covered
 
 ## Source layout
 
-- `main/` contains the Svelte application entry point, screens, styles and reusable components.
-- `test/` contains Vitest component and unit tests. Tests import the real modules from `main/`; no second copy or mock implementation is kept as production code.
+- `main/` contains direct `API/`, `audit/` and `interface/` feature folders, plus the Svelte entry point `main.ts`.
+- `test/` contains matching `API/`, `audit/` and `interface/` test folders. Tests import the real modules from `main/`; no second copy or mock implementation is kept as production code.

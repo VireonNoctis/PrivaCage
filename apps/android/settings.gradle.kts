@@ -8,7 +8,6 @@ pluginManagement {
         id("com.android.application") version "8.10.1"
         id("com.android.test") version "8.10.1"
         id("org.jetbrains.kotlin.android") version "2.2.20"
-        id("org.jetbrains.kotlin.jvm") version "2.2.20"
     }
 }
 
@@ -20,6 +19,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "privacage-android"
-include(":android-core", ":performance-macrobenchmark")
-project(":android-core").projectDir = file("../../android-core")
-project(":performance-macrobenchmark").projectDir = file("test/performance-macrobenchmark")
+include(":performance-macrobenchmark")
+project(":performance-macrobenchmark").projectDir = file("test")

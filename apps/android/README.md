@@ -1,6 +1,6 @@
 # PrivaCage Android app adapter
 
-This is the first Android platform adapter for the pure Kotlin/JVM DNS core in `../../android-core`.
+The Android application and its Kotlin/JVM DNS engine, audit models, cryptography, metadata and rights features are one Gradle project. Implementation and tests are grouped into direct feature folders under `main/` and `test/`.
 
 ## Implemented
 
@@ -64,10 +64,9 @@ The Android CI workflow also runs `testDebugUnitTest` and builds the debug APK; 
 Requires JDK 17, Android SDK platform 36, and Gradle 8.14 or compatible.
 
     gradle assembleDebug
-    gradle :android-core:test
     gradle testDebugUnitTest
 
-The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK is generated at `build/outputs/apk/debug/app-debug.apk`.
 
 
 ## Monitoring-access review (stock Android)
@@ -145,6 +144,7 @@ The checklist does not request Accessibility, phone-state, cell-location, locati
 
 ## Source layout
 
-- `main/` contains the Android manifest, Kotlin application sources, resources and generated native libraries.
-- `test/` contains the Kotlin/JVM unit tests and the separate Android Macrobenchmark test module.
-- The Android application is the Gradle root project; there is no nested `app/` module.
+- `main/` contains `AndroidManifest.xml`, `res/`, `jniLibs/` and direct feature folders: `API/`, `audit/`, `crypto/`, `dns/`, `interface/`, `legal/`, `metadata/`, `security/` and `sync/`.
+- `test/` contains matching direct feature folders. The Macrobenchmark project is rooted at `test/`, with source in `test/benchmark/`.
+- Kotlin package declarations such as `org.privacage.android` are language namespaces only; the filesystem does not mirror them.
+- There is no nested `app/` module or separate `android-core/` module.

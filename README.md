@@ -93,7 +93,7 @@ The Android app and web console use a strict black-and-white interface, monospac
 
 ## Android DNS policy and packet engine
 
-The DNS engine is in `android-core/`; the Android VPN adapter is in `apps/android/`.
+The Android DNS policy engine, packet codecs, VPN adapter, audit models, cryptography, metadata and rights modules live together under `apps/android/main/<feature>/`, with matching tests under `apps/android/test/<feature>/`.
 
 ### What it does
 
@@ -116,7 +116,7 @@ The Android service routes only its virtual DNS endpoints, not all IP traffic. U
 - The engine does not reliably attribute every DNS query to its originating app.
 - Routing, revocation, lifecycle, OEM differences and resolver behavior still require emulator and physical-device validation. Unit tests cannot establish device-level coverage.
 
-Implementation notes and test commands are in [the Android core README](android-core/README.md) and [architecture guide](docs/architecture.md).
+Implementation notes and test commands are in [the Android DNS engine notes](apps/android/DNS.md) and [architecture guide](docs/architecture.md).
 
 ## Tracker intelligence
 
@@ -226,18 +226,17 @@ Read the [Windows tool guide](apps/windows/README.md) and [Windows privacy resea
 .
 ├── apps/
 │   ├── android/
-│   │   ├── main/                  # Android manifest, source, resources and JNI libraries
-│   │   └── test/                  # Android unit and macrobenchmark tests
+│   │   ├── main/                  # Direct feature folders: API, audit, crypto, dns, interface, etc.
+│   │   └── test/                  # Matching direct feature test folders and benchmarks
 │   ├── ios/
 │   │   ├── main/                  # iOS capability and implementation boundary
 │   │   └── test/                  # iOS acceptance criteria; no test target yet
 │   ├── web/
-│   │   ├── main/                  # Svelte application source and components
-│   │   └── test/                  # Vitest component and unit tests
+│   │   ├── main/                  # Direct API, audit and interface feature folders
+│   │   └── test/                  # Matching direct feature test folders
 │   └── windows/
 │       ├── main/                  # Go CLI, package unit tests and pinned Win11Debloat
 │       └── test/                  # Go black-box integration tests
-├── android-core/                  # Kotlin/JVM DNS policy, packet engine and audit models
 ├── shared/
 │   ├── tracker-db/                # canonical evidence-backed tracker catalogue
 │   ├── app-alternatives/          # reviewed alternative-app catalogue
@@ -258,7 +257,7 @@ go -C shared/go/pcage-tools test ./...
 go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
 
 # Android policy/packet core and app tests (JDK 17 + Gradle required)
-gradle --project-dir apps/android :android-core:test
+gradle --project-dir apps/android testDebugUnitTest
 gradle --project-dir apps/android testDebugUnitTest
 gradle --project-dir apps/android assembleDebug
 
@@ -287,7 +286,7 @@ Useful starting points:
 - [Architecture](docs/architecture.md)
 - [Security boundaries](docs/security-boundaries.md)
 - [Permission matrix](docs/permission-matrix.md)
-- [Android DNS policy core](android-core/README.md)
+- [Android DNS policy engine](apps/android/DNS.md)
 - [Tracker database schema](shared/tracker-db/schema.md)
 - [Privacy-suite expansion research](docs/research-notes/privacy-suite-expansion-2026-10-25.md)
 - [Next 20 engineering milestones](docs/roadmap/next-20-engineering-milestones.md)

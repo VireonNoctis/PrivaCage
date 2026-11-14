@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - "apps/android/**"
-      - "android-core/**"
       - "shared/app-alternatives/**"
       - "shared/tracker-db/**"
       - "shared/go/pcage-tools/**"
@@ -12,7 +11,6 @@ on:
   pull_request:
     paths:
       - "apps/android/**"
-      - "android-core/**"
       - "shared/app-alternatives/**"
       - "shared/tracker-db/**"
       - "shared/go/pcage-tools/**"
@@ -55,7 +53,7 @@ jobs:
 
       - name: Run Android DNS and privacy-model tests
         working-directory: apps/android
-        run: gradle --no-daemon :android-core:test :testDebugUnitTest
+        run: gradle --no-daemon :testDebugUnitTest
 
   shared-data-validation:
     runs-on: ubuntu-latest

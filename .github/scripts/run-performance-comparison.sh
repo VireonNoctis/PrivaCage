@@ -54,7 +54,7 @@ run_dns_benchmark() {
     local label="$1"
     local workspace="$2"
     local log="$RESULTS/$label/dns.log"
-    local report="$workspace/android-core/build/reports/performance/dns-benchmark.json"
+    local report="$workspace/apps/android/build/reports/performance/dns-benchmark.json"
 
     echo "::group::DNS benchmark ($label)"
     gradle --no-daemon --console=plain --rerun-tasks \
