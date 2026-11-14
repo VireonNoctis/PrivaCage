@@ -21,7 +21,7 @@ cargo bench --manifest-path shared/rust/tracker-intelligence/Cargo.toml --bench 
 For DNS microbenchmarks:
 
 ```sh
-gradle --no-daemon --project-dir apps/android :android-core:performanceTest
+gradle --no-daemon --project-dir apps/android -PdnsPerformanceOnly :testDebugUnitTest
 ```
 
 For startup timing, connect a physical Android device (API 28 or newer), keep the screen on, and run:
