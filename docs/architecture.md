@@ -6,7 +6,7 @@ Build a local-first privacy auditor with a shared evidence format and platform-n
 
 ## Web console
 
-The web workspace is a static Svelte 5 + TypeScript application in `web/`; it is not a JavaScript server or a browser extension. Its separate `web-backend/` Rust/Axum service embeds the canonical `shared/tracker-db/signatures.json` at build time and validates its schema, identifiers, dates, hostnames, status values, and evidence before serving it.
+The web workspace is a static Svelte 5 + TypeScript application in `apps/web/`; it is not a JavaScript server or a browser extension. Its separate `web-backend/` Rust/Axum service embeds the canonical `shared/tracker-db/signatures.json` at build time and validates its schema, identifiers, dates, hostnames, status values, and evidence before serving it.
 
 The Rust API exposes:
 
@@ -17,7 +17,7 @@ The Rust API exposes:
 
 Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history remains device-local. The web client does not pair with devices or ingest live events, but it can locally verify and compare signed checkpoint files that the user explicitly selects; those files are processed in the browser and are not uploaded by the verifier.
 
-The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
+The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
 
 ## Android app policy review observations
 
