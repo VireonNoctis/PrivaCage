@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::net::SocketAddr;
 
-use privacage_web_api::{build_app_with_rate_limit, load_embedded_catalog, RateLimitConfig};
+use privacage_web_api::{RateLimitConfig, build_app_with_rate_limit, load_embedded_catalog};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {

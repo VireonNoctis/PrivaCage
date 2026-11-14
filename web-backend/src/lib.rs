@@ -136,13 +136,15 @@ impl RateLimitConfig {
         let trusted_proxies = match std::env::var("PRIVACAGE_TRUSTED_PROXY_IPS") {
             Ok(value) => {
                 let mut addresses = HashSet::new();
-                for item in value.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+                for item in value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|item| !item.is_empty())
+                {
                     let address = item.parse::<IpAddr>().map_err(|_| {
                         io::Error::new(
                             io::ErrorKind::InvalidInput,
-                            format!(
-                                "PRIVACAGE_TRUSTED_PROXY_IPS contains an invalid IP address: {item}"
-                            ),
+                            format!("PRIVACAGE_TRUSTED_PROXY_IPS contains an invalid IP address: {item}"),
                         )
                     })?;
                     addresses.insert(address);
@@ -166,12 +168,7 @@ impl RateLimitConfig {
     }
 }
 
-fn read_env_u32(
-    name: &str,
-    default: u32,
-    minimum: u32,
-    maximum: u32,
-) -> Result<u32, io::Error> {
+fn read_env_u32(name: &str, default: u32, minimum: u32, maximum: u32) -> Result<u32, io::Error> {
     match std::env::var(name) {
         Ok(value) => {
             let parsed = value.trim().parse::<u32>().map_err(|_| {
@@ -193,12 +190,7 @@ fn read_env_u32(
     }
 }
 
-fn read_env_u64(
-    name: &str,
-    default: u64,
-    minimum: u64,
-    maximum: u64,
-) -> Result<u64, io::Error> {
+fn read_env_u64(name: &str, default: u64, minimum: u64, maximum: u64) -> Result<u64, io::Error> {
     match std::env::var(name) {
         Ok(value) => {
             let parsed = value.trim().parse::<u64>().map_err(|_| {
@@ -309,9 +301,7 @@ impl RateLimiter {
             client.requests.push_back(now);
         }
 
-        let remaining = self
-            .max_requests
-            .saturating_sub(client.requests.len()) as u32;
+        let remaining = self.max_requests.saturating_sub(client.requests.len()) as u32;
         let reset_after_seconds = client
             .requests
             .front()
@@ -370,11 +360,7 @@ async fn apply_rate_limit(
 
         response.headers_mut().insert(
             header::RETRY_AFTER,
-            decision
-                .reset_after_seconds
-                .to_string()
-                .parse::<HeaderValue>()
-                .expect("numeric Retry-After header is valid"),
+            decision.reset_after_seconds.to_string().parse::<HeaderValue>().expect("numeric Retry-After header is valid"),
         );
         response
     };

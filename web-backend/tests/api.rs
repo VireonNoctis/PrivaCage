@@ -241,29 +241,17 @@ async fn trusted_proxy_uses_overwritten_real_ip_and_untrusted_headers_are_ignore
 
     let first_client = app
         .clone()
-        .oneshot(request_from(
-            "/api/health",
-            proxy,
-            Some("203.0.113.21"),
-        ))
+        .oneshot(request_from("/api/health", proxy, Some("203.0.113.21")))
         .await
         .unwrap();
     let second_client = app
         .clone()
-        .oneshot(request_from(
-            "/api/health",
-            proxy,
-            Some("203.0.113.22"),
-        ))
+        .oneshot(request_from("/api/health", proxy, Some("203.0.113.22")))
         .await
         .unwrap();
     let first_client_again = app
         .clone()
-        .oneshot(request_from(
-            "/api/health",
-            proxy,
-            Some("203.0.113.21"),
-        ))
+        .oneshot(request_from("/api/health", proxy, Some("203.0.113.21")))
         .await
         .unwrap();
 
