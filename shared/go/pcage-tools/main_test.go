@@ -479,7 +479,7 @@ func TestAndroidPrivacyManifestAndGradleMarkers(t *testing.T) {
 		t.Fatalf("known telemetry SDK marker not rejected: %v", errorsFound)
 	}
 	sourceDirectory := t.TempDir()
-	sourcePath := filepath.Join(sourceDirectory, "app", "src", "main", "kotlin", "org", "example", "Telemetry.kt")
+	sourcePath := filepath.Join(sourceDirectory, "main", "kotlin", "org", "example", "Telemetry.kt")
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +490,7 @@ func TestAndroidPrivacyManifestAndGradleMarkers(t *testing.T) {
 	if len(errorsFound) == 0 || !strings.Contains(errorsFound[0], "io.sentry") {
 		t.Fatalf("telemetry SDK in application source was not rejected: %v", errorsFound)
 	}
-	sourceManifest := filepath.Join(sourceDirectory, "app", "src", "main", "AndroidManifest.xml")
+	sourceManifest := filepath.Join(sourceDirectory, "main", "AndroidManifest.xml")
 	if err := os.WriteFile(sourceManifest, []byte(`<manifest><uses-permission android:name="com.google.android.gms.permission.AD_ID"/></manifest>`), 0600); err != nil {
 		t.Fatal(err)
 	}

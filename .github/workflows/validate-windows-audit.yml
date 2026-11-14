@@ -52,7 +52,7 @@ jobs:
       - name: Run tests
         run: go test ./...
       - name: Build executable
-        run: go build ./main
+        run: go build -o pcage-audit.exe ./main
 
   windows-smoke:
     name: Run Windows privacy checks and validate Win11Debloat source

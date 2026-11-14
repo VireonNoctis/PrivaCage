@@ -283,7 +283,7 @@ func defaultTrackerPath() string {
 }
 
 func defaultManifestPath() string {
-	return filepath.Join(repoRoot(), "apps/android", "app", "src", "main", "AndroidManifest.xml")
+	return filepath.Join(repoRoot(), "apps", "android", "main", "AndroidManifest.xml")
 }
 
 func defaultAndroidDir() string {
