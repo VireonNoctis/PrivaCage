@@ -148,3 +148,10 @@ The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive prefere
 The Android release is governed by a strict no-product-telemetry policy. Repository CI scans Android build files, the manifest and main Kotlin/Java/XML source for known analytics, advertising, attribution and remote crash-reporting indicators. The check is deliberately described as static regression coverage rather than proof against platform/OEM diagnostics or unknown hand-written collection.
 
 The `docs/privacy/` Markdown policies are packaged as Android assets and rendered by a local-only policy reader. Reading those documents does not call a remote policy endpoint. The documents are draft templates until the responsible controller identity, contact details, lawful bases, actual deployed operators and effective date are supplied and legally reviewed.
+
+
+## Offline password exposure lookup (partial core on PR #26)
+
+The pure Kotlin/JVM PwnedPasswordRangeLookup accepts a dedicated CharArray, encodes it as UTF-8, computes the SHA-1 value required by the Have I Been Pwned Pwned Passwords corpus, and reads only the corresponding five-hex-character range file from a user-supplied local directory. It validates the entire bounded range file before returning a match count or NOT_FOUND_IN_SNAPSHOT; a missing, empty or malformed range is an error, not a negative result. The input character array and intermediate byte arrays are cleared on exit.
+
+This is a password-exposure check only. The official downloadable Pwned Passwords corpus contains password hashes, not email/account breach records. No email identifier is sent, no network request is made, and the raw password is not persisted. Android dataset import/UI, a verifiable snapshot manifest, completeness/freshness validation, and any account-breach lookup are not implemented. The snapshot date is supplied by the caller and is not authenticated. See research note 17.

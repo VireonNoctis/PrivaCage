@@ -95,3 +95,10 @@ The Android source does not intentionally include a product analytics, advertisi
 Functional network traffic is not labelled as telemetry: configured DNS queries go to the selected resolver; encrypted sync packets go to a relay the user configures; and policy/source URLs are opened in the user's browser. The receiving resolver, relay or external website may hold data outside PrivaCage's control. See `docs/privacy/` for the draft privacy policy and legal-request policy.
 
 Sensitive preference encryption uses separate key aliases and authenticated purpose labels. The legacy migration removes plaintext keys only in a synchronous commit that writes the encrypted replacement. If the existing ciphertext cannot be authenticated or its KeyStore key is missing, the application preserves the data and surfaces an error; it does not silently create a new key or reset the store.
+
+
+## Offline password exposure lookup — partial core on PR #26
+
+The Kotlin/JVM matcher checks a user-supplied local Have I Been Pwned Pwned Passwords SHA-1 range file. It clears the supplied CharArray and intermediate byte arrays, performs no network request, and stores no raw password. The parser bounds each range file to 4 MiB and 100,000 lines, validates uppercase full SHA-1 hashes, prefix membership, strict ordering, and positive canonical counts. Empty range files are treated as unavailable because this core cannot independently distinguish an empty corpus range from truncated local data.
+
+A missing, unreadable, malformed, oversized, empty, or incomplete range is unavailable/error, never NOT_FOUND_IN_SNAPSHOT. A no-match is scoped only to the one supplied range file and caller-supplied snapshot date. The date and dataset provenance are not authenticated; this core does not import or verify a complete dataset, does not provide an Android UI, and does not check email/account breach records. SHA-1 is used solely for compatibility with the published Pwned Passwords corpus, not for password storage or authentication.

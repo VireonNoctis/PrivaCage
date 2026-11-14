@@ -12,6 +12,8 @@ This is a working threat model, not a security audit. Update it as executable co
 - Trust in the accuracy of product warnings.
 - App package names, app-open timestamps, and user-supplied policy links in the local review queue.
 - Transient Android monitoring-access observations shown on the review screen.
+- Password characters and derived hashes during an explicitly requested local exposure check.
+- User-supplied offline password-hash range files and their claimed snapshot date.
 
 ## Threats
 
@@ -26,6 +28,8 @@ This is a working threat model, not a security audit. Update it as executable co
 - A legal workflow implies that a company deleted data when it has not.
 - A user mistakes a bounded Usage Access observation window for a complete app-usage history.
 - A user interprets a legitimate accessibility service, device administrator, notification listener, or VPN as proof of abuse.
+- A missing, stale, truncated, or malformed password range is misreported as a clean result.
+- A user mistakes a password-hash corpus for an email/account breach database or treats a no-match as proof of password safety.
 
 ## Mitigations
 
@@ -40,6 +44,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Verify enforcement outcomes through the OS and surface failures.
 - Require evidence for app recommendations and prohibit paid placement.
 - Track request-submission evidence separately from company responses and confirmed deletion.
+- The local password matcher consumes a dedicated CharArray, clears it and intermediate byte arrays, validates the entire bounded range file, and fails closed on missing/corrupt ranges. Its result is explicitly limited to the supplied snapshot and is not an account-breach or password-strength verdict.
 
 ## Additional mitigations
 
@@ -73,3 +78,10 @@ Stalkerware signals must be framed carefully: an enabled accessibility service, 
 | Local key loss | Keystore key invalidated, removed or unavailable | Normalize expected Keystore `GeneralSecurityException` and provider `ProviderException` failures into explicit I/O errors. Preserve ciphertext on read and replacement-write failures; never generate a replacement key while accessing an existing encrypted record. Writes authenticate and schema-validate the old envelope before replacement. An explicit clear is required to discard unreadable data; independent encrypted export/recovery is required where available. |
 
 The project does not build an authority-access API or maintain a central PrivaCage user-account dataset. App-policy review links and status remain in the encrypted local queue; the app does not transmit policy contents. A separately hosted relay or public web endpoint may have ordinary connection metadata under its operator's control. DNS resolvers and user-configured relay hosts are separate recipients. Their own legal obligations and disclosures cannot be controlled by the PrivaCage client.
+
+
+## Offline password exposure lookup
+
+| Asset / process | Threat | Mitigation and remaining boundary |
+|---|---|---|
+| Password characters and local Pwned Passwords range data | Password remains in memory longer than needed, a partial/corrupt range creates a false negative, or a stale/untrusted corpus is presented as authoritative | The experimental Kotlin/JVM matcher accepts a dedicated CharArray, clears it on every exit path, clears intermediate byte arrays, performs no network request, and persists no raw password. It validates the full bounded range file before returning a match/no-match and treats missing, empty, malformed, oversized or unsorted data as unavailable. The caller-supplied snapshot date and dataset provenance are not authenticated; no-match applies only to the supplied range snapshot. This is password-only, not email/account breach lookup. |
