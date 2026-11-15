@@ -112,10 +112,19 @@ jobs:
           go -C shared/go/pcage-tools run . app-alternatives-report --max-age-days 180 --fail-stale --format json
       - name: Validate and inspect the bundled tracker catalog
         run: |
-          unzip -l apps/android/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/signatures.json'
-          unzip -p apps/android/build/outputs/apk/debug/app-debug.apk assets/signatures.json > "$RUNNER_TEMP/bundled-signatures.json"
+          APK_DIR="apps/android/build/outputs/apk/debug"
+          mapfile -t DEBUG_APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print | sort)
+          if [[ "${#DEBUG_APKS[@]}" -ne 1 ]]; then
+            echo "Expected exactly one debug APK in $APK_DIR; found ${#DEBUG_APKS[@]}." >&2
+            find apps/android/build/outputs -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
+          APK="${DEBUG_APKS[0]}"
+          unzip -l "$APK" | grep -q 'assets/signatures.json'
+          unzip -p "$APK" assets/signatures.json > "$RUNNER_TEMP/bundled-signatures.json"
           go -C shared/go/pcage-tools run . validate-tracker --file "$RUNNER_TEMP/bundled-signatures.json"
-          unzip -p apps/android/build/outputs/apk/debug/app-debug.apk assets/catalog.json > "$RUNNER_TEMP/bundled-app-alternatives.json"
+          unzip -l "$APK" | grep -q 'assets/catalog.json'
+          unzip -p "$APK" assets/catalog.json > "$RUNNER_TEMP/bundled-app-alternatives.json"
           go -C shared/go/pcage-tools run . validate-app-alternatives --file "$RUNNER_TEMP/bundled-app-alternatives.json"
 
   performance-comparison:
