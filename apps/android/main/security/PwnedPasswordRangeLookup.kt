@@ -2,9 +2,9 @@ package org.privacage.security
 
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import java.nio.channels.Channels
 import java.nio.channels.SeekableByteChannel
-import java.nio.CharBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -87,24 +87,6 @@ object PwnedPasswordRangeLookup {
                         password.fill('\u0000')
 
                         val rangeFile = rangeDirectory.resolve("$prefix.txt")
-                        if (!Files.isRegularFile(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
-                            throw IOException(
-                                "Required Pwned Passwords range file $prefix.txt is missing; " +
-                                    "the result is unavailable because the local dataset may be incomplete."
-                            )
-                        }
-                        val rangeBytes = Files.size(rangeFile)
-                        if (rangeBytes < 42L) {
-                            throw IOException(
-                                "Pwned Passwords range file is empty or shorter than one complete record; result unavailable."
-                            )
-                        }
-                        if (rangeBytes > MAX_RANGE_FILE_BYTES) {
-                            throw IOException(
-                                "Pwned Passwords range file exceeds the $MAX_RANGE_FILE_BYTES-byte safety limit."
-                            )
-                        }
-
                         val occurrences = findOccurrences(rangeFile, prefix, hashHex)
                         return PwnedPasswordExposureResult(
                             status = if (occurrences == null) {
@@ -130,6 +112,11 @@ object PwnedPasswordRangeLookup {
     }
 
     private fun findOccurrences(rangeFile: Path, prefix: String, targetHash: String): Long? {
+        if (!Files.exists(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
+            throw IOException(
+                "Required Pwned Passwords range file $prefix.txt is missing; the local dataset may be incomplete."
+            )
+        }
         if (!Files.isRegularFile(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException("Required Pwned Passwords range file is not a regular non-symbolic file.")
         }
@@ -180,7 +167,7 @@ object PwnedPasswordRangeLookup {
             }
 
             var recordLength = lineLength
-            if (recordLength > 0 && lineBuffer[recordLength - 1] == '\\r'.code.toByte()) {
+            if (recordLength > 0 && lineBuffer[recordLength - 1] == '\r'.code.toByte()) {
                 recordLength -= 1
             }
             if (recordLength !in 42..MAX_RANGE_RECORD_BYTES) {
@@ -222,7 +209,7 @@ object PwnedPasswordRangeLookup {
                 throw IOException("Pwned Passwords range file was truncated while it was being read.")
             }
             remainingBytes -= 1
-            if (next == '\\n'.code) {
+            if (next == '\n'.code) {
                 processLine()
                 lineLength = 0
             } else {
