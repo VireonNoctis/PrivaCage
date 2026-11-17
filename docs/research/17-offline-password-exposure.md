@@ -28,6 +28,8 @@ PwnedPasswordRangeLookup.checkAndClear:
 4. Reads no more than the captured size, enforces a 4 MiB file cap and 100,000-line cap, and rejects records longer than the 60-byte format bound before allocating a decoded line. It validates full uppercase SHA-1 values, prefix membership, strict ordering and positive canonical counts.
 5. Returns FOUND with the corpus count or NOT_FOUND_IN_SNAPSHOT with the caller-supplied snapshot date.
 
+Android API compatibility was checked 17 November 2026: the app's minSdk is 26, and Android documents both Files.newByteChannel and LinkOption.NOFOLLOW_LINKS from API 26. Android also documents that NOFOLLOW_LINKS may be ignored by providers that do not support symbolic links; no physical-device provider validation is claimed (S62, S63).
+
 A missing, empty, unreadable, symbolic-link, truncated, malformed, oversized or unsorted range throws an explicit error. It is never converted into a no-match result. The opened handle prevents a path swap to a symbolic link after validation; the captured-size read ignores later appends and fails if the file is truncated before the captured bytes are read. Intermediate password byte arrays are cleared. The core has no networking dependency, does not persist the raw password and does not read the HIBP ETag index.
 
 ## Security and accuracy limits

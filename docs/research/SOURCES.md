@@ -487,3 +487,15 @@ https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
 The official downloader's directory mode writes one file per five-character uppercase SHA-1 prefix (PREFIX.txt). Each non-empty line contains the full 40-character uppercase hash, a colon, and its occurrence count. It also writes sha1.index with prefix/ETag pairs for conditional refresh; the index is not a completeness manifest. The current official README says each downloaded range is verified against the API's Content-MD5 response header before acceptance and each range file is replaced atomically. This is transfer-integrity checking, not a signed manifest for a copied dataset. Reviewed the current upstream README and source on 17 November 2026: https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/main/README.md
+
+<a id="s62"></a>
+### S62 — Android Developers: Files API
+https://developer.android.com/reference/java/nio/file/Files
+
+Documents Files.newByteChannel as available from API level 26 and returning a SeekableByteChannel. Checked 17 November 2026.
+
+<a id="s63"></a>
+### S63 — Android Developers: LinkOption API
+https://developer.android.com/reference/java/nio/file/LinkOption
+
+Documents LinkOption.NOFOLLOW_LINKS as available from API level 26 and intended not to follow symbolic links. The Files API notes that no-follow behavior may be ignored by file-system implementations that do not support symbolic links. Checked 17 November 2026.
