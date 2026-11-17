@@ -204,14 +204,17 @@ object PwnedPasswordRangeLookup {
 
         while (remainingBytes > 0) {
             if (!inputBuffer.hasRemaining()) {
-                inputBuffer.clear()
-                inputBuffer.limit(minOf(inputBuffer.capacity().toLong(), remainingBytes).toInt())
-                val read = channel.read(inputBuffer)
-                if (read < 0) {
-                    throw IOException("Pwned Passwords range file was truncated while it was being read.")
+                while (true) {
+                    inputBuffer.clear()
+                    inputBuffer.limit(minOf(inputBuffer.capacity().toLong(), remainingBytes).toInt())
+                    val read = channel.read(inputBuffer)
+                    if (read < 0) {
+                        throw IOException("Pwned Passwords range file was truncated while it was being read.")
+                    }
+                    if (read == 0) continue
+                    inputBuffer.flip()
+                    break
                 }
-                if (read == 0) continue
-                inputBuffer.flip()
             }
 
             val next = inputBuffer.get().toInt() and 0xff
