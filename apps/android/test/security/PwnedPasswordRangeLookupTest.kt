@@ -111,6 +111,43 @@ class PwnedPasswordRangeLookupTest {
     }
 
     @Test
+    fun acceptsCrlfAndAFinalRecordWithoutANewline() {
+        val earlierHash = prefix + "0".repeat(35)
+        writeRange("$earlierHash:1\\r\\n$passwordHash:3")
+        val password = "password".toCharArray()
+
+        val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+
+        assertEquals(PwnedPasswordExposureStatus.FOUND, result.status)
+        assertEquals(3L, result.occurrences)
+        assertTrue(password.all { it == '\\u0000' })
+    }
+
+    @Test
+    fun rejectsARecordLongerThanTheFormatBound() {
+        writeRange("$prefix" + "0".repeat(55) + ":1\\n")
+        val password = "password".toCharArray()
+
+        assertFailsWith<IOException> {
+            PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+        }
+        assertTrue(password.all { it == '\\u0000' })
+    }
+
+    @Test
+    fun refusesSymbolicLinkRangeFiles() {
+        val target = temporaryDirectory.resolve("range-target.txt")
+        Files.write(target, "$passwordHash:3\\n".toByteArray(StandardCharsets.US_ASCII))
+        Files.createSymbolicLink(temporaryDirectory.resolve("$prefix.txt"), target.fileName)
+        val password = "password".toCharArray()
+
+        assertFailsWith<IOException> {
+            PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+        }
+        assertTrue(password.all { it == '\\u0000' })
+    }
+
+    @Test
     fun rejectsInvalidUnicodeAndClearsTheInput() {
         val password = charArrayOf('\uD800')
         assertFailsWith<IllegalArgumentException> {
