@@ -3,7 +3,6 @@ package org.privacage.security
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
-import java.nio.channels.Channels
 import java.nio.channels.SeekableByteChannel
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -156,7 +155,7 @@ object PwnedPasswordRangeLookup {
         var remainingBytes = capturedSize
         // One extra byte permits CRLF without allowing an unbounded readLine allocation.
         val lineBuffer = ByteArray(MAX_RANGE_RECORD_BYTES + 1)
-        val input = Channels.newInputStream(channel).buffered()
+        val inputBuffer = ByteBuffer.allocate(8 * 1024).apply { limit(0) }
 
         fun processLine() {
             lineCount += 1
@@ -204,10 +203,18 @@ object PwnedPasswordRangeLookup {
         }
 
         while (remainingBytes > 0) {
-            val next = input.read()
-            if (next < 0) {
-                throw IOException("Pwned Passwords range file was truncated while it was being read.")
+            if (!inputBuffer.hasRemaining()) {
+                inputBuffer.clear()
+                inputBuffer.limit(minOf(inputBuffer.capacity().toLong(), remainingBytes).toInt())
+                val read = channel.read(inputBuffer)
+                if (read < 0) {
+                    throw IOException("Pwned Passwords range file was truncated while it was being read.")
+                }
+                if (read == 0) continue
+                inputBuffer.flip()
             }
+
+            val next = inputBuffer.get().toInt() and 0xff
             remainingBytes -= 1
             if (next == '\n'.code) {
                 processLine()
