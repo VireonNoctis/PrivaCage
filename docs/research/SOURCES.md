@@ -472,13 +472,13 @@ For a public release, the project should maintain machine-readable source metada
 ### S59 — Have I Been Pwned: API documentation (Pwned Passwords and account search)
 https://haveibeenpwned.com/API/V3
 
-The official API documentation distinguishes account-breach search from Pwned Passwords. Account search by email requires an API key; email hash-range k-anonymity is a subscription feature exposed through the IncludesKAnon capability. Pwned Passwords is separately available without a subscription, publishes SHA-1 and NTLM password-hash sets; the implemented SHA-1 path encodes input as UTF-8, supports five-character hash-prefix range lookup, and documents downloading the complete password-hash corpus for offline use. The Pwned Passwords corpus is not an email/account breach database. Checked 14 November 2026.
+The official API documentation distinguishes account-breach search from Pwned Passwords. Account search by email requires an API key; email hash-range k-anonymity is a subscription feature exposed through the IncludesKAnon capability. Pwned Passwords is separately available without a subscription, publishes SHA-1 and NTLM password-hash sets; the implemented SHA-1 path encodes input as UTF-8, supports five-character hash-prefix range lookup, and documents downloading the complete password-hash corpus for offline use. The Pwned Passwords corpus is not an email/account breach database. Checked 18 November 2026.
 
 <a id="s60"></a>
 ### S60 — Have I Been Pwned: Pwned Passwords
 https://haveibeenpwned.com/Passwords
 
-Explains the purpose and scope of the Pwned Passwords dataset, its k-anonymity API, and the official option to download the corpus for offline use. It explicitly cautions that a password not found in the loaded dataset is not necessarily a good password. Checked 14 November 2026.
+Explains the purpose and scope of the Pwned Passwords dataset, its k-anonymity API, and the official option to download the corpus for offline use. It explicitly cautions that a password not found in the loaded dataset is not necessarily a good password. Checked 18 November 2026.
 
 <a id="s61"></a>
 ### S61 — Have I Been Pwned: Pwned Passwords Downloader
@@ -486,7 +486,7 @@ https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
-The official downloader's directory mode writes one file per five-character uppercase SHA-1 prefix (PREFIX.txt). Each non-empty line contains the full 40-character uppercase hash, a colon, and its occurrence count. It also writes sha1.index with prefix/ETag pairs for conditional refresh; the index is not a completeness manifest. The current official README says each downloaded range is verified against the API's Content-MD5 response header before acceptance and each range file is replaced atomically. This is transfer-integrity checking, not a signed manifest for a copied dataset. Reviewed the current upstream README and source on 17 November 2026: https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/main/README.md
+The official downloader source at commit `9939f083fdf05c07d83e3dbbe156feda1a781fa0` defines 1,048,576 five-character SHA-1 prefixes and processes every prefix in directory mode, writing each response body to `PREFIX.txt` after verifying its `Content-MD5` header and atomically replacing the prior file. Its optional `sha1.index` contains prefix/ETag pairs only for ranges with ETags; ranges without an ETag are still written but are not indexed. The index is therefore a conditional-refresh cache, not a completeness manifest. Content-MD5 is transfer-integrity checking, not a publisher signature; the downloader does not emit a signed manifest for a copied directory. Reviewed the upstream README and source on 18 November 2026: https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs and https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
 <a id="s62"></a>
 ### S62 — Android Developers: Files API

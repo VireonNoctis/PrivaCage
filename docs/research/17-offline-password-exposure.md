@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
-**Research status:** official HIBP API, Pwned Passwords page and downloader source checked 17 November 2026.  
-**Implementation status:** partial Kotlin/JVM range-file matcher on PR #26; not merged. Android UI, dataset import and authenticated provenance are not implemented.
+**Research status:** official HIBP API, Pwned Passwords page and downloader source checked 18 November 2026.  
+**Implementation status:** partial Kotlin/JVM range-file matcher on open PR #26; exact head `a98f298` passed all nine workflow runs. The Android performance measurement step was skipped because hosted `/dev/kvm` was unavailable; no performance result or device validation is claimed. PR #26 remains unmerged. Android UI, dataset import and authenticated provenance are not implemented.
 
 ## Scope decision
 
@@ -14,9 +14,11 @@ Therefore PrivaCage must not call the first local implementation an offline emai
 
 ## Official directory format
 
-The official downloader supports a directory containing one range file per five-character uppercase SHA-1 prefix. The file is named PREFIX.txt; each non-empty line is the full 40-character uppercase SHA-1 hash, a colon, and a positive occurrence count. The downloader writes the prefix before the API suffix when producing directory files. It also creates an optional sha1.index of prefix/ETag pairs for conditional refresh. That index is an update optimization, not proof that all ranges are present.
+The official downloader supports a directory containing one range file per five-character uppercase SHA-1 prefix. The file is named PREFIX.txt; each non-empty line is the full 40-character uppercase SHA-1 hash, a colon, and a positive occurrence count. The downloader writes the prefix before the API suffix when producing directory files.
 
-The current official downloader documentation says each HTTP range is checked against the API's Content-MD5 response header before acceptance and individual range files are replaced atomically. Its ETag index supports conditional refresh but is not a completeness manifest. Content-MD5 verification protects the downloader's transfer step; it is not a signed dataset manifest and does not authenticate a later copied directory (S61). Checked 17 November 2026.
+The upstream source pinned in S61 defines `RangeCount = 1024 * 1024` and iterates every prefix from `00000` through `FFFFF`. In directory mode it writes each response body to a temporary file, verifies that body against the API's `Content-MD5` header, and only then replaces the corresponding `PREFIX.txt`. A successful run therefore processes all 1,048,576 prefix requests, subject to the operator trusting the official downloader and its HTTPS connection. The downloader writes the response body even when it is empty; the current PrivaCage matcher intentionally treats a zero-byte range as unavailable until an importer can distinguish a verified empty range from a missing or truncated file.
+
+The optional `sha1.index` is a prefix-sorted list of ETag values used for conditional refresh. A response without an ETag still writes its range file but is removed from the index and downloaded again on a later run. Therefore `sha1.index` is not a complete inventory and must never be used to prove that every prefix is present. `Content-MD5` is a transfer-integrity check, not a publisher signature; the downloader does not publish a signed completeness manifest, and the ETag index does not authenticate a copied directory (S61). Reviewed 18 November 2026.
 
 ## Implemented core on PR #26
 
@@ -32,6 +34,12 @@ Android API compatibility was checked 17 November 2026: the app's minSdk is 26, 
 
 A missing, empty, unreadable, symbolic-link, truncated, malformed, oversized or unsorted range throws an explicit error. It is never converted into a no-match result. The opened handle prevents a path swap to a symbolic link after validation; the captured-size read ignores later appends and fails if the file is truncated before the captured bytes are read. Intermediate password byte arrays are cleared. The core has no networking dependency, does not persist the raw password and does not read the HIBP ETag index.
 
+## Import design decision
+
+The next safe implementation is a desktop-side, bounded directory verifier/importer rather than a full-corpus copy into Android app-private storage. It should require all 1,048,576 expected `PREFIX.txt` names, reject symlinks and unexpected path types, validate every range with bounded parsing, and compute a SHA-256 digest and record/byte counts for each prefix. A compact manifest can bind the range inventory, per-range digests, total counts/bytes, claimed snapshot date, and downloader/importer versions.
+
+No HIBP publisher-signed manifest is published by the official downloader. A manifest signed by a user-controlled Ed25519 key would authenticate that user's local import attestation and detect later file changes only after the public-key fingerprint is trusted out of band; it would not prove HIBP publisher authenticity or independently authenticate the claimed snapshot date. Keep those claims separate in the UI and docs. Android access should be evaluated through a user-selected Storage Access Framework location, without assuming the entire corpus can be copied into app-private storage. The manifest format and Android provider lifecycle are not implemented yet.
+
 ## Security and accuracy limits
 
 - SHA-1 is used only as the identifier required by the published corpus. It is not used to store, protect or authenticate passwords.
@@ -44,9 +52,11 @@ A missing, empty, unreadable, symbolic-link, truncated, malformed, oversized or 
 
 ## Next acceptance gates
 
-- Define a bounded import/manifest format with explicit source, hash algorithm, snapshot date, downloader version and locally computed digests; clearly distinguish local integrity checks from publisher authenticity.
-- Verify missing-range behavior and snapshot staleness before presenting any negative result.
-- Add an Android UI only after a secure input lifecycle and realistic storage/import approach are tested on representative devices.
+- Implement the desktop verifier first; require all 1,048,576 prefix files and validate the full bounded directory before creating a manifest.
+- Define a compact manifest with per-range SHA-256 digests, record/byte counts, a claimed snapshot date, and downloader/importer versions. Sign it with a user-controlled key and require separate out-of-band public-key fingerprint confirmation on any consumer device. Describe this as a local import attestation, not a HIBP publisher signature.
+- Test the importer against interrupted downloads, missing prefixes, unexpected files, empty ranges, malformed records, and post-import file tampering. A missing or digest-mismatched range must remain unavailable, never a no-match.
+- Evaluate Android Storage Access Framework access to a user-selected external dataset location; do not copy a potentially very large full corpus into app-private storage without measured device/storage evidence.
+- Add an Android UI only after secure text-field lifecycle, dataset storage, manifest verification, and provider behavior are tested on representative devices.
 - Keep account/email breach search separate. Do not send full identifiers to a third-party endpoint, scrape the service, or imply that the Pwned Passwords corpus can answer account-breach questions.
 
 This is engineering guidance, not a guarantee of account security or a legal/technical audit of the upstream dataset.
