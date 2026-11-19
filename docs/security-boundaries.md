@@ -109,3 +109,6 @@ A missing, unreadable, malformed, oversized, empty, or incomplete range is unava
 The Go full-range verifier validates local directory structure and range syntax, then records per-file SHA-256 digests in an unsigned JSONL manifest. Verification requires the manifest digest to be retained independently and checks every current file against that manifest. The tool rejects missing or unexpected prefixes, symbolic links, malformed/unsorted records and configured size/count overages. It does not contact HIBP.
 
 The manifest does not prove publisher identity, upstream response completeness, or freshness. A syntactically valid response truncated at a record boundary can still be attested. The snapshot date is operator-supplied. If an attacker can replace both the manifest and the separately retained digest, the inventory has no authenticity guarantee. Do not call this a signed or publisher-authenticated dataset. Android manifest consumption and authenticated empty-range handling remain pending.
+
+
+The full-range creator should be run against a quiescent directory. Per-file metadata checks and repeated directory enumeration detect ordinary changes, but this is not a filesystem snapshot and does not defend against a privileged concurrent writer able to restore timestamps. Run the verification command after creation before relying on the current directory.
