@@ -241,13 +241,16 @@ func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixC
 	var totalBytes, totalRecords uint64
 	for prefix := 0; prefix < prefixCount; prefix++ {
 		if !scanner.Scan() {
-			return pwnedManifestHeader{}, fmt.Errorf("manifest entry %05X is missing or truncated: %w", prefix, scanner.Err())
+			if err := scanner.Err(); err != nil {
+				return pwnedManifestHeader{}, fmt.Errorf("manifest entry %05X is unreadable: %w", prefix, err)
+			}
+			return pwnedManifestHeader{}, fmt.Errorf("manifest entry %05X is missing", prefix)
 		}
 		var entry pwnedManifestEntry
 		if err := decodeStrictJSON(scanner.Bytes(), &entry); err != nil {
 			return pwnedManifestHeader{}, fmt.Errorf("manifest entry %05X is invalid: %w", prefix, err)
 		}
-		if entry.Prefix != fmt.Sprintf("%05X", prefix) || entry.Size > pwnedRangeFileLimit || entry.Records > pwnedRangeLineLimit || !isHexDigest(entry.SHA256) || ((entry.Size == 0) != (entry.Records == 0)) {
+		if entry.Prefix != fmt.Sprintf("%05X", prefix) || entry.Size > pwnedRangeFileLimit || entry.Records > pwnedRangeLineLimit || !isHexDigest(entry.SHA256) || entry.SHA256 != strings.ToUpper(entry.SHA256) || ((entry.Size == 0) != (entry.Records == 0)) {
 			return pwnedManifestHeader{}, fmt.Errorf("manifest entry %05X has invalid prefix, size, count or digest", prefix)
 		}
 		if totalBytes > pwnedDatasetByteLimit-uint64(entry.Size) || ^uint64(0)-totalRecords < entry.Records {
