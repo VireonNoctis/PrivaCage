@@ -507,3 +507,12 @@ https://haveibeenpwned.com/API/V3#PwnedPasswords
 https://haveibeenpwned.com/scalar/
 
 The official range response contains hash suffixes followed by occurrence counts. SHA-1 suffixes are exactly 35 hexadecimal characters, the prefix is supplied separately as the first five characters of the full SHA-1 hash, and response lines use CRLF. This is the directory-mode `PREFIX.txt` record format consumed by PrivaCage; the official downloader's single-file output prepends the prefix when merging. Checked 19 November 2026.
+
+
+### S65 — Go SHA-256 standard library
+- Official Go package documentation for `crypto/sha256`, including streaming hash construction and digest output.
+- Checked 19 November 2026: https://pkg.go.dev/crypto/sha256
+
+### S66 — Go filesystem enumeration and file identity
+- Official Go package documentation for `os.File.Readdirnames`, `os.Lstat`, `os.SameFile`, and regular-file metadata used by the bounded directory verifier.
+- Checked 19 November 2026: https://pkg.go.dev/os
