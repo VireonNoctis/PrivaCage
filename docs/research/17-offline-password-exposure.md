@@ -54,7 +54,7 @@ go -C shared/go/pcage-tools run . verify-pwned-manifest \
   --expected-sha256 DIGEST_RETAINED_SEPARATELY
 ```
 
-The digest must be stored separately from the manifest and dataset. This is an unsigned local inventory; it detects accidental or later byte changes only when the expected digest remains trusted. It is not a signed attestation.
+The digest must be stored separately from the manifest and dataset. This is an unsigned local inventory; it detects accidental or later byte changes only when the expected digest remains trusted. It is not a signed attestation. Run creation against a quiescent directory. The creator checks file metadata while reading and re-enumerates the directory, but it is not a filesystem snapshot and cannot defend against a privileged concurrent writer that can restore timestamps. Run the verification command after creation to confirm that the current directory still matches the generated manifest.
 
 ## Signed attestation and Android import design
 
