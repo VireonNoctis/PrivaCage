@@ -44,7 +44,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Verify enforcement outcomes through the OS and surface failures.
 - Require evidence for app recommendations and prohibit paid placement.
 - Track request-submission evidence separately from company responses and confirmed deletion.
-- The local password matcher consumes a dedicated CharArray, clears it and intermediate byte arrays, opens the range through a no-follow read-only channel, captures the size from that handle, reads no more than the captured bytes, and rejects overlong records before decoding. It validates the entire bounded range file and fails closed on missing, symbolic-link, truncated or corrupt ranges. This limits path substitution and unbounded line allocation but does not authenticate source provenance or concurrent in-place edits. Its result is explicitly limited to the supplied snapshot and is not an account-breach or password-strength verdict.
+- The local password matcher consumes a dedicated CharArray, clears it and intermediate byte arrays, opens the range through a no-follow read-only channel, captures the size from that handle, reads no more than the captured bytes, and rejects overlong records before decoding. It validates 35-character uppercase suffix records for the selected five-character prefix file, enforces strict ordering, and fails closed on missing, symbolic-link, truncated or corrupt ranges. This limits path substitution and unbounded line allocation but does not authenticate source provenance or concurrent in-place edits. Its result is explicitly limited to the supplied snapshot and is not an account-breach or password-strength verdict.
 
 ## Additional mitigations
 

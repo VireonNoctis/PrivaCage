@@ -20,10 +20,11 @@ class PwnedPasswordRangeLookupTest {
     private val today = LocalDate.parse("2026-11-14")
     private val passwordHash = "5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8"
     private val prefix = "5BAA6"
+    private val passwordSuffix = passwordHash.substring(prefix.length)
 
     @Test
     fun findsPasswordAndReturnsThePublishedOccurrenceCount() {
-        writeRange("$passwordHash:3\n")
+        writeRange("$passwordSuffix:3\n")
         val password = "password".toCharArray()
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
 
@@ -35,8 +36,8 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun validRangeWithoutPasswordReturnsOnlySnapshotScopedNoMatch() {
-        val otherHash = prefix + "0".repeat(35)
-        writeRange("$otherHash:1\n")
+        val otherSuffix = "0".repeat(35)
+        writeRange("$otherSuffix:1\n")
         val password = "password".toCharArray()
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
 
@@ -66,8 +67,28 @@ class PwnedPasswordRangeLookupTest {
     }
 
     @Test
-    fun rejectsAHashFromAnotherPrefix() {
-        writeRange("5BAA7" + "0".repeat(35) + ":1\n")
+    fun rejectsFullHashRecordsBecauseDirectoryFilesContainSuffixesOnly() {
+        writeRange("$passwordHash:1\n")
+        val password = "password".toCharArray()
+        assertFailsWith<IOException> {
+            PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+        }
+        assertTrue(password.all { it == '\u0000' })
+    }
+
+    @Test
+    fun rejectsSuffixesThatAreNotExactly35HexCharacters() {
+        writeRange("0".repeat(34) + ":1\n")
+        val password = "password".toCharArray()
+        assertFailsWith<IOException> {
+            PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+        }
+        assertTrue(password.all { it == '\u0000' })
+    }
+
+    @Test
+    fun rejectsLowercaseSuffixes() {
+        writeRange(passwordSuffix.lowercase() + ":1\n")
         val password = "password".toCharArray()
         assertFailsWith<IOException> {
             PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
@@ -77,8 +98,8 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun rejectsUnsortedOrDuplicateRangeRecords() {
-        val high = prefix + "F".repeat(35)
-        val low = prefix + "0".repeat(35)
+        val high = "F".repeat(35)
+        val low = "0".repeat(35)
         writeRange("$high:1\n$low:1\n")
         val password = "password".toCharArray()
         assertFailsWith<IOException> {
@@ -89,7 +110,7 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun rejectsNonCanonicalOccurrenceCounts() {
-        writeRange("$passwordHash:01\n")
+        writeRange("$passwordSuffix:01\n")
         val password = "password".toCharArray()
         assertFailsWith<IOException> {
             PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
@@ -112,8 +133,8 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun acceptsCrlfAndAFinalRecordWithoutANewline() {
-        val earlierHash = prefix + "0".repeat(35)
-        writeRange("$earlierHash:1\r\n$passwordHash:3")
+        val earlierSuffix = "0".repeat(35)
+        writeRange("$earlierSuffix:1\r\n$passwordSuffix:3")
         val password = "password".toCharArray()
 
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
@@ -125,7 +146,7 @@ class PwnedPasswordRangeLookupTest {
 
     @Test
     fun rejectsARecordLongerThanTheFormatBound() {
-        writeRange("$prefix" + "0".repeat(55) + ":1\n")
+        writeRange("0".repeat(56) + ":1\n")
         val password = "password".toCharArray()
 
         assertFailsWith<IOException> {

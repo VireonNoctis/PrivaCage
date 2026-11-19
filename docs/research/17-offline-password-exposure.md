@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
-**Research status:** official HIBP API, Pwned Passwords page and downloader source checked 18 November 2026.  
-**Implementation status:** partial Kotlin/JVM range-file matcher on open PR #26; exact head `a98f298` passed all nine workflow runs. The Android performance measurement step was skipped because hosted `/dev/kvm` was unavailable; no performance result or device validation is claimed. PR #26 remains unmerged. Android UI, dataset import and authenticated provenance are not implemented.
+**Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026.  
+**Implementation status:** partial Kotlin/JVM range-file matcher on open PR #26. A directory-format mismatch was corrected in this follow-up; exact-head CI is pending. No device validation or performance measurement is claimed. PR #26 remains unmerged. Android UI, dataset import and authenticated provenance are not implemented.
 
 ## Scope decision
 
@@ -14,11 +14,11 @@ Therefore PrivaCage must not call the first local implementation an offline emai
 
 ## Official directory format
 
-The official downloader supports a directory containing one range file per five-character uppercase SHA-1 prefix. The file is named PREFIX.txt; each non-empty line is the full 40-character uppercase SHA-1 hash, a colon, and a positive occurrence count. The downloader writes the prefix before the API suffix when producing directory files.
+The official downloader supports a directory containing one range file per five-character uppercase SHA-1 prefix. The file is named PREFIX.txt; each non-empty line is the raw API response record: a 35-character uppercase SHA-1 suffix, a colon, and a positive occurrence count. The five-character prefix is represented by the filename and is not repeated in each directory-mode record. The official API documents 35-character SHA-1 suffixes and CRLF line endings (S64). The downloader's single-file mode differs: it prepends the prefix to each suffix to produce full 40-character hashes, so that output must not be used as a PREFIX.txt range file.
 
-The upstream source pinned in S61 defines `RangeCount = 1024 * 1024` and iterates every prefix from `00000` through `FFFFF`. In directory mode it writes each response body to a temporary file, verifies that body against the API's `Content-MD5` header, and only then replaces the corresponding `PREFIX.txt`. A successful run therefore processes all 1,048,576 prefix requests, subject to the operator trusting the official downloader and its HTTPS connection. The downloader writes the response body even when it is empty; the current PrivaCage matcher intentionally treats a zero-byte range as unavailable until an importer can distinguish a verified empty range from a missing or truncated file.
+The upstream source pinned in S61 defines `RangeCount = 1024 * 1024` and iterates every prefix from `00000` through `FFFFF`. In directory mode it writes each API response body unchanged to a temporary file, verifies that body against the API's `Content-MD5` header, and only then replaces the corresponding `PREFIX.txt`. It does not prepend the five-character prefix to directory-mode records. Single-file mode separately prepends the prefix while merging suffix records. A successful directory download therefore processes all 1,048,576 prefix requests, subject to the operator trusting the official downloader and its HTTPS connection. The downloader writes the response body even when it is empty; the current PrivaCage matcher intentionally treats a zero-byte range as unavailable until an importer can distinguish a verified empty range from a missing or truncated file.
 
-The optional `sha1.index` is a prefix-sorted list of ETag values used for conditional refresh. A response without an ETag still writes its range file but is removed from the index and downloaded again on a later run. Therefore `sha1.index` is not a complete inventory and must never be used to prove that every prefix is present. `Content-MD5` is a transfer-integrity check, not a publisher signature; the downloader does not publish a signed completeness manifest, and the ETag index does not authenticate a copied directory (S61). Reviewed 18 November 2026.
+The optional `sha1.index` is a prefix-sorted list of ETag values used for conditional refresh. A response without an ETag still writes its range file but is removed from the index and downloaded again on a later run. Therefore `sha1.index` is not a complete inventory and must never be used to prove that every prefix is present. `Content-MD5` is a transfer-integrity check, not a publisher signature; the downloader does not publish a signed completeness manifest, and the ETag index does not authenticate a copied directory (S61). Reviewed 19 November 2026.
 
 ## Implemented core on PR #26
 
@@ -27,7 +27,7 @@ PwnedPasswordRangeLookup.checkAndClear:
 1. Takes ownership of a dedicated CharArray and clears it on every exit path.
 2. Encodes the supplied characters as UTF-8 and calculates SHA-1 solely for compatibility with the HIBP corpus.
 3. Opens only the matching PREFIX.txt file through a read-only channel with symbolic-link following disabled; the byte size is captured from that opened handle.
-4. Reads no more than the captured size, enforces a 4 MiB file cap and 100,000-line cap, and rejects records longer than the 60-byte format bound before allocating a decoded line. It validates full uppercase SHA-1 values, prefix membership, strict ordering and positive canonical counts.
+4. Reads no more than the captured size, enforces a 4 MiB file cap and 100,000-line cap, and rejects records longer than the 55-byte `suffix:count` format bound before allocating a decoded line. It validates exactly 35 uppercase hexadecimal suffix characters, strict suffix ordering and positive canonical counts; the five-character prefix is selected by the range filename.
 5. Returns FOUND with the corpus count or NOT_FOUND_IN_SNAPSHOT with the caller-supplied snapshot date.
 
 Android API compatibility was checked 17 November 2026: the app's minSdk is 26, and Android documents both Files.newByteChannel and LinkOption.NOFOLLOW_LINKS from API 26. Android also documents that NOFOLLOW_LINKS may be ignored by providers that do not support symbolic links; no physical-device provider validation is claimed (S62, S63).

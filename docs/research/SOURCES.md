@@ -486,7 +486,7 @@ https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs
 https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
-The official downloader source at commit `9939f083fdf05c07d83e3dbbe156feda1a781fa0` defines 1,048,576 five-character SHA-1 prefixes and processes every prefix in directory mode, writing each response body to `PREFIX.txt` after verifying its `Content-MD5` header and atomically replacing the prior file. Its optional `sha1.index` contains prefix/ETag pairs only for ranges with ETags; ranges without an ETag are still written but are not indexed. The index is therefore a conditional-refresh cache, not a completeness manifest. Content-MD5 is transfer-integrity checking, not a publisher signature; the downloader does not emit a signed manifest for a copied directory. Reviewed the upstream README and source on 18 November 2026: https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs and https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
+The official downloader source at commit `9939f083fdf05c07d83e3dbbe156feda1a781fa0` defines 1,048,576 five-character SHA-1 prefixes and processes every prefix in directory mode, writing each API response body unchanged to `PREFIX.txt` after verifying its `Content-MD5` header and atomically replacing the prior file. Those directory records are 35-character suffixes plus counts; single-file mode separately prefixes them to produce full hashes. Its optional `sha1.index` contains prefix/ETag pairs only for ranges with ETags; ranges without an ETag are still written but are not indexed. The index is therefore a conditional-refresh cache, not a completeness manifest. Content-MD5 is transfer-integrity checking, not a publisher signature; the downloader does not emit a signed manifest for a copied directory. Reviewed the upstream README and source on 19 November 2026: https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/src/HaveIBeenPwned.PwnedPasswords.Downloader/Program.cs and https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader/blob/9939f083fdf05c07d83e3dbbe156feda1a781fa0/README.md
 
 <a id="s62"></a>
 ### S62 — Android Developers: Files API
@@ -499,3 +499,11 @@ Documents Files.newByteChannel as available from API level 26 and returning a Se
 https://developer.android.com/reference/java/nio/file/LinkOption
 
 Documents LinkOption.NOFOLLOW_LINKS as available from API level 26 and intended not to follow symbolic links. The Files API notes that no-follow behavior may be ignored by file-system implementations that do not support symbolic links. Checked 17 November 2026.
+
+
+<a id="s64"></a>
+### S64 — Have I Been Pwned: Pwned Passwords range endpoint
+https://haveibeenpwned.com/API/V3#PwnedPasswords
+https://haveibeenpwned.com/scalar/
+
+The official range response contains hash suffixes followed by occurrence counts. SHA-1 suffixes are exactly 35 hexadecimal characters, the prefix is supplied separately as the first five characters of the full SHA-1 hash, and response lines use CRLF. This is the directory-mode `PREFIX.txt` record format consumed by PrivaCage; the official downloader's single-file output prepends the prefix when merging. Checked 19 November 2026.

@@ -32,7 +32,9 @@ data class PwnedPasswordExposureResult(
 
 /**
  * Local-only reader for the official Have I Been Pwned Pwned Passwords SHA-1
- * range-directory format. SHA-1 is used only for corpus compatibility.
+ * directory format. Each PREFIX.txt contains 35-character suffix records; the
+ * five-character prefix is represented by the filename. SHA-1 is used only for
+ * corpus compatibility.
  *
  * The caller must pass a dedicated CharArray: checkAndClear consumes and clears it.
  * The snapshot date is caller-supplied and is not authenticated by this core.
@@ -45,7 +47,8 @@ object PwnedPasswordRangeLookup {
 
     private const val HASH_HEX_LENGTH = 40
     private const val PREFIX_HEX_LENGTH = 5
-    private const val MAX_RANGE_RECORD_BYTES = 60
+    private const val HASH_SUFFIX_HEX_LENGTH = HASH_HEX_LENGTH - PREFIX_HEX_LENGTH
+    private const val MAX_RANGE_RECORD_BYTES = HASH_SUFFIX_HEX_LENGTH + 1 + 19
 
     @Throws(IOException::class)
     fun checkAndClear(
@@ -83,10 +86,11 @@ object PwnedPasswordRangeLookup {
                     try {
                         val hashHex = toUpperHex(hashBytes)
                         val prefix = hashHex.substring(0, PREFIX_HEX_LENGTH)
+                        val targetSuffix = hashHex.substring(PREFIX_HEX_LENGTH)
                         password.fill('\u0000')
 
                         val rangeFile = rangeDirectory.resolve("$prefix.txt")
-                        val occurrences = findOccurrences(rangeFile, prefix, hashHex)
+                        val occurrences = findOccurrences(rangeFile, prefix, targetSuffix)
                         return PwnedPasswordExposureResult(
                             status = if (occurrences == null) {
                                 PwnedPasswordExposureStatus.NOT_FOUND_IN_SNAPSHOT
@@ -110,7 +114,7 @@ object PwnedPasswordRangeLookup {
         }
     }
 
-    private fun findOccurrences(rangeFile: Path, prefix: String, targetHash: String): Long? {
+    private fun findOccurrences(rangeFile: Path, prefix: String, targetSuffix: String): Long? {
         if (!Files.exists(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException(
                 "Required Pwned Passwords range file $prefix.txt is missing; the local dataset may be incomplete."
@@ -128,7 +132,7 @@ object PwnedPasswordRangeLookup {
             LinkOption.NOFOLLOW_LINKS
         ).use { channel ->
             val rangeBytes = channel.size()
-            if (rangeBytes < 42L) {
+            if (rangeBytes < (HASH_SUFFIX_HEX_LENGTH + 2).toLong()) {
                 throw IOException(
                     "Pwned Passwords range file is empty or shorter than one complete record; result unavailable."
                 )
@@ -138,17 +142,16 @@ object PwnedPasswordRangeLookup {
                     "Pwned Passwords range file exceeds the $MAX_RANGE_FILE_BYTES-byte safety limit."
                 )
             }
-            return parseRange(channel, rangeBytes, prefix, targetHash)
+            return parseRange(channel, rangeBytes, targetSuffix)
         }
     }
 
     private fun parseRange(
         channel: SeekableByteChannel,
         capturedSize: Long,
-        prefix: String,
-        targetHash: String
+        targetSuffix: String
     ): Long? {
-        var previousHash: String? = null
+        var previousSuffix: String? = null
         var matchCount: Long? = null
         var lineCount = 0
         var lineLength = 0
@@ -169,26 +172,26 @@ object PwnedPasswordRangeLookup {
             if (recordLength > 0 && lineBuffer[recordLength - 1] == '\r'.code.toByte()) {
                 recordLength -= 1
             }
-            if (recordLength !in 42..MAX_RANGE_RECORD_BYTES) {
+            if (recordLength !in (HASH_SUFFIX_HEX_LENGTH + 2)..MAX_RANGE_RECORD_BYTES) {
                 throw IOException("Pwned Passwords range file has an invalid record at line $lineCount.")
             }
 
             val line = String(lineBuffer, 0, recordLength, StandardCharsets.US_ASCII)
-            if (line[HASH_HEX_LENGTH] != ':') {
+            if (line[HASH_SUFFIX_HEX_LENGTH] != ':') {
                 throw IOException("Pwned Passwords range file has an invalid record at line $lineCount.")
             }
 
-            val hash = line.substring(0, HASH_HEX_LENGTH)
-            if (hash.any { it !in '0'..'9' && it !in 'A'..'F' } || !hash.startsWith(prefix)) {
-                throw IOException("Pwned Passwords range file has an invalid hash at line $lineCount.")
+            val suffix = line.substring(0, HASH_SUFFIX_HEX_LENGTH)
+            if (suffix.any { it !in '0'..'9' && it !in 'A'..'F' }) {
+                throw IOException("Pwned Passwords range file has an invalid suffix at line $lineCount.")
             }
-            previousHash?.let {
-                if (hash <= it) {
+            previousSuffix?.let {
+                if (suffix <= it) {
                     throw IOException("Pwned Passwords range file is not strictly sorted at line $lineCount.")
                 }
             }
 
-            val countText = line.substring(HASH_HEX_LENGTH + 1)
+            val countText = line.substring(HASH_SUFFIX_HEX_LENGTH + 1)
             if (countText.length !in 1..19 || countText.any { it !in '0'..'9' }) {
                 throw IOException("Pwned Passwords range file has an invalid count at line $lineCount.")
             }
@@ -198,8 +201,8 @@ object PwnedPasswordRangeLookup {
                 throw IOException("Pwned Passwords range count is not canonical at line $lineCount.")
             }
 
-            if (hash == targetHash) matchCount = count
-            previousHash = hash
+            if (suffix == targetSuffix) matchCount = count
+            previousSuffix = suffix
         }
 
         while (remainingBytes > 0) {
