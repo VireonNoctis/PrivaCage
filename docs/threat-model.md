@@ -85,3 +85,11 @@ The project does not build an authority-access API or maintain a central PrivaCa
 | Asset / process | Threat | Mitigation and remaining boundary |
 |---|---|---|
 | Password characters and local Pwned Passwords range data | Password remains in memory longer than needed, a partial/corrupt range creates a false negative, or a stale/untrusted corpus is presented as authoritative | The experimental Kotlin/JVM matcher accepts a dedicated CharArray, clears it on every exit path, clears intermediate byte arrays, performs no network request, and persists no raw password. It opens the selected range with symbolic-link following disabled, captures the opened handle's size, reads no more than that many bytes, and rejects overlong records before decoding. It validates the full bounded range file before returning a match/no-match and treats missing, empty, malformed, oversized, truncated, symbolic-link or unsorted data as unavailable. The caller-supplied snapshot date and dataset provenance are not authenticated; concurrent in-place modification is not cryptographically detected; no-match applies only to the supplied range snapshot. This is password-only, not email/account breach lookup. |
+
+
+## Offline password corpus inventory
+
+- **Threats:** missing or substituted prefix files, unexpected files, symbolic links, malformed/unsorted suffix records, oversized ranges, post-import file changes, and a replaced manifest.
+- **Current mitigation on PR #26:** the Go verifier requires the complete 1,048,576-file inventory, validates bounded records, hashes each range, writes an unsigned JSONL manifest, and verifies the current directory against that manifest plus an independently retained SHA-256.
+- **Residual risk:** the manifest is unsigned. If the manifest and its expected digest are both replaced, the verifier cannot authenticate the inventory. It cannot prove HIBP publisher identity, remote completeness, or freshness; a syntactically valid truncated range can be included. The snapshot date is an operator claim. Android does not yet consume this manifest.
+- **Required next control:** a reviewed local signing-key custody design, a Kotlin verifier with shared Go/Kotlin test vectors, and fail-closed Android range selection. Any signature must be described as a user-local attestation, not an HIBP publisher signature.
