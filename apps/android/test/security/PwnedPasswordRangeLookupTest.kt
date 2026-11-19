@@ -215,9 +215,12 @@ class PwnedPasswordRangeLookupTest {
     }
 
     private fun readSharedRangeVector(name: String): String {
-        val stream = javaClass.getResourceAsStream("/pwned-password-ranges/$name")
-            ?: error("Missing shared Pwned Passwords test vector: $name")
-        return stream.bufferedReader(StandardCharsets.US_ASCII).use { it.readText().trimEnd('\r', '\n') }
+        val repositoryRoot = System.getProperty("privacage.repo-root")
+            ?: error("Missing privacage.repo-root test property")
+        val vectorPath = Path.of(repositoryRoot)
+            .resolve("shared/crypto/test-vectors/pwned-password-ranges")
+            .resolve(name)
+        return Files.readString(vectorPath, StandardCharsets.US_ASCII).trimEnd('\r', '\n')
     }
 
     private fun writeRange(content: String) {
