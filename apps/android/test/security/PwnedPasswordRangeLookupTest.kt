@@ -29,7 +29,7 @@ class PwnedPasswordRangeLookupTest {
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
 
         assertEquals(PwnedPasswordExposureStatus.FOUND, result.status)
-        assertEquals(3L, result.occurrences)
+        assertEquals<ULong?>(3uL, result.occurrences)
         assertEquals(snapshotDate, result.snapshotDate)
         assertTrue(password.all { it == '\u0000' })
     }
@@ -140,7 +140,7 @@ class PwnedPasswordRangeLookupTest {
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
 
         assertEquals(PwnedPasswordExposureStatus.FOUND, result.status)
-        assertEquals(3L, result.occurrences)
+        assertEquals<ULong?>(3uL, result.occurrences)
         assertTrue(password.all { it == '\u0000' })
     }
 
@@ -199,7 +199,7 @@ class PwnedPasswordRangeLookupTest {
         val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
 
         assertEquals(PwnedPasswordExposureStatus.FOUND, result.status)
-        assertEquals(ULong.MAX_VALUE, result.occurrences)
+        assertEquals<ULong?>(ULong.MAX_VALUE, result.occurrences)
         assertTrue(password.all { it == '\u0000' })
     }
 
