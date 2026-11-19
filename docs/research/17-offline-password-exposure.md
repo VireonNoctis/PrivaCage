@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
 **Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026.  
-**Implementation status:** partial Kotlin/JVM range-file matcher on open PR #26. A directory-format mismatch was corrected in this follow-up; exact-head CI is pending. No device validation or performance measurement is claimed. PR #26 remains unmerged. Android UI, dataset import and authenticated provenance are not implemented.
+**Implementation status:** partial Kotlin/JVM single-range matcher plus Go full-range inventory verifier on open PR #26. The Go tool creates and verifies an unsigned JSONL manifest with per-range SHA-256 digests; exact-head CI is pending. Android manifest consumption, SAF import, Android UI, signed attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
 
 ## Scope decision
 
@@ -34,26 +34,46 @@ Android API compatibility was checked 17 November 2026: the app's minSdk is 26, 
 
 A missing, empty, unreadable, symbolic-link, truncated, malformed, oversized or unsorted range throws an explicit error. It is never converted into a no-match result. The opened handle prevents a path swap to a symbolic link after validation; the captured-size read ignores later appends and fails if the file is truncated before the captured bytes are read. Intermediate password byte arrays are cleared. The core has no networking dependency, does not persist the raw password and does not read the HIBP ETag index.
 
-## Import design decision
+## Desktop full-range inventory verifier
 
-The next safe implementation is a desktop-side, bounded directory verifier/importer rather than a full-corpus copy into Android app-private storage. It should require all 1,048,576 expected `PREFIX.txt` names, reject symlinks and unexpected path types, validate every range with bounded parsing, and compute a SHA-256 digest and record/byte counts for each prefix. A compact manifest can bind the range inventory, per-range digests, total counts/bytes, claimed snapshot date, and downloader/importer versions.
+The shared Go CLI now provides `create-pwned-manifest` and `verify-pwned-manifest` on PR #26. Creation requires all 1,048,576 uppercase `PREFIX.txt` files, permits only an optional regular `sha1.index`, rejects unexpected entries and symbolic links, and validates each range before recording it. Each range is bounded to 4 MiB and 100,000 records; the total dataset is bounded to 256 GiB. Records must contain a 35-character uppercase hexadecimal suffix, a positive canonical decimal count, and strictly increasing suffixes. CRLF, LF, and a final record without a newline are accepted. Empty files are recorded as zero-byte/zero-record ranges; an all-empty directory is rejected.
 
-No HIBP publisher-signed manifest is published by the official downloader. A manifest signed by a user-controlled Ed25519 key would authenticate that user's local import attestation and detect later file changes only after the public-key fingerprint is trusted out of band; it would not prove HIBP publisher authenticity or independently authenticate the claimed snapshot date. Keep those claims separate in the UI and docs. Android access should be evaluated through a user-selected Storage Access Framework location, without assuming the entire corpus can be copied into app-private storage. The manifest format and Android provider lifecycle are not implemented yet.
+The output is JSON Lines: one header with the source label, format version, operator-supplied snapshot date, generation timestamp and aggregate counts, followed by one ordered entry per prefix containing byte size, record count and SHA-256. The manifest is limited to 128 MiB. The verifier requires an independently retained SHA-256 digest, then checks the manifest structure, complete prefix inventory and every current range-file digest. It makes no network requests and does not read or rely on `sha1.index`.
 
-## Security and accuracy limits
+Commands:
+
+```sh
+go -C shared/go/pcage-tools run . create-pwned-manifest \
+  --directory /path/to/pwned-passwords \
+  --manifest /path/out/ranges.jsonl \
+  --snapshot-date YYYY-MM-DD
+
+go -C shared/go/pcage-tools run . verify-pwned-manifest \
+  --directory /path/to/pwned-passwords \
+  --manifest /path/out/ranges.jsonl \
+  --expected-sha256 DIGEST_RETAINED_SEPARATELY
+```
+
+The digest must be stored separately from the manifest and dataset. This is an unsigned local inventory; it detects accidental or later byte changes only when the expected digest remains trusted. It is not a signed attestation.
+
+## Signed attestation and Android import design
+
+A signature is deliberately deferred until the manifest verifier has a cross-language Kotlin test vector and a reviewed key-custody flow. A user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. Do not label the current JSONL manifest as signed.
+
+The next Android consumer must verify the manifest digest against a separately trusted value and verify the selected range's size and SHA-256 before allowing a no-match result. A zero-byte range may be treated as a verified empty range only when an authenticated manifest entry says it is empty; the existing single-range Kotlin matcher still reports empty files as unavailable. Evaluate a user-selected Storage Access Framework location rather than copying the full corpus into app-private storage.## Security and accuracy limits
 
 - SHA-1 is used only as the identifier required by the published corpus. It is not used to store, protect or authenticate passwords.
-- The caller supplies the snapshot date. The current core does not authenticate that date, verify a signed manifest, validate the entire dataset's completeness, or prove freshness.
-- The matcher validates the one range file it needs. A valid no-match means only that the password hash was absent from that supplied range file. A syntactically valid but truncated file cannot yet be detected; until an import/manifest path authenticates range digests and coverage, a no-match is only a local-file observation, not an authoritative corpus result.
+- The caller supplies the snapshot date. The Go manifest records that claim but is unsigned; the independent SHA-256 is only a trust anchor if retained separately. Neither the Kotlin matcher nor the Go verifier authenticates HIBP as publisher or proves source completeness/freshness.
+- The Kotlin matcher validates only the one range file it needs. The Go tool validates the full filename inventory and record syntax, then binds the observed files with per-range SHA-256 values. A syntactically valid truncation at a record boundary can still be included in a locally generated manifest; the tool cannot prove that the upstream response was complete. A no-match is not an authoritative corpus result until the manifest digest is independently trusted and consumed by the Android matcher.
 - A no-match is not proof that the password is strong, unique, safe, or absent from every breach.
 - The corpus contains password hashes, not email/account breach records. No email address or identifier is sent.
-- Android UI, secure text-field lifecycle, Storage Access Framework import, dataset-size planning, provenance manifest and device-level memory review remain unfinished.
+- Android manifest consumption, secure text-field lifecycle, Storage Access Framework import, dataset-size planning, signed attestation and device-level memory review remain unfinished.
 - PrivaCage does not bundle or redistribute the corpus. Users must obtain it from the official source and maintain it themselves.
 
 ## Next acceptance gates
 
-- Implement the desktop verifier first; require all 1,048,576 prefix files and validate the full bounded directory before creating a manifest.
-- Define a compact manifest with per-range SHA-256 digests, record/byte counts, a claimed snapshot date, and downloader/importer versions. Sign it with a user-controlled key and require separate out-of-band public-key fingerprint confirmation on any consumer device. Describe this as a local import attestation, not a HIBP publisher signature.
+- Add a signed local attestation only after selecting a key-custody design and adding a Kotlin verifier with shared Go/Kotlin test vectors. Keep the expected public-key fingerprint out of band; describe the signature as a local import attestation, not a HIBP publisher signature.
+- Add Android manifest consumption that fails closed on digest, coverage, schema or range mismatches; preserve the current unavailable result until a selected range is verified.
 - Test the importer against interrupted downloads, missing prefixes, unexpected files, empty ranges, malformed records, and post-import file tampering. A missing or digest-mismatched range must remain unavailable, never a no-match.
 - Evaluate Android Storage Access Framework access to a user-selected external dataset location; do not copy a potentially very large full corpus into app-private storage without measured device/storage evidence.
 - Add an Android UI only after secure text-field lifecycle, dataset storage, manifest verification, and provider behavior are tested on representative devices.
