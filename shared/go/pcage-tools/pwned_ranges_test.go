@@ -190,3 +190,29 @@ func TestPwnedManifestHeaderJSONRejectsUnknownFields(t *testing.T) {
 		t.Fatal("unknown JSON fields must be rejected")
 	}
 }
+
+func TestPwnedRangeCountsMatchSharedKotlinUnsigned64Contract(t *testing.T) {
+	readVector := func(name string) []byte {
+		t.Helper()
+		path := filepath.Join("..", "..", "crypto", "test-vectors", "pwned-password-ranges", name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read shared vector %s: %v", name, err)
+		}
+		return []byte(strings.TrimSpace(string(data)))
+	}
+
+	maximum := readVector("uint64-max.txt")
+	if len(maximum) != 56 {
+		t.Fatalf("maximum unsigned record has %d bytes; want 56", len(maximum))
+	}
+	if err := validatePwnedRecord(maximum, ""); err != nil {
+		t.Fatalf("maximum unsigned 64-bit count should be accepted: %v", err)
+	}
+
+	overflow := readVector("uint64-overflow.txt")
+	if err := validatePwnedRecord(overflow, ""); err == nil {
+		t.Fatal("count greater than uint64 must be rejected")
+	}
+}
+

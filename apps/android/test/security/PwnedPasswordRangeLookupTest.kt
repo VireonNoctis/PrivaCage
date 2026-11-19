@@ -191,6 +191,36 @@ class PwnedPasswordRangeLookupTest {
         assertTrue(password.all { it == '\u0000' })
     }
 
+
+    @Test
+    fun acceptsMaximumUnsigned64OccurrenceCountFromSharedGoVector() {
+        writeRange(readSharedRangeVector("uint64-max.txt") + "\n")
+        val password = "password".toCharArray()
+
+        val result = PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+
+        assertEquals(PwnedPasswordExposureStatus.FOUND, result.status)
+        assertEquals(ULong.MAX_VALUE, result.occurrences)
+        assertTrue(password.all { it == '\\u0000' })
+    }
+
+    @Test
+    fun rejectsUnsigned64OverflowFromSharedGoVector() {
+        writeRange(readSharedRangeVector("uint64-overflow.txt") + "\n")
+        val password = "password".toCharArray()
+
+        assertFailsWith<IOException> {
+            PwnedPasswordRangeLookup.checkAndClear(password, temporaryDirectory, snapshotDate, today)
+        }
+        assertTrue(password.all { it == '\\u0000' })
+    }
+
+    private fun readSharedRangeVector(name: String): String {
+        val stream = javaClass.getResourceAsStream("/pwned-password-ranges/$name")
+            ?: error("Missing shared Pwned Passwords test vector: $name")
+        return stream.bufferedReader(StandardCharsets.US_ASCII).use { it.readText().trimEnd('\\r', '\\n') }
+    }
+
     private fun writeRange(content: String) {
         Files.write(temporaryDirectory.resolve("$prefix.txt"), content.toByteArray(StandardCharsets.US_ASCII))
     }

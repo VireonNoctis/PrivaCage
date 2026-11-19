@@ -21,12 +21,12 @@ enum class PwnedPasswordExposureStatus {
 
 data class PwnedPasswordExposureResult(
     val status: PwnedPasswordExposureStatus,
-    val occurrences: Long?,
+    val occurrences: ULong?,
     val snapshotDate: LocalDate
 ) {
     init {
         require((status == PwnedPasswordExposureStatus.FOUND) == (occurrences != null))
-        require(occurrences == null || occurrences > 0)
+        require(occurrences == null || occurrences > 0uL)
     }
 }
 
@@ -48,7 +48,7 @@ object PwnedPasswordRangeLookup {
     private const val HASH_HEX_LENGTH = 40
     private const val PREFIX_HEX_LENGTH = 5
     private const val HASH_SUFFIX_HEX_LENGTH = HASH_HEX_LENGTH - PREFIX_HEX_LENGTH
-    private const val MAX_RANGE_RECORD_BYTES = HASH_SUFFIX_HEX_LENGTH + 1 + 19
+    private const val MAX_RANGE_RECORD_BYTES = HASH_SUFFIX_HEX_LENGTH + 1 + 20
 
     @Throws(IOException::class)
     fun checkAndClear(
@@ -192,12 +192,12 @@ object PwnedPasswordRangeLookup {
             }
 
             val countText = line.substring(HASH_SUFFIX_HEX_LENGTH + 1)
-            if (countText.length !in 1..19 || countText.any { it !in '0'..'9' }) {
+            if (countText.length !in 1..20 || countText.any { it !in '0'..'9' }) {
                 throw IOException("Pwned Passwords range file has an invalid count at line $lineCount.")
             }
-            val count = countText.toLongOrNull()
+            val count = countText.toULongOrNull()
                 ?: throw IOException("Pwned Passwords range count is out of range at line $lineCount.")
-            if (count <= 0 || count.toString() != countText) {
+            if (count == 0uL || count.toString() != countText) {
                 throw IOException("Pwned Passwords range count is not canonical at line $lineCount.")
             }
 

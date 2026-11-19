@@ -410,7 +410,7 @@ func verifyPwnedRangeDigest(directory string, entry pwnedManifestEntry) error {
 }
 
 func validatePwnedRecord(line []byte, previous string) error {
-	if len(line) < 37 || len(line) > 55 || line[35] != ':' {
+	if len(line) < 37 || len(line) > 56 || line[35] != ':' {
 		return errors.New("record must be a 35-character suffix followed by a positive count")
 	}
 	for _, c := range line[:35] {
