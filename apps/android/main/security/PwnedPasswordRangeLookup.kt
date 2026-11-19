@@ -114,7 +114,7 @@ object PwnedPasswordRangeLookup {
         }
     }
 
-    private fun findOccurrences(rangeFile: Path, prefix: String, targetSuffix: String): Long? {
+    private fun findOccurrences(rangeFile: Path, prefix: String, targetSuffix: String): ULong? {
         if (!Files.exists(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException(
                 "Required Pwned Passwords range file $prefix.txt is missing; the local dataset may be incomplete."
@@ -150,9 +150,9 @@ object PwnedPasswordRangeLookup {
         channel: SeekableByteChannel,
         capturedSize: Long,
         targetSuffix: String
-    ): Long? {
+    ): ULong? {
         var previousSuffix: String? = null
-        var matchCount: Long? = null
+        var matchCount: ULong? = null
         var lineCount = 0
         var lineLength = 0
         var remainingBytes = capturedSize
