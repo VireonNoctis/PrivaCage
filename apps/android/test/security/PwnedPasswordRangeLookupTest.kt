@@ -220,7 +220,7 @@ class PwnedPasswordRangeLookupTest {
         val vectorPath = Path.of(repositoryRoot)
             .resolve("shared/crypto/test-vectors/pwned-password-ranges")
             .resolve(name)
-        return Files.readString(vectorPath, StandardCharsets.US_ASCII).trimEnd('\r', '\n')
+        return String(Files.readAllBytes(vectorPath), StandardCharsets.US_ASCII).trimEnd('\r', '\n')
     }
 
     private fun writeRange(content: String) {
