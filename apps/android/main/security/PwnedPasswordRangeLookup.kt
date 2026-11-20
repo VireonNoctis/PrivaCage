@@ -56,14 +56,52 @@ object PwnedPasswordRangeLookup {
         rangeDirectory: Path,
         snapshotDate: LocalDate,
         today: LocalDate = LocalDate.now()
+    ): PwnedPasswordExposureResult = checkAndClearInternal(
+        password, rangeDirectory, snapshotDate, null, null, today,
+        PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT
+    )
+
+    /**
+     * Requires a complete manifest by default and an expected digest retained separately.
+     * The test-only range-count override exists for the shared four-prefix fixture.
+     */
+    @Throws(IOException::class)
+    internal fun checkAndClearWithManifest(
+        password: CharArray,
+        rangeDirectory: Path,
+        manifestPath: Path,
+        expectedManifestSha256: String,
+        today: LocalDate = LocalDate.now(),
+        expectedRangeCount: Int = PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT
+    ): PwnedPasswordExposureResult = checkAndClearInternal(
+        password, rangeDirectory, null, manifestPath, expectedManifestSha256, today, expectedRangeCount
+    )
+
+    private fun checkAndClearInternal(
+        password: CharArray,
+        rangeDirectory: Path,
+        snapshotDate: LocalDate?,
+        manifestPath: Path?,
+        expectedManifestSha256: String?,
+        today: LocalDate,
+        expectedRangeCount: Int
     ): PwnedPasswordExposureResult {
         try {
             require(password.isNotEmpty()) { "Password must not be empty." }
             require(password.size <= MAX_PASSWORD_CHARS) {
                 "Password exceeds the $MAX_PASSWORD_CHARS-character processing limit."
             }
-            require(!snapshotDate.isAfter(today)) {
-                "Dataset snapshot date cannot be in the future."
+            require(manifestPath != null || snapshotDate != null) {
+                "A snapshot date or verified manifest is required."
+            }
+            require((manifestPath == null) == (expectedManifestSha256 == null)) {
+                "Manifest path and independently retained digest must be supplied together."
+            }
+            require(expectedRangeCount in 1..PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT) {
+                "Expected range count is outside the supported prefix space."
+            }
+            snapshotDate?.let {
+                require(!it.isAfter(today)) { "Dataset snapshot date cannot be in the future." }
             }
             require(Files.isDirectory(rangeDirectory, LinkOption.NOFOLLOW_LINKS)) {
                 "Selected Pwned Passwords range path is not a local directory."
@@ -89,8 +127,23 @@ object PwnedPasswordRangeLookup {
                         val targetSuffix = hashHex.substring(PREFIX_HEX_LENGTH)
                         password.fill('\u0000')
 
+                        val verifiedManifest = manifestPath?.let {
+                            PwnedPasswordManifestVerifier.verify(
+                                it,
+                                expectedManifestSha256!!,
+                                prefix,
+                                today,
+                                expectedRangeCount
+                            )
+                        }
+                        val effectiveSnapshotDate = verifiedManifest?.snapshotDate ?: snapshotDate!!
                         val rangeFile = rangeDirectory.resolve("$prefix.txt")
-                        val occurrences = findOccurrences(rangeFile, prefix, targetSuffix)
+                        val occurrences = findOccurrences(
+                            rangeFile,
+                            prefix,
+                            targetSuffix,
+                            verifiedManifest?.selectedRange
+                        )
                         return PwnedPasswordExposureResult(
                             status = if (occurrences == null) {
                                 PwnedPasswordExposureStatus.NOT_FOUND_IN_SNAPSHOT
@@ -98,7 +151,7 @@ object PwnedPasswordRangeLookup {
                                 PwnedPasswordExposureStatus.FOUND
                             },
                             occurrences = occurrences,
-                            snapshotDate = snapshotDate
+                            snapshotDate = effectiveSnapshotDate
                         )
                     } finally {
                         hashBytes.fill(0)
@@ -114,7 +167,12 @@ object PwnedPasswordRangeLookup {
         }
     }
 
-    private fun findOccurrences(rangeFile: Path, prefix: String, targetSuffix: String): ULong? {
+    private fun findOccurrences(
+        rangeFile: Path,
+        prefix: String,
+        targetSuffix: String,
+        expectedEntry: PwnedPasswordManifestRange?
+    ): ULong? {
         if (!Files.exists(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException(
                 "Required Pwned Passwords range file $prefix.txt is missing; the local dataset may be incomplete."
@@ -124,41 +182,45 @@ object PwnedPasswordRangeLookup {
             throw IOException("Required Pwned Passwords range file is not a regular non-symbolic file.")
         }
 
-        // NOFOLLOW_LINKS is repeated at open time so a path swap cannot redirect the read
-        // through a symbolic link after the regular-file check.
         Files.newByteChannel(
             rangeFile,
             StandardOpenOption.READ,
             LinkOption.NOFOLLOW_LINKS
         ).use { channel ->
             val rangeBytes = channel.size()
-            if (rangeBytes < (HASH_SUFFIX_HEX_LENGTH + 2).toLong()) {
-                throw IOException(
-                    "Pwned Passwords range file is empty or shorter than one complete record; result unavailable."
-                )
-            }
             if (rangeBytes > MAX_RANGE_FILE_BYTES) {
                 throw IOException(
                     "Pwned Passwords range file exceeds the $MAX_RANGE_FILE_BYTES-byte safety limit."
                 )
             }
-            return parseRange(channel, rangeBytes, targetSuffix)
+            if (expectedEntry == null && rangeBytes < (HASH_SUFFIX_HEX_LENGTH + 2).toLong()) {
+                throw IOException(
+                    "Pwned Passwords range file is empty or shorter than one complete record; result unavailable."
+                )
+            }
+            if (expectedEntry != null &&
+                (expectedEntry.prefix != prefix || expectedEntry.sizeBytes.toLong() != rangeBytes)
+            ) {
+                throw IOException("Pwned Passwords range size does not match its verified manifest entry.")
+            }
+            return parseRange(channel, rangeBytes, targetSuffix, expectedEntry)
         }
     }
 
     private fun parseRange(
         channel: SeekableByteChannel,
         capturedSize: Long,
-        targetSuffix: String
+        targetSuffix: String,
+        expectedEntry: PwnedPasswordManifestRange?
     ): ULong? {
         var previousSuffix: String? = null
         var matchCount: ULong? = null
         var lineCount = 0
         var lineLength = 0
         var remainingBytes = capturedSize
-        // One extra byte permits CRLF without allowing an unbounded readLine allocation.
         val lineBuffer = ByteArray(MAX_RANGE_RECORD_BYTES + 1)
         val inputBuffer = ByteBuffer.allocate(8 * 1024).apply { limit(0) }
+        val digest = if (expectedEntry != null) MessageDigest.getInstance("SHA-256") else null
 
         fun processLine() {
             lineCount += 1
@@ -214,7 +276,8 @@ object PwnedPasswordRangeLookup {
                     if (read < 0) {
                         throw IOException("Pwned Passwords range file was truncated while it was being read.")
                     }
-                    if (read == 0) continue
+                    if (read == 0) throw IOException("Pwned Passwords range provider returned a zero-length read.")
+                    digest?.update(inputBuffer.array(), 0, read)
                     inputBuffer.flip()
                     break
                 }
@@ -237,6 +300,18 @@ object PwnedPasswordRangeLookup {
         }
 
         if (lineLength > 0) processLine()
+        if (expectedEntry != null) {
+            if (lineCount.toULong() != expectedEntry.recordCount) {
+                throw IOException("Pwned Passwords range record count does not match its manifest entry.")
+            }
+            val actualDigest = toUpperHex(digest!!.digest())
+            if (actualDigest != expectedEntry.sha256) {
+                throw IOException("Pwned Passwords range SHA-256 does not match its manifest entry.")
+            }
+            if (channel.size() != capturedSize) {
+                throw IOException("Pwned Passwords range size changed while it was being checked.")
+            }
+        }
         return matchCount
     }
 

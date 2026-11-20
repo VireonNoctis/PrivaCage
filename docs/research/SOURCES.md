@@ -516,3 +516,10 @@ The official range response contains hash suffixes followed by occurrence counts
 ### S66 — Go filesystem enumeration and file identity
 - Official Go package documentation for `os.File.Readdirnames`, `os.Lstat`, `os.SameFile`, and regular-file metadata used by the bounded directory verifier.
 - Checked 19 November 2026: https://pkg.go.dev/os
+
+
+<a id="s67"></a>
+### S67 — Android Developers: MessageDigest API
+https://developer.android.com/reference/java/security/MessageDigest
+
+Documents MessageDigest.update/digest and SHA-256 support from API level 1. The Kotlin manifest verifier hashes exact manifest bytes and the selected range while streaming the same open channel used for validation. Checked 20 November 2026.

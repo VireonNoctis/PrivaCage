@@ -216,3 +216,21 @@ func TestPwnedRangeCountsMatchSharedKotlinUnsigned64Contract(t *testing.T) {
 	}
 }
 
+
+
+func TestPwnedManifestSharedCrossLanguageVector(t *testing.T) {
+	vectorRoot := filepath.Join("..", "..", "crypto", "test-vectors", "pwned-password-manifest", "v1")
+	directory := filepath.Join(vectorRoot, "ranges")
+	manifest := filepath.Join(vectorRoot, "manifest.jsonl")
+	digestBytes, err := os.ReadFile(filepath.Join(vectorRoot, "manifest.sha256"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := verifyPwnedManifest(directory, manifest, strings.TrimSpace(string(digestBytes)), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.RangeCount != 4 || verified.TotalBytes != 193 || verified.TotalRecords != 5 {
+		t.Fatalf("unexpected shared manifest totals: %+v", verified)
+	}
+}

@@ -99,6 +99,12 @@ For static scanning: user-selected APK → manifest/DEX inspection → signature
 
 The tracker database is advisory intelligence. It does not replace platform enforcement and is not proof of runtime behavior.
 
+## Offline password exposure lookup
+
+The Android security core includes a local-only Pwned Passwords SHA-1 range matcher. The experimental manifest-backed entry point validates a bounded JSONL manifest against a separately retained SHA-256, requires the complete ordered prefix inventory by default, and then verifies the selected range's size, record count and digest on the same open channel used to parse suffix records. The full manifest is streamed with fixed-size buffers; the 128 MiB manifest cap and 4 KiB line cap prevent unbounded allocation. Missing or invalid manifest/range evidence returns an error, not a no-match. A zero-byte range is accepted only when the verified manifest entry declares zero bytes and records and its SHA-256 matches the empty file.
+
+The shared four-prefix fixture is for Go/Kotlin format compatibility tests only; production verification defaults to 1,048,576 prefixes. The manifest is unsigned and the expected digest must be retained independently. This does not authenticate HIBP, prove upstream completeness/freshness, or provide email/account breach search. The current Kotlin adapter accepts local filesystem Paths; Android Storage Access Framework/provider integration and UI are not connected.
+
 ## Encrypted profile export
 
 Android can export the resolver and user-configured domain rules as a versioned `.pcage` file. It derives a 256-bit key from the user passphrase with Argon2id v1.3 (19 MiB memory, 2 iterations, 1 lane), then encrypts and authenticates the payload using AES-256-GCM with a fresh 96-bit nonce. A random 128-bit salt and the nonce are stored in the header; the full header is authenticated as associated data. The full byte-level definition is in `docs/encrypted-profile-format.md`.
