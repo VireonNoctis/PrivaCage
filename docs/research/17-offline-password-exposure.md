@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
-**Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026; Android MessageDigest API rechecked 20 November 2026.  
-**Implementation status:** partial Kotlin/JVM single-range matcher, Go full-range inventory verifier, and Kotlin full-manifest/selected-range verifier on open PR #26. The JSONL manifest remains unsigned and requires an independently retained SHA-256; exact-head CI for the Kotlin consumer is pending. SAF import, Android UI, signed local attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
+**Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026; Android MessageDigest API rechecked 20 November 2026; Android Storage Access Framework documentation checked 21 November 2026.  
+**Implementation status:** partial Kotlin/JVM single-range matcher, Go full-range inventory verifier, and Kotlin full-manifest/selected-range verifier on open PR #26. The JSONL manifest remains unsigned and requires an independently retained SHA-256. Code-bearing head `e3d3253` passed all nine GitHub Actions workflows on 21 November 2026; the Android performance measurement was skipped because the runner did not expose readable/writable `/dev/kvm`. SAF import, Android UI, signed local attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
 
 ## Scope decision
 
@@ -70,7 +70,7 @@ This verifies the manifest bytes relative to a separately retained digest and th
 
 A signature is deliberately deferred until a reviewed key-custody flow exists. The Go/Kotlin manifest-format test vector is now present, but a user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. A user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. Do not label the current JSONL manifest as signed.
 
-The next Android milestone is a user-selected Storage Access Framework adapter for the existing verifier/matcher contract, with provider-specific stream stability and size limits tested before enabling imports. Do not copy a potentially very large full corpus into app-private storage without measured device/storage evidence. The current path-based Kotlin consumer still requires a separately retained manifest digest and does not authenticate the publisher.## Security and accuracy limits
+The next Android milestone is a user-selected Storage Access Framework adapter for the existing verifier/matcher contract. Use the system document/tree picker and persist only the URI grant the user explicitly selected; read through ContentResolver streams rather than assuming a filesystem Path or seekable channel, enforce byte/line limits in the app, and surface revoked grants or provider errors as unavailable. Do not request broad storage access or copy the full corpus into app-private storage without measured device/storage evidence. The current path-based Kotlin consumer still requires a separately retained manifest digest and does not authenticate the publisher.## Security and accuracy limits
 
 - SHA-1 is used only as the identifier required by the published corpus. It is not used to store, protect or authenticate passwords.
 - The caller supplies the snapshot date. The Go manifest records that claim but is unsigned; the independent SHA-256 is only a trust anchor if retained separately. Neither the Kotlin matcher nor the Go verifier authenticates HIBP as publisher or proves source completeness/freshness.
@@ -83,7 +83,7 @@ The next Android milestone is a user-selected Storage Access Framework adapter f
 ## Next acceptance gates
 
 - Add a signed local attestation only after selecting a key-custody design and adding a Kotlin verifier with shared Go/Kotlin test vectors. Keep the expected public-key fingerprint out of band; describe the signature as a local import attestation, not a HIBP publisher signature.
-- Add Android manifest consumption that fails closed on digest, coverage, schema or range mismatches; preserve the current unavailable result until a selected range is verified.
+- Add the SAF adapter to the existing Android manifest consumer. Verify the full manifest and selected range through bounded provider streams; preserve unavailable results for revoked grants, truncation, provider errors, or digest mismatches.
 - Test the importer against interrupted downloads, missing prefixes, unexpected files, empty ranges, malformed records, and post-import file tampering. A missing or digest-mismatched range must remain unavailable, never a no-match.
 - Evaluate Android Storage Access Framework access to a user-selected external dataset location; do not copy a potentially very large full corpus into app-private storage without measured device/storage evidence.
 - Add an Android UI only after secure text-field lifecycle, dataset storage, manifest verification, and provider behavior are tested on representative devices.

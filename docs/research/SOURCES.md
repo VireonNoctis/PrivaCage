@@ -523,3 +523,10 @@ The official range response contains hash suffixes followed by occurrence counts
 https://developer.android.com/reference/java/security/MessageDigest
 
 Documents MessageDigest.update/digest and SHA-256 support from API level 1. The Kotlin manifest verifier hashes exact manifest bytes and the selected range while streaming the same open channel used for validation. Checked 20 November 2026.
+
+
+<a id="s68"></a>
+### S68 — Android Developers: Access documents and other files from shared storage
+https://developer.android.com/training/data-storage/shared/documents-files
+
+The Storage Access Framework provides system picker flows through `ACTION_OPEN_DOCUMENT` and `ACTION_OPEN_DOCUMENT_TREE`. Apps can persist only the user-granted URI permissions returned with persistable grant flags and access provider-backed content through `ContentResolver`, rather than assuming a local filesystem path. PrivaCage's planned importer will remain user-selected, use bounded streams, and avoid broad storage permissions. Checked 21 November 2026.
