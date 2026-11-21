@@ -188,7 +188,7 @@ func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCou
 	return header, digest, nil
 }
 
-func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixCount int) (pwnedManifestHeader, error) {
+func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixCount int) (resultHeader pwnedManifestHeader, resultErr error) {
 	if prefixCount < 1 || prefixCount > pwnedRangeCount {
 		return pwnedManifestHeader{}, errors.New("invalid expected prefix count")
 	}
@@ -202,22 +202,28 @@ func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixC
 	if err != nil {
 		return pwnedManifestHeader{}, err
 	}
-	defer file.Close()
-	if info.Size() > 128<<20 {
-		return pwnedManifestHeader{}, errors.New("manifest exceeds the 128 MiB input limit")
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("cannot close manifest: %w", closeErr))
+		}
+	}()
+	manifestSnapshot, err := createVerifiedPwnedManifestSnapshot(file, info.Size(), expectedDigest)
+	if err != nil {
+		return pwnedManifestHeader{}, err
 	}
-	digest := sha256.New()
-	if _, err := io.CopyN(digest, file, info.Size()); err != nil {
-		return pwnedManifestHeader{}, fmt.Errorf("cannot hash manifest: %w", err)
+	snapshotPath := manifestSnapshot.Name()
+	defer func() {
+		closeErr := manifestSnapshot.Close()
+		removeErr := os.Remove(snapshotPath)
+		if cleanupErr := errors.Join(closeErr, removeErr); cleanupErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("cannot clean manifest verification snapshot: %w", cleanupErr))
+		}
+	}()
+	snapshotInfo, err := file.Stat()
+	if err != nil || !os.SameFile(info, snapshotInfo) || snapshotInfo.Size() != info.Size() || !snapshotInfo.ModTime().Equal(info.ModTime()) {
+		return pwnedManifestHeader{}, errors.New("manifest changed while its verification snapshot was being created")
 	}
-	if !strings.EqualFold(strings.ToUpper(hex.EncodeToString(digest.Sum(nil))), expectedDigest) {
-		return pwnedManifestHeader{}, errors.New("manifest SHA-256 does not match the independently retained digest")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return pwnedManifestHeader{}, fmt.Errorf("cannot rewind manifest: %w", err)
-	}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 4096), 4096)
+	scanner := bufio.NewScanner(manifestSnapshot)	scanner.Buffer(make([]byte, 4096), 4096)
 	if !scanner.Scan() {
 		return pwnedManifestHeader{}, errors.New("manifest header is missing")
 	}
@@ -276,6 +282,47 @@ func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixC
 		return pwnedManifestHeader{}, errors.New("manifest changed while it was being verified")
 	}
 	return header, nil
+}
+
+func createVerifiedPwnedManifestSnapshot(source *os.File, size int64, expectedDigest string) (snapshot *os.File, resultErr error) {
+	if size < 0 || size > 128<<20 {
+		return nil, errors.New("manifest size is outside the 128 MiB input limit")
+	}
+	if !isHexDigest(expectedDigest) {
+		return nil, errors.New("expected SHA-256 must contain exactly 64 hexadecimal characters")
+	}
+	temporary, err := os.CreateTemp("", "pcage-pwned-manifest-verify-*")
+	if err != nil {
+		return nil, fmt.Errorf("cannot create manifest verification snapshot: %w", err)
+	}
+	keep := false
+	defer func() {
+		if keep {
+			return
+		}
+		closeErr := temporary.Close()
+		removeErr := os.Remove(temporary.Name())
+		if cleanupErr := errors.Join(closeErr, removeErr); cleanupErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("cannot clean failed manifest snapshot: %w", cleanupErr))
+		}
+	}()
+	digest := sha256.New()
+	limited := &io.LimitedReader{R: source, N: size}
+	copied, err := io.Copy(io.MultiWriter(temporary, digest), limited)
+	if err != nil {
+		return nil, fmt.Errorf("cannot snapshot manifest: %w", err)
+	}
+	if copied != size || limited.N != 0 {
+		return nil, errors.New("manifest was truncated while being snapshotted")
+	}
+	if !strings.EqualFold(hex.EncodeToString(digest.Sum(nil)), expectedDigest) {
+		return nil, errors.New("manifest SHA-256 does not match the independently retained digest")
+	}
+	if _, err := temporary.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("cannot rewind manifest verification snapshot: %w", err)
+	}
+	keep = true
+	return temporary, nil
 }
 
 func scanPwnedRangeDirectory(directory string, prefixCount int) ([]byte, error) {

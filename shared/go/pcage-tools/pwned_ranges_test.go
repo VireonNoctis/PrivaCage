@@ -234,3 +234,90 @@ func TestPwnedManifestSharedCrossLanguageVector(t *testing.T) {
 		t.Fatalf("unexpected shared manifest totals: %+v", verified)
 	}
 }
+
+
+func TestPwnedManifestSnapshotBindsBytesBeforeSourceMutation(t *testing.T) {
+	root := t.TempDir()
+	directory := makePwnedTestDirectory(t)
+	manifest := filepath.Join(root, "ranges.jsonl")
+	_, digest, err := createPwnedManifest(directory, manifest, "2026-11-18", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, info, err := openPwnedRegularFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	snapshot, err := createVerifiedPwnedManifestSnapshot(source, info.Size(), digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotPath := snapshot.Name()
+	t.Cleanup(func() {
+		if err := snapshot.Close(); err != nil {
+			t.Errorf("close snapshot: %v", err)
+		}
+		if err := os.Remove(snapshotPath); err != nil && !os.IsNotExist(err) {
+			t.Errorf("remove snapshot: %v", err)
+		}
+	})
+
+	changed := strings.Replace(string(original), "\"snapshot_date\":\"2026-11-18\"", "\"snapshot_date\":\"2026-11-19\"", 1)
+	if changed == string(original) {
+		t.Fatal("test manifest did not contain the expected snapshot date")
+	}
+	if err := os.WriteFile(manifest, []byte(changed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(manifest, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	snapshotBytes, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(snapshotBytes) != string(original) {
+		t.Fatal("digest-bound snapshot changed after the source manifest was rewritten")
+	}
+	if _, err := verifyPwnedManifest(directory, manifest, digest, 4); err == nil {
+		t.Fatal("a fresh verification must reject the rewritten source manifest")
+	}
+}
+
+func TestPwnedManifestSnapshotRejectsTruncationAfterSizeCapture(t *testing.T) {
+	root := t.TempDir()
+	directory := makePwnedTestDirectory(t)
+	manifest := filepath.Join(root, "ranges.jsonl")
+	_, digest, err := createPwnedManifest(directory, manifest, "2026-11-18", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, info, err := openPwnedRegularFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	writer, err := os.OpenFile(manifest, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Truncate(info.Size() - 1); err != nil {
+		_ = writer.Close()
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot, err := createVerifiedPwnedManifestSnapshot(source, info.Size(), digest); err == nil {
+		if snapshot != nil {
+			_ = snapshot.Close()
+			_ = os.Remove(snapshot.Name())
+		}
+		t.Fatal("a manifest truncated after size capture must not produce a verified snapshot")
+	}
+}
