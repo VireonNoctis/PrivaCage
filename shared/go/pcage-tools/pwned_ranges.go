@@ -223,7 +223,8 @@ func verifyPwnedManifest(directory, manifestPath, expectedDigest string, prefixC
 	if err != nil || !os.SameFile(info, snapshotInfo) || snapshotInfo.Size() != info.Size() || !snapshotInfo.ModTime().Equal(info.ModTime()) {
 		return pwnedManifestHeader{}, errors.New("manifest changed while its verification snapshot was being created")
 	}
-	scanner := bufio.NewScanner(manifestSnapshot)	scanner.Buffer(make([]byte, 4096), 4096)
+	scanner := bufio.NewScanner(manifestSnapshot)
+	scanner.Buffer(make([]byte, 4096), 4096)
 	if !scanner.Scan() {
 		return pwnedManifestHeader{}, errors.New("manifest header is missing")
 	}
