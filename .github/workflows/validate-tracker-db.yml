@@ -6,7 +6,7 @@ on:
       - "shared/tracker-db/**"
       - "shared/app-alternatives/**"
       - "shared/go/pcage-tools/**"
-      - "android-app/app/src/main/AndroidManifest.xml"
+      - "apps/android/main/AndroidManifest.xml"
       - "tests/**"
       - ".github/workflows/validate-tracker-db.yml"
   pull_request:

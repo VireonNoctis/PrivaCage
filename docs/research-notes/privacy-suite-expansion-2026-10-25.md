@@ -205,7 +205,7 @@ Before a release claim is made, CI and maintainers should verify:
 - malformed URL/date/domain/ID/status/indicator fixtures and duplicate IDs.
 
 ### Android
-- `gradle :android-core:test`
+- `gradle --project-dir apps/android testDebugUnitTest`
 - `gradle :app:testDebugUnitTest`
 - `gradle assembleDebug`
 - IPv4/IPv6 packet fixtures, invalid checksum/length, unsupported headers, response MTU cap, blocked and forwarded packet flow, alternative catalogue allowlist tests, permission diff tests.

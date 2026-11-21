@@ -21,13 +21,13 @@ cargo bench --manifest-path shared/rust/tracker-intelligence/Cargo.toml --bench 
 For DNS microbenchmarks:
 
 ```sh
-gradle --no-daemon --project-dir android-app :android-core:performanceTest
+gradle --no-daemon --project-dir apps/android -PdnsPerformanceOnly :testDebugUnitTest
 ```
 
 For startup timing, connect a physical Android device (API 28 or newer), keep the screen on, and run:
 
 ```sh
-gradle --no-daemon --project-dir android-app :performance-macrobenchmark:connectedBenchmarkAndroidTest
+gradle --no-daemon --project-dir apps/android :performance-macrobenchmark:connectedBenchmarkAndroidTest
 ```
 
 The target app's `benchmark` build variant is non-debuggable and built from the app's release build type. The separate Macrobenchmark test runner is debuggable, which is normal for test instrumentation. Startup benchmarking requires a profileable APK and ProfileInstaller; the app manifest declares `<profileable android:shell="true" />` for this measurement. Profileable does not enable app debugging.
@@ -48,6 +48,6 @@ A missing emulator, missing measurement report or failed assertion remains a fai
 
 ## Benchmark implementation
 
-- DNS performance tests are tagged `performance`, run through `:android-core:performanceTest`, and excluded from the regular `:android-core:test` task to avoid making normal unit tests slower.
+- DNS performance tests are tagged `performance`, run through `-PdnsPerformanceOnly :testDebugUnitTest`, and excluded from the regular `:testDebugUnitTest` run to avoid making normal unit tests slower.
 - The baseline worktree receives only the benchmark harness/build configuration. The source code under test remains pinned to the baseline commit.
 - Raw JSON and logs are uploaded as the `privacage-performance-comparison` artifact for 30 days. The Markdown summary contains the baseline and candidate commit IDs, measured values, and caveats. The benchmark job runs as part of the existing Android validation workflow for PRs and pushes that touch Android/DNS or benchmark files.

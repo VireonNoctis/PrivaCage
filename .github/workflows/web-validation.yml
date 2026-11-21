@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - "web/**"
+      - "apps/web/**"
       - "shared/audit/**"
       - "web-backend/**"
       - "shared/tracker-db/signatures.json"
       - ".github/workflows/web-validation.yml"
   pull_request:
     paths:
-      - "web/**"
+      - "apps/web/**"
       - "shared/audit/**"
       - "web-backend/**"
       - "shared/tracker-db/signatures.json"
@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: apps/web
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -47,6 +47,12 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Verify static-host 404 document is published
+        run: |
+          test -s dist/404.html
+          grep -Fq '<title>404 — Page not found | PrivaCage</title>' dist/404.html
+          grep -Fq 'HTTP 404 / ROUTE NOT FOUND' dist/404.html
 
   rust-api:
     name: Rust API format and tests

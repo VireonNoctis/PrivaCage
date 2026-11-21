@@ -6,7 +6,7 @@ Build a local-first privacy auditor with a shared evidence format and platform-n
 
 ## Web console
 
-The web workspace is a static Svelte 5 + TypeScript application in `web/`; it is not a JavaScript server or a browser extension. Its separate `web-backend/` Rust/Axum service embeds the canonical `shared/tracker-db/signatures.json` at build time and validates its schema, identifiers, dates, hostnames, status values, and evidence before serving it.
+The web workspace is a static Svelte 5 + TypeScript application in `apps/web/`; it is not a JavaScript server or a browser extension. Its separate `web-backend/` Rust/Axum service embeds the canonical `shared/tracker-db/signatures.json` at build time and validates its schema, identifiers, dates, hostnames, status values, and evidence before serving it.
 
 The Rust API exposes:
 
@@ -15,9 +15,13 @@ The Rust API exposes:
 - `GET /api/v1/summary` — derives record/status/category counts from that catalogue.
 - `GET /api/v1/capabilities` — identifies which web workspace surfaces are available, platform-local, or not connected.
 
+All API routes, including unknown paths, pass through an in-memory per-client-IP sliding-window limiter. Defaults are 120 requests per 60 seconds, configurable using `PRIVACAGE_RATE_LIMIT_REQUESTS` and `PRIVACAGE_RATE_LIMIT_WINDOW_SECONDS`. An over-limit response is HTTP 429 with `Retry-After` and `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers. The limiter bounds its client table and is local to one process; counters reset on restart and are not shared between replicas. Edge/proxy rate controls are still recommended for volumetric abuse.
+
+By default, identity comes from the TCP peer address. `X-Real-IP` is used only when that peer is an address explicitly listed in `PRIVACAGE_TRUSTED_PROXY_IPS`; trusted proxies must overwrite that header. Never trust arbitrary forwarding headers from public clients. The API fallback returns JSON 404 responses, separately from the static website's branded `404.html`.
+
 Catalogue metrics are not device telemetry. The web client does not invent activity events, claim that indicators were observed on a device, or state that any rules were enforced. The Android DNS history remains device-local. The web client does not pair with devices or ingest live events, but it can locally verify and compare signed checkpoint files that the user explicitly selects; those files are processed in the browser and are not uploaded by the verifier.
 
-The Rust API binds to loopback by default. Production deployment should serve the static `web/dist` assets and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. No product analytics or telemetry SDK is included in the web client.
+Platform client code is grouped under `apps/{android,ios,web,windows}/`, with each platform using `main/` and `test/` folders. Source and tests are grouped in direct feature folders under those roots instead of mirroring language package paths. The Android DNS policy engine and privacy models are part of the Android app module under `apps/android/main/`; there is no separate `android-core/` Gradle project. The Windows Go package tests that inspect unexported helpers remain beside the package in `apps/windows/main/`, while black-box integration tests live in `apps/windows/test/`. The Rust API binds to loopback by default. Production deployment should serve the static `apps/web/dist` assets, configure the host's 404 document as `404.html`, and reverse-proxy same-origin API requests to the Rust service; do not expose the unauthenticated API directly to a public interface. See `docs/deployment/web-console.md` for the Nginx example and proxy-trust requirements. No product analytics or telemetry SDK is included in the web client.
 
 ## Android app policy review observations
 
@@ -26,6 +30,12 @@ A local package inventory diff detects newly observed launcher-visible applicati
 ## Android monitoring-access review
 
 The stock Android app has a user-triggered, read-only review of four OS-exposed settings: enabled accessibility services, active device-administrator components, enabled notification-listener components, and whether the current default network reports VPN transport. It reads these through AccessibilityManager, DevicePolicyManager, the read-only Settings.Secure listener setting, and ConnectivityManager/NetworkCapabilities. The listener key is an AOSP implementation detail hidden/deprecated from the public SDK, not a stable API contract; missing values are unavailable rather than an empty list. The component-setting parser is bounded and reports malformed, truncated or unavailable observations explicitly. Results remain in memory on the review screen and are discarded when it closes. No new permission, package-visibility query, Usage Access dependency, network request, notification, or persistent record is added. The feature reports capabilities and provenance only; it does not classify intent, identify a VPN owner, diagnose stalkerware, or inspect root/system state.
+
+## Android cellular security observer and device-security checklist
+
+The main activity registers `TelephonyCallback.DisplayInfoListener` only while it is resumed and unregisters the callback on pause/destroy. It uses the default `TelephonyManager` subscription and reports `TelephonyDisplayInfo.getNetworkType()` as the reported packet-switched network type. The classifier distinguishes GSM 2G (GPRS/EDGE/GSM), separate legacy CDMA/1xRTT/iDEN types, other known types, unknown values and unavailable states. This is an informational warning only: it does not inspect radio cipher state, detect a false base station, observe voice-only service, cover every SIM, or change the per-SIM 2G setting. The implementation adds no phone-state or location permission, cell scan, background worker, notification, network request or radio-history store.
+
+The separate onboarding activity reads `KeyguardManager.isDeviceSecure()` and `Build.VERSION.SECURITY_PATCH`, and on Android 16+ reads only the overall `AdvancedProtectionManager.isAdvancedProtectionEnabled()` state with the normal `QUERY_ADVANCED_PROTECTION_MODE` permission. It does not infer the state of individual bundled mitigations. User-reviewed SIM, alert, update, USB-debugging, Play Protect, Theft Protection, USB Protection and Intrusion Logging choices are explicitly user reports. The checklist is stored through the existing Android Keystore AES-GCM preference vault with its own key alias/AAD label. Schema-v1 values preserve their five prior choices during the tested JSON migration; new fields start as `NOT_REVIEWED`. Device-level Keystore migration/lifecycle validation remains outstanding. No system setting is changed by PrivaCage.
 
 ## Proposed layers
 
@@ -45,7 +55,7 @@ Events should distinguish observed facts, static indicators, inferences, enforce
 
 ## Android DNS slice
 
-The Kotlin/JVM core includes a DNS policy evaluator, IPv4 and constrained IPv6 UDP packet codecs, packet processor, validated UDP forwarder, protected TCP fallback for truncated upstream responses, and packet-to-packet coordinator. The Android app provides a user-configured `VpnService` adapter around that core:
+The Android `main/dns/` feature includes a Kotlin DNS policy evaluator, IPv4 and constrained IPv6 UDP packet codecs, packet processor, validated UDP forwarder, protected TCP fallback for truncated upstream responses, and packet-to-packet coordinator. The Android app provides a user-configured `VpnService` adapter around that engine:
 
 - The user explicitly approves VPN access and enters a numeric IPv4 resolver plus one or more domain rules.
 - The service creates a TUN interface with a virtual DNS endpoint and routes only that endpoint into the interface.
@@ -73,7 +83,7 @@ Use public Apple APIs and approved entitlements only. NetworkExtension design de
 
 ## Windows
 
-The Windows Go CLI in `windows/pcage-audit/` now supports a read-only baseline, edition-aware hardening previews, explicit apply, verify, and restore. It queries Domain/Private/Public firewall profiles and selected machine policy values through Windows PowerShell. The balanced profile targets documented diagnostic-data limits, advertising ID, Activity Feed/User Activity sharing, online speech personalization, tailored experiences, and supported Windows 11 diagnostic log/dump limits. The strict profile disables clipboard history and adds selected Windows-app capability force-denials plus Windows Error Reporting policy.
+The Windows Go CLI in `apps/windows/main/` now supports a read-only baseline, edition-aware hardening previews, explicit apply, verify, and restore. It queries Domain/Private/Public firewall profiles and selected machine policy values through Windows PowerShell. The balanced profile targets documented diagnostic-data limits, advertising ID, Activity Feed/User Activity sharing, online speech personalization, tailored experiences, and supported Windows 11 diagnostic log/dump limits. The strict profile disables clipboard history and adds selected Windows-app capability force-denials plus Windows Error Reporting policy.
 
 Apply is not implicit: the CLI requires `--confirm`, requests UAC elevation, and refuses to overwrite an active backup. Registry writes are limited to an allowlist and DWORD values. It snapshots prior key/value existence and the old DWORDs before changing policy, restricts the ProgramData backup directory to SYSTEM and Administrators, verifies values after writes, and attempts rollback on failure. Restore restores captured registry values and optional firewall profile state, verifies the result, and removes the backup only after successful readback. A pending backup deliberately prevents applying another profile.
 
@@ -88,6 +98,12 @@ OS evidence → typed event → policy evaluation → OS action when supported �
 For static scanning: user-selected APK → manifest/DEX inspection → signature matches and evidence → privacy label with uncertainty.
 
 The tracker database is advisory intelligence. It does not replace platform enforcement and is not proof of runtime behavior.
+
+## Offline password exposure lookup
+
+The Android security core includes a local-only Pwned Passwords SHA-1 range matcher. The experimental manifest-backed entry point validates a bounded JSONL manifest against a separately retained SHA-256, requires the complete ordered prefix inventory by default, and then verifies the selected range's size, record count and digest on the same open channel used to parse suffix records. The full manifest is streamed with fixed-size buffers; the 128 MiB manifest cap and 4 KiB line cap prevent unbounded allocation. Missing or invalid manifest/range evidence returns an error, not a no-match. A zero-byte range is accepted only when the verified manifest entry declares zero bytes and records and its SHA-256 matches the empty file.
+
+The shared four-prefix fixture is for Go/Kotlin format compatibility tests only; production verification defaults to 1,048,576 prefixes. The manifest is unsigned and the expected digest must be retained independently. This does not authenticate HIBP, prove upstream completeness/freshness, or provide email/account breach search. The Android SAF adapter accepts a user-selected manifest URI and one selected `PREFIX.txt` URI through ContentResolver streams, snapshots only those two bounded files in app-private cache, and delegates to the existing path-based verifier/matcher. It neither enumerates nor copies the full flat corpus and does not persist URI grants or provide UI. The caller must use the active picker grant; a provider may itself fetch remote content.
 
 ## Encrypted profile export
 
@@ -129,16 +145,30 @@ The core preserves JPEG APP markers other than APP1, APP13, and COM; preserves u
 
 The Windows workspace exposes two intentionally separate control surfaces:
 
-- `windows/pcage-audit/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
-- `windows/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
+- `apps/windows/main/` is PrivaCage's own Go implementation. Its changes stay within a documented registry/firewall allowlist, use explicit confirmation, save a rollback snapshot, and verify the requested values.
+- `apps/windows/main/Win11Debloat/` is a pinned, MIT-licensed upstream Win11Debloat component. It supplies the broader Windows customization GUI/CLI, app removal, UI/registry tweaks, optional-feature changes, import/export, localization, and upstream restore/backup tooling.
 
 The `pcage-audit debloat` command only launches the upstream entry point. It does not apply defaults, claim that all settings are reversible, or pretend that PrivaCage's policy backup can restore actions outside its own allowlist. The upstream tool may request UAC and mutate Windows after the user selects operations. Review its current documentation and choices before applying changes. CI checks out the pinned submodule and parses the PowerShell source, but parsing is not a runtime safety proof; the upstream Pester suite remains the source project's behavior test suite.
 
 
 ## Strict local privacy controls
 
-The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys.
+The Android adapter uses `AndroidSensitivePreferenceVault` for sensitive preference stores. Each purpose has its own Android Keystore AES-256-GCM key alias and AAD label. Current covered stores include DNS resolver/rule configuration, rights-request tracker metadata, and permission-audit comparison baselines; existing DNS history, app-policy review state and sync identity use their own encrypted storage modules. Legacy plaintext migration validates the full value and commits the encrypted replacement before removing legacy keys. For an already-encrypted value, every replacement write first decrypts it with the same purpose-bound AAD and validates its existing schema; authentication or validation failure stops before a preference editor is created, preserving the previous ciphertext.
 
 The Android release is governed by a strict no-product-telemetry policy. Repository CI scans Android build files, the manifest and main Kotlin/Java/XML source for known analytics, advertising, attribution and remote crash-reporting indicators. The check is deliberately described as static regression coverage rather than proof against platform/OEM diagnostics or unknown hand-written collection.
 
 The `docs/privacy/` Markdown policies are packaged as Android assets and rendered by a local-only policy reader. Reading those documents does not call a remote policy endpoint. The documents are draft templates until the responsible controller identity, contact details, lawful bases, actual deployed operators and effective date are supplied and legally reviewed.
+
+
+## Offline password exposure lookup (partial core on PR #26)
+
+The pure Kotlin/JVM PwnedPasswordRangeLookup accepts a dedicated CharArray, encodes it as UTF-8, computes the SHA-1 value required by the Have I Been Pwned Pwned Passwords corpus, and reads only the corresponding five-hex-character range file from a user-supplied local directory. It opens the file through a read-only channel with symbolic-link following disabled, captures size from the opened handle, reads no more than that captured size, and rejects records beyond the 55-byte `suffix:count` format bound before decoding. Directory-mode records contain 35-character uppercase SHA-1 suffixes; the five-character prefix is selected by the `PREFIX.txt` filename. It validates the entire bounded range file before returning a match count or NOT_FOUND_IN_SNAPSHOT; a missing, empty, truncated, symbolic-link or malformed range is an error, not a negative result. The input character array and intermediate byte arrays are cleared on exit.
+
+This is a password-exposure check only. The official downloadable Pwned Passwords corpus contains password hashes, not email/account breach records. No email identifier is sent, no network request is made, and the raw password is not persisted. The Go full-range verifier and Kotlin manifest consumer are present on PR #26, and a one-shot SAF document-stream snapshot adapter now stages only a user-selected manifest and one selected range file. The adapter has no UI or persistent URI-grant lifecycle yet. The snapshot date is supplied by the operator and is not authenticated; neither local manifest digest nor range digests authenticate HIBP or prove upstream completeness/freshness. Earlier PR #26 head `3d73afd` passed all nine workflow runs; the directory-format correction on the current head awaits exact-head CI. No device validation is claimed. The official downloader review found that its `sha1.index` stores ETag refresh validators rather than a complete signed inventory; a full-range importer and locally authenticated integrity manifest are still design work, not implemented behavior. See research note 17.
+
+
+## Offline Pwned Passwords range inventory
+
+The shared Go CLI can validate a complete local HIBP SHA-1 directory and emit a JSONL inventory manifest. It requires all 1,048,576 uppercase five-character prefix files, validates bounded suffix/count records, records each file's size/count/SHA-256, and writes aggregate metadata. A second command verifies the manifest against an independently retained SHA-256 and re-hashes every range file. The optional `sha1.index` is ignored as refresh metadata, not completeness evidence.
+
+This tool is local-only and performs no download. The manifest is unsigned; the external digest is a trust anchor only when retained separately. Android does not yet consume the manifest, so the existing Kotlin matcher continues to treat an empty range as unavailable. Publisher authenticity, source completeness, freshness, SAF access and Android UI remain unimplemented.
