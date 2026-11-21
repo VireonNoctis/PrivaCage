@@ -58,7 +58,7 @@ object PwnedPasswordRangeLookup {
         today: LocalDate = LocalDate.now()
     ): PwnedPasswordExposureResult = checkAndClearInternal(
         password, rangeDirectory, snapshotDate, null, null, today,
-        PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT
+        PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT, null
     )
 
     /**
@@ -72,9 +72,11 @@ object PwnedPasswordRangeLookup {
         manifestPath: Path,
         expectedManifestSha256: String,
         today: LocalDate = LocalDate.now(),
-        expectedRangeCount: Int = PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT
+        expectedRangeCount: Int = PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT,
+        selectedRangePrefix: String? = null
     ): PwnedPasswordExposureResult = checkAndClearInternal(
-        password, rangeDirectory, null, manifestPath, expectedManifestSha256, today, expectedRangeCount
+        password, rangeDirectory, null, manifestPath, expectedManifestSha256, today, expectedRangeCount,
+        selectedRangePrefix
     )
 
     private fun checkAndClearInternal(
@@ -84,7 +86,8 @@ object PwnedPasswordRangeLookup {
         manifestPath: Path?,
         expectedManifestSha256: String?,
         today: LocalDate,
-        expectedRangeCount: Int
+        expectedRangeCount: Int,
+        selectedRangePrefix: String?
     ): PwnedPasswordExposureResult {
         try {
             require(password.isNotEmpty()) { "Password must not be empty." }
@@ -99,6 +102,11 @@ object PwnedPasswordRangeLookup {
             }
             require(expectedRangeCount in 1..PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT) {
                 "Expected range count is outside the supported prefix space."
+            }
+            selectedRangePrefix?.let {
+                require(it.matches(Regex("[0-9A-F]{5}"))) {
+                    "Selected range prefix must be five uppercase hexadecimal characters."
+                }
             }
             snapshotDate?.let {
                 require(!it.isAfter(today)) { "Dataset snapshot date cannot be in the future." }
@@ -126,6 +134,11 @@ object PwnedPasswordRangeLookup {
                         val prefix = hashHex.substring(0, PREFIX_HEX_LENGTH)
                         val targetSuffix = hashHex.substring(PREFIX_HEX_LENGTH)
                         password.fill('\u0000')
+                        if (selectedRangePrefix != null && selectedRangePrefix != prefix) {
+                            throw IOException(
+                                "Selected range file " + selectedRangePrefix + ".txt does not match required prefix " + prefix + "."
+                            )
+                        }
 
                         val verifiedManifest = manifestPath?.let {
                             PwnedPasswordManifestVerifier.verify(

@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
-**Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026; Android MessageDigest API rechecked 20 November 2026; Android Storage Access Framework documentation checked 21 November 2026.  
-**Implementation status:** partial Kotlin/JVM single-range matcher, Go full-range inventory verifier, and Kotlin full-manifest/selected-range verifier on open PR #26. The JSONL manifest remains unsigned and requires an independently retained SHA-256. Code-bearing head `e3d3253` passed all nine GitHub Actions workflows on 21 November 2026; the Android performance measurement was skipped because the runner did not expose readable/writable `/dev/kvm`. SAF import, Android UI, signed local attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
+**Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026; Android MessageDigest and Storage Access Framework APIs checked 21 November 2026.  
+**Implementation status:** partial Kotlin/JVM matcher, Go full-range inventory verifier, Kotlin full-manifest/selected-range verifier, and a one-shot Android SAF stream-snapshot adapter on open PR #26. The JSONL manifest remains unsigned and requires an independently retained SHA-256. The code-bearing head `e3d3253` passed all nine GitHub Actions workflows; the SAF adapter follow-up requires exact-head CI. Android performance measurements were skipped because the runner did not expose readable/writable `/dev/kvm`. Android UI, persistent URI-grant lifecycle, signed local attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
 
 ## Scope decision
 
@@ -68,9 +68,9 @@ This verifies the manifest bytes relative to a separately retained digest and th
 
 ## Signed attestation and Android import design
 
-A signature is deliberately deferred until a reviewed key-custody flow exists. The Go/Kotlin manifest-format test vector is now present, but a user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. A user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. Do not label the current JSONL manifest as signed.
+A signature is deliberately deferred until a reviewed key-custody flow exists. The Go/Kotlin manifest-format test vector is present, but a user-controlled signature would authenticate only that user's local attestation, not HIBP as publisher or the truth of the claimed snapshot date. Do not label the current JSONL manifest as signed.
 
-The next Android milestone is a user-selected Storage Access Framework adapter for the existing verifier/matcher contract. Use the system document/tree picker and persist only the URI grant the user explicitly selected; read through ContentResolver streams rather than assuming a filesystem Path or seekable channel, enforce byte/line limits in the app, and surface revoked grants or provider errors as unavailable. Do not request broad storage access or copy the full corpus into app-private storage without measured device/storage evidence. The current path-based Kotlin consumer still requires a separately retained manifest digest and does not authenticate the publisher.
+The Android SAF adapter now accepts a user-selected manifest document URI and one selected uppercase `PREFIX.txt` URI through ContentResolver streams. It copies only the manifest (128 MiB maximum) and selected range (4 MiB maximum) into a short-lived app-private cache snapshot, then delegates to the existing digest-bound verifier/matcher. It does not enumerate the flat 1,048,576-file directory, copy the full corpus, or persist URI grants. The caller uses the active read grant from `ACTION_OPEN_DOCUMENT`; reselect after the Activity/process ends. A third-party provider may fetch remote bytes itself, so choose a local/offline copy when offline operation is required. Missing display names, revoked grants, null streams, read failures, oversized streams, a mismatched prefix, and digest/record-count failures remain unavailable/errors, never a no-match. Android UI, persistent-grant lifecycle, physical-device/provider validation, and signed local attestation remain future work.
 
 ## Security and accuracy limits
 
@@ -85,9 +85,9 @@ The next Android milestone is a user-selected Storage Access Framework adapter f
 ## Next acceptance gates
 
 - Add a signed local attestation only after selecting a key-custody design and adding a Kotlin verifier with shared Go/Kotlin test vectors. Keep the expected public-key fingerprint out of band; describe the signature as a local import attestation, not a HIBP publisher signature.
-- Add the SAF adapter to the existing Android manifest consumer. Verify the full manifest and selected range through bounded provider streams; preserve unavailable results for revoked grants, truncation, provider errors, or digest mismatches.
+- Add the Android UI around the one-shot SAF adapter. Keep the password field lifecycle short, clear its editable buffer after submission, and run verification off the main thread. Add persistent URI grants only if the UI needs reuse across activity/process restarts; persist only the read grant explicitly returned for the selected document, and test revocation.
 - Test the importer against interrupted downloads, missing prefixes, unexpected files, empty ranges, malformed records, and post-import file tampering. A missing or digest-mismatched range must remain unavailable, never a no-match.
-- Evaluate Android Storage Access Framework access to a user-selected external dataset location; do not copy a potentially very large full corpus into app-private storage without measured device/storage evidence.
+- Validate the stream-snapshot adapter against representative local and cloud-backed document providers, including revocation, null streams, partial reads, large manifests, and cleanup after cancellation. The provider may itself use the network; PrivaCage does not claim to control that provider behavior.
 - Add an Android UI only after secure text-field lifecycle, dataset storage, manifest verification, and provider behavior are tested on representative devices.
 - Keep account/email breach search separate. Do not send full identifiers to a third-party endpoint, scrape the service, or imply that the Pwned Passwords corpus can answer account-breach questions.
 
