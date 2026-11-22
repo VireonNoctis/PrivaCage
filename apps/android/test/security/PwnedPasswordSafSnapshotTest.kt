@@ -2,6 +2,7 @@ package org.privacage.security
 
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -205,4 +206,33 @@ class PwnedPasswordSafSnapshotTest {
         assertFailsWith<IOException> { snapshot.checkAndClear(password, today) }
         assertTrue(password.all { it == '\u0000' })
     }
+    @Test
+    fun interruptionBeforePreparationDoesNotCreateASnapshot() {
+        val (documents, digest) = dataset()
+        Thread.currentThread().interrupt()
+        try {
+            assertFailsWith<InterruptedIOException> { prepare(documents, digest) }
+        } finally {
+            Thread.interrupted()
+        }
+        assertEquals(0L, Files.list(cacheDirectory).use { it.count() })
+    }
+
+    @Test
+    fun interruptedLookupClearsPasswordAndStillAllowsSnapshotCleanup() {
+        val (documents, digest) = dataset()
+        val snapshot = prepare(documents, digest)
+        val password = matchingPassword.toCharArray()
+        Thread.currentThread().interrupt()
+        try {
+            assertFailsWith<InterruptedIOException> { snapshot.checkAndClear(password, today) }
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue(password.all { it == '\u0000' })
+        snapshot.close()
+        assertEquals(0L, Files.list(cacheDirectory).use { it.count() })
+    }
+
+
 }

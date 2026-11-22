@@ -1,7 +1,7 @@
 # 17 — Offline password exposure lookup
 
 **Research status:** official HIBP Pwned Passwords range-response documentation and downloader source checked 19 November 2026; Android MessageDigest and Storage Access Framework APIs checked 21 November 2026.  
-**Implementation status:** partial Kotlin/JVM matcher, Go full-range inventory verifier, Kotlin full-manifest/selected-range verifier, and a one-shot Android SAF stream-snapshot adapter on open PR #26. The JSONL manifest remains unsigned and requires an independently retained SHA-256. The code-bearing head `e3d3253` passed all nine GitHub Actions workflows; the SAF adapter follow-up requires exact-head CI. Android performance measurements were skipped because the runner did not expose readable/writable `/dev/kvm`. Android UI, persistent URI-grant lifecycle, signed local attestation, publisher-authenticated provenance, and account/email lookup are not implemented.
+**Implementation status:** partial Kotlin/JVM matcher, Go full-range inventory verifier, Kotlin full-manifest/selected-range verifier, one-shot Android SAF stream-snapshot adapter, and experimental Android check screen on open PR #26. The manifest remains unsigned and requires an independently retained SHA-256. The SAF/UI/cancellation follow-up is awaiting exact-head CI and physical-device/DocumentProvider validation. The screen does not persist URI grants; signed local attestation, publisher-authenticated provenance, and account/email lookup remain unimplemented.
 
 ## Scope decision
 
@@ -92,3 +92,12 @@ The Android SAF adapter now accepts a user-selected manifest document URI and on
 - Keep account/email breach search separate. Do not send full identifiers to a third-party endpoint, scrape the service, or imply that the Pwned Passwords corpus can answer account-breach questions.
 
 This is engineering guidance, not a guarantee of account security or a legal/technical audit of the upstream dataset.
+
+
+## Android user flow (22 November 2026)
+
+The main screen exposes an experimental password-exposure check. It opens the system ACTION_OPEN_DOCUMENT picker twice: once for the JSONL manifest and once for a single uppercase PREFIX.txt range. The user enters a 64-character manifest SHA-256 retained separately and the password to check. The Activity does not call takePersistableUriPermission, does not save selected URI grants, and does not request storage permissions. It copies only the selected manifest and range through ContentResolver into bounded app-private cache and removes the snapshot when the operation closes.
+
+The password editor is not saved in view state or offered to Android autofill. Its contents are copied character-by-character into a dedicated CharArray, the editor is cleared before work, and the matcher clears the array on every exit path. The editor is also cleared when the Activity pauses. This does not guarantee zeroization of an Android keyboard/input method's own buffers. The full manifest verification and selected-range lookup run on a worker thread. Cancellation checks are cooperative; a provider blocked inside a ContentResolver open/read call may not respond immediately, so cleanup can be delayed until the call returns.
+
+The screen reports FOUND with the corpus occurrence count or NOT_FOUND_IN_SNAPSHOT with the manifest-declared date. It never calls a no-match safe, never reports account/email breach status, and does not test password strength. A cloud-backed document provider can observe file reads, but PrivaCage sends it no password or upload. The expected digest does not authenticate HIBP or establish source completeness/freshness.

@@ -234,6 +234,22 @@ class MainActivity : Activity() {
             }
         }, matchWidth())
 
+        root.addView(TextView(this).apply {
+            text = "OFFLINE PASSWORD EXPOSURE"
+            textSize = 16f
+            setPadding(0, dp(18), 0, dp(4))
+        })
+        root.addView(TextView(this).apply {
+            text = "Check one password locally against a user-selected Pwned Passwords snapshot. This is not an email/account breach search or a password-strength verdict."
+            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Check against an offline password snapshot"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, PwnedPasswordCheckActivity::class.java))
+            }
+        }, matchWidth())
+
         root.addView(TextView(this).apply { text = "ANDROID PRIVACY CONTROLS"; textSize = 16f; setPadding(0, dp(8), 0, dp(4)) })
         root.addView(TextView(this).apply {
             text = "These shortcuts open Android's own settings so you can review access and revoke permissions there. PrivaCage cannot override the OS or secretly revoke permissions for other apps."

@@ -529,7 +529,7 @@ Documents MessageDigest.update/digest and SHA-256 support from API level 1. The 
 ### S68 — Android Developers: Access documents and other files from shared storage
 https://developer.android.com/training/data-storage/shared/documents-files
 
-The Storage Access Framework provides system picker flows through `ACTION_OPEN_DOCUMENT` and `ACTION_OPEN_DOCUMENT_TREE`. PrivaCage's one-shot adapter uses `ACTION_OPEN_DOCUMENT` and `ContentResolver` streams for a user-selected manifest and one selected range file; it does not persist URI grants or enumerate the flat 1,048,576-file directory. It enforces stream byte caps and stages only those two files in app-private cache. Checked 21 November 2026.
+The Storage Access Framework provides system picker flows through `ACTION_OPEN_DOCUMENT` and `ACTION_OPEN_DOCUMENT_TREE`. PrivaCage's one-shot adapter and experimental check screen use `ACTION_OPEN_DOCUMENT` and `ContentResolver` streams for a user-selected manifest and one selected range file; they do not persist URI grants or enumerate the flat 1,048,576-file directory. The screen requires reselection when access is unavailable. It enforces stream byte caps and stages only those two files in app-private cache. Checked 22 November 2026.
 
 
 <a id="s69"></a>
@@ -538,4 +538,11 @@ https://developer.android.com/reference/android/content/ContentResolver#openInpu
 https://developer.android.com/reference/android/provider/OpenableColumns
 https://developer.android.com/reference/android/provider/DocumentsContract
 
-Documents `ContentResolver.openInputStream(Uri)`, which may return null if the provider recently crashed, and the display-name column used to validate the selected `PREFIX.txt` filename. The adapter treats null streams or unavailable names as errors. DocumentsContract exposes tree-child queries, but PrivaCage does not enumerate the flat million-entry range directory. Checked 21 November 2026.
+Documents `ContentResolver.openInputStream(Uri)`, which may return null if the provider recently crashed, and the display-name column used to validate the selected `PREFIX.txt` filename. The adapter treats null streams or unavailable names as errors. DocumentsContract exposes tree-child queries, but PrivaCage does not enumerate the flat million-entry range directory. Checked 22 November 2026.
+
+
+<a id="s70"></a>
+### S70 — Android Developers: Intent.ACTION_OPEN_DOCUMENT
+https://developer.android.com/reference/android/content/Intent#ACTION_OPEN_DOCUMENT
+
+The system picker returns a user-selected content:// document URI and grants access to the selected item. The intent should include CATEGORY_OPENABLE when the app needs an input stream. The returned grant can be made persistent only by explicitly calling takePersistableUriPermission; PrivaCage deliberately does not do so. Checked 22 November 2026.

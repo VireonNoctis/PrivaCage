@@ -115,3 +115,10 @@ The manifest does not prove publisher identity, upstream response completeness, 
 
 
 The full-range creator should be run against a quiescent directory. Per-file metadata checks and repeated directory enumeration detect ordinary changes, but this is not a filesystem snapshot and does not defend against a privileged concurrent writer able to restore timestamps. Run the verification command after creation before relying on the current directory.
+
+
+## Android offline password check screen
+
+The experimental screen uses the system ACTION_OPEN_DOCUMENT picker and accepts only content:// document URIs. It reads one manifest and one selected range file; it does not request storage permissions, persist URI grants, enumerate a directory, or make a dataset/password network request. A provider may be remote and can observe the selected document reads. The expected manifest SHA-256 is a local integrity anchor only, not a publisher signature.
+
+The password field is excluded from view-state saving and autofill, cleared before processing and on pause, and copied from its editable buffer into a dedicated CharArray without creating an immutable String. The matcher clears that array on all paths. Android's keyboard/input-method and editor internals are outside the app's zeroization guarantee. Cancellation is cooperative; a provider blocked inside openInputStream or read may delay cancellation and temporary-cache cleanup. A no-match applies only to the supplied snapshot and is not a password-strength or safety verdict.

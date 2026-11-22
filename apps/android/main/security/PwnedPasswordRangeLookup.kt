@@ -90,6 +90,7 @@ object PwnedPasswordRangeLookup {
         selectedRangePrefix: String?
     ): PwnedPasswordExposureResult {
         try {
+            ensurePwnedPasswordWorkActive()
             require(password.isNotEmpty()) { "Password must not be empty." }
             require(password.size <= MAX_PASSWORD_CHARS) {
                 "Password exceeds the $MAX_PASSWORD_CHARS-character processing limit."
@@ -186,6 +187,7 @@ object PwnedPasswordRangeLookup {
         targetSuffix: String,
         expectedEntry: PwnedPasswordManifestRange?
     ): ULong? {
+        ensurePwnedPasswordWorkActive()
         if (!Files.exists(rangeFile, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException(
                 "Required Pwned Passwords range file $prefix.txt is missing; the local dataset may be incomplete."
@@ -281,6 +283,7 @@ object PwnedPasswordRangeLookup {
         }
 
         while (remainingBytes > 0) {
+            ensurePwnedPasswordWorkActive()
             if (!inputBuffer.hasRemaining()) {
                 while (true) {
                     inputBuffer.clear()

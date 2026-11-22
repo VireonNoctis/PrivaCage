@@ -59,6 +59,7 @@ internal object PwnedPasswordManifestVerifier {
         today: LocalDate = LocalDate.now(),
         expectedRangeCount: Int = COMPLETE_RANGE_COUNT
     ): VerifiedPwnedPasswordManifest {
+        ensurePwnedPasswordWorkActive()
         require(expectedRangeCount in 1..COMPLETE_RANGE_COUNT) {
             "Expected range count is outside the supported prefix space."
         }
@@ -127,6 +128,7 @@ internal object PwnedPasswordManifestVerifier {
             var selected: PwnedPasswordManifestRange? = null
 
             for (index in 0 until expectedRangeCount) {
+                ensurePwnedPasswordWorkActive()
                 val line = reader.readLine()
                     ?: throw IOException("Manifest entry " + prefixFor(index) + " is missing.")
                 val entryObject = parseObject(line, "Pwned Passwords manifest entry", entryFields)
@@ -242,6 +244,7 @@ internal object PwnedPasswordManifestVerifier {
         fun readLine(): ByteArray? {
             val line = ByteArrayOutputStream()
             while (true) {
+                ensurePwnedPasswordWorkActive()
                 if (!buffer.hasRemaining()) {
                     if (unreadBytes == 0L) {
                         if (line.size() == 0) return null

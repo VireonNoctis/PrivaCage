@@ -142,6 +142,16 @@ The checklist does not request Accessibility, phone-state, cell-location, locati
 - Android's [`SigningInfo` API reference](https://developer.android.com/reference/android/content/pm/SigningInfo) documents the ordered, oldest-to-current signing history for single-signer packages and the separate multiple-signer model. PrivaCage uses that history only when the independent APK signature verifier accepts the file; otherwise lineage remains unavailable.
 
 
+## Offline Pwned Passwords check (experimental)
+
+The main screen opens a local password-exposure check. The user selects a JSONL manifest and one uppercase PREFIX.txt range with Android's ACTION_OPEN_DOCUMENT picker, then enters the manifest SHA-256 retained separately and one password. The app uses ContentResolver streams and snapshots only those two files into bounded app-private cache; it does not enumerate or copy the full 1,048,576-file corpus. The full manifest and selected range are verified before a match or snapshot-scoped no-match is shown.
+
+The check runs off the UI thread. Cancellation is cooperative: the snapshot copy, manifest loop and range parser check interruption, but a document provider blocked inside a read/open call may not return immediately. Temporary files are removed when the operation unwinds and the snapshot closes. No URI grant is persisted; the user selects the documents again after the Activity is recreated or access is no longer available. Providers may be cloud-backed and can observe file reads; PrivaCage itself sends no password or dataset upload.
+
+The password field is excluded from Android view-state saving and autofill, cleared before processing and when the screen pauses, and copied directly from its editable buffer into a dedicated CharArray that the matcher clears on all paths. This does not guarantee zeroization of keyboard/input-method buffers or every copy held by Android. A NOT_FOUND_IN_SNAPSHOT result applies only to the supplied manifest-declared snapshot; it is not a password-strength or safety verdict. The manifest remains unsigned, and its expected digest does not authenticate HIBP or prove freshness/completeness. Email/account breach lookup is not implemented.
+
+No new Android permission, background service, network request, persistent URI grant, telemetry or upload was added. Exact-head CI and physical-device/DocumentProvider validation are required before release.
+
 ## Source layout
 
 - `main/` contains `AndroidManifest.xml`, `res/`, `jniLibs/` and direct feature folders: `API/`, `audit/`, `crypto/`, `dns/`, `interface/`, `legal/`, `metadata/`, `security/` and `sync/`.

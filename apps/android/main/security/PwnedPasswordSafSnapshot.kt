@@ -5,11 +5,19 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.LocalDate
+
+@Throws(InterruptedIOException::class)
+internal fun ensurePwnedPasswordWorkActive() {
+    if (Thread.currentThread().isInterrupted) {
+        throw InterruptedIOException("Password snapshot work was cancelled.")
+    }
+}
 
 /**
  * Minimal access surface for a user-selected document provider.
@@ -97,6 +105,7 @@ internal class PwnedPasswordSafSnapshot private constructor(
         today: LocalDate = LocalDate.now()
     ): PwnedPasswordExposureResult {
         try {
+            ensurePwnedPasswordWorkActive()
             if (closed) throw IOException("The selected password dataset snapshot is closed.")
             return PwnedPasswordRangeLookup.checkAndClearWithManifest(
                 password = password,
@@ -141,6 +150,7 @@ internal class PwnedPasswordSafSnapshot private constructor(
             cacheDirectory: Path,
             expectedRangeCount: Int = PwnedPasswordManifestVerifier.COMPLETE_RANGE_COUNT
         ): PwnedPasswordSafSnapshot {
+            ensurePwnedPasswordWorkActive()
             require(manifestUri.isNotBlank() && rangeUri.isNotBlank()) {
                 "Manifest and range document URIs are required."
             }
@@ -153,6 +163,7 @@ internal class PwnedPasswordSafSnapshot private constructor(
 
             val displayName = documents.displayName(rangeUri)
                 ?: throw IOException("The selected range document has no readable display name.")
+            ensurePwnedPasswordWorkActive()
             val match = rangeFilename.matchEntire(displayName)
                 ?: throw IOException("Select one uppercase five-character PREFIX.txt range document.")
             val prefix = match.groupValues[1]
@@ -211,9 +222,11 @@ internal class PwnedPasswordSafSnapshot private constructor(
             maximumBytes: Long,
             label: String
         ) {
+            ensurePwnedPasswordWorkActive()
             val input = documents.open(uri)
                 ?: throw IOException("$label document provider returned no readable stream.")
             input.use { source ->
+                ensurePwnedPasswordWorkActive()
                 Files.newOutputStream(
                     destination,
                     StandardOpenOption.CREATE_NEW,
@@ -223,7 +236,9 @@ internal class PwnedPasswordSafSnapshot private constructor(
                     var totalBytes = 0L
                     try {
                         while (true) {
+                            ensurePwnedPasswordWorkActive()
                             val read = source.read(buffer)
+                            ensurePwnedPasswordWorkActive()
                             if (read < 0) break
                             if (read == 0) {
                                 throw IOException("$label document provider made no read progress.")
