@@ -546,3 +546,10 @@ Documents `ContentResolver.openInputStream(Uri)`, which may return null if the p
 https://developer.android.com/reference/android/content/Intent#ACTION_OPEN_DOCUMENT
 
 The system picker returns a user-selected content:// document URI and grants access to the selected item. The intent should include CATEGORY_OPENABLE when the app needs an input stream. The returned grant can be made persistent only by explicitly calling takePersistableUriPermission; PrivaCage deliberately does not do so. Checked 22 November 2026.
+
+
+<a id="s71"></a>
+### S71 — Android Developers: The activity lifecycle
+https://developer.android.com/guide/components/activities/activity-lifecycle
+
+Documents that `onPause()` is the first indication that an Activity has left the foreground, including multi-window focus changes, and is an appropriate point to pause work that should not continue while the Activity is not in the foreground. PrivaCage uses it only to request worker interruption and clear the password editor; provider reads may remain blocked until the provider returns. Checked 22 November 2026.

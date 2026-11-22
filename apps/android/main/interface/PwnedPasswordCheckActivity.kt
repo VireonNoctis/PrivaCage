@@ -27,6 +27,7 @@ import org.privacage.security.AndroidPwnedPasswordDocumentAccess
 import org.privacage.security.PwnedPasswordExposureResult
 import org.privacage.security.PwnedPasswordExposureStatus
 import org.privacage.security.PwnedPasswordInput
+import org.privacage.security.PwnedPasswordCheckLifecycle
 import org.privacage.security.PwnedPasswordRangeLookup
 import org.privacage.security.PwnedPasswordSafSnapshot
 import java.io.InterruptedIOException
@@ -37,6 +38,7 @@ class PwnedPasswordCheckActivity : Activity() {
     @Volatile private var destroyed = false
     private var worker: Thread? = null
     private var checking = false
+    @Volatile private var cancellationRequested = false
     private var selectedManifestUri: Uri? = null
     private var selectedRangeUri: Uri? = null
 
@@ -204,6 +206,7 @@ class PwnedPasswordCheckActivity : Activity() {
             return
         }
 
+        cancellationRequested = false
         checking = true
         checkButton.isEnabled = false
         cancelButton.isEnabled = true
@@ -251,7 +254,7 @@ class PwnedPasswordCheckActivity : Activity() {
                 activity.cancelButton.isEnabled = true
                 activity.updateCheckButton()
                 when {
-                    cancelled -> activity.statusText.text =
+                    cancelled || activity.cancellationRequested -> activity.statusText.text =
                         "CANCELLED · The snapshot was not reported as a match or no-match. Temporary-file cleanup was attempted."
                     failure != null -> activity.statusText.text =
                         "CHECK UNAVAILABLE · " + (failure?.message ?: "The selected snapshot could not be verified.") +
@@ -266,11 +269,17 @@ class PwnedPasswordCheckActivity : Activity() {
         task.start()
     }
 
-    private fun cancelCheck() {
-        val running = worker ?: return
-        running.interrupt()
+    private fun requestCancellation(message: String) {
+        if (!PwnedPasswordCheckLifecycle.requestCancellation(worker)) return
+        cancellationRequested = true
         cancelButton.isEnabled = false
-        statusText.text = "Cancellation requested. A document provider may take time to return from an active blocking read."
+        statusText.text = message
+    }
+
+    private fun cancelCheck() {
+        requestCancellation(
+            "Cancellation requested. A document provider may take time to return from an active blocking read."
+        )
     }
 
     private fun renderResult(result: PwnedPasswordExposureResult) {
@@ -302,6 +311,11 @@ class PwnedPasswordCheckActivity : Activity() {
     }
 
     override fun onPause() {
+        if (checking) {
+            requestCancellation(
+                "FOREGROUND LOST · Cancellation requested. A document provider may delay cleanup while a read is blocked."
+            )
+        }
         if (::passwordInput.isInitialized) {
             passwordInput.text.clear()
             updateCheckButton()
