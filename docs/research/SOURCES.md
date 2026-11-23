@@ -553,3 +553,12 @@ The system picker returns a user-selected content:// document URI and grants acc
 https://developer.android.com/guide/components/activities/activity-lifecycle
 
 Documents that `onPause()` is the first indication that an Activity has left the foreground, including multi-window focus changes, and is an appropriate point to pause work that should not continue while the Activity is not in the foreground. PrivaCage uses it only to request worker interruption and clear the password editor; provider reads may remain blocked until the provider returns. Checked 22 November 2026.
+
+<a id="s72"></a>
+### S72 — Android Developers: ContentResolver, ContentProvider, AssetFileDescriptor and CancellationSignal
+https://developer.android.com/reference/android/content/ContentResolver#openAssetFileDescriptor(android.net.Uri,java.lang.String,android.os.CancellationSignal)
+https://developer.android.com/reference/android/content/ContentResolver#query(android.net.Uri,java.lang.String[],java.lang.String,java.lang.String[],java.lang.String,android.os.CancellationSignal)
+https://developer.android.com/reference/android/content/ContentProvider#openAssetFile(android.net.Uri,java.lang.String,android.os.CancellationSignal)
+https://developer.android.com/reference/android/content/res/AssetFileDescriptor#createInputStream()
+
+ContentResolver exposes cancellation-aware document metadata queries and openAssetFileDescriptor (API 19+). ContentProvider receives the signal and can call CancellationSignal.throwIfCanceled() while performing provider-side work; AssetFileDescriptor.createInputStream() returns an auto-close stream that handles complete files and sub-sections. This is a cooperative provider contract, not a guarantee that every provider honors cancellation or that a client-side read already blocked after open will be interrupted. PrivaCage passes one per-check signal to the metadata query and asset-open request, while retaining worker interruption and bounded stream reads. Checked 23 November 2026.
