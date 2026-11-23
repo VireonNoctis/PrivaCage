@@ -87,7 +87,7 @@ func runVerifyPwnedManifest(args []string) int {
 	return 0
 }
 
-func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCount int) (pwnedManifestHeader, string, error) {
+func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCount int) (resultHeader pwnedManifestHeader, resultDigest string, resultErr error) {
 	if prefixCount < 1 || prefixCount > pwnedRangeCount {
 		return pwnedManifestHeader{}, "", errors.New("invalid expected prefix count")
 	}
@@ -105,11 +105,18 @@ func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCou
 	if err != nil {
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot create manifest without overwriting an existing file: %w", err)
 	}
+	outputClosed := false
 	created := true
 	defer func() {
-		_ = output.Close()
+		if !outputClosed {
+			if closeErr := output.Close(); closeErr != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("cannot close manifest output: %w", closeErr))
+			}
+		}
 		if created {
-			_ = os.Remove(manifestPath)
+			if removeErr := removePwnedTemporary(manifestPath, "incomplete manifest"); removeErr != nil {
+				resultErr = errors.Join(resultErr, removeErr)
+			}
 		}
 	}()
 	entries, err := os.CreateTemp(filepath.Dir(manifestPath), ".pcage-pwned-entries-*")
@@ -117,9 +124,19 @@ func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCou
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot create temporary entry file: %w", err)
 	}
 	entriesPath := entries.Name()
+	entriesClosed := false
+	entriesRemoved := false
 	defer func() {
-		_ = entries.Close()
-		_ = os.Remove(entriesPath)
+		if !entriesClosed {
+			if closeErr := entries.Close(); closeErr != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("cannot close temporary manifest entries: %w", closeErr))
+			}
+		}
+		if !entriesRemoved {
+			if removeErr := removePwnedTemporary(entriesPath, "temporary manifest entries"); removeErr != nil {
+				resultErr = errors.Join(resultErr, removeErr)
+			}
+		}
 	}()
 	writer := bufio.NewWriterSize(entries, 1<<20)
 	var totalBytes, totalRecords uint64
@@ -171,6 +188,15 @@ func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCou
 	if _, err := io.Copy(manifestWriter, entries); err != nil {
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot copy manifest entries: %w", err)
 	}
+	if err := entries.Close(); err != nil {
+		entriesClosed = true
+		return pwnedManifestHeader{}, "", fmt.Errorf("cannot close temporary manifest entries: %w", err)
+	}
+	entriesClosed = true
+	if err := removePwnedTemporary(entriesPath, "temporary manifest entries"); err != nil {
+		return pwnedManifestHeader{}, "", err
+	}
+	entriesRemoved = true
 	if err := manifestWriter.Flush(); err != nil {
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot flush manifest: %w", err)
 	}
@@ -178,8 +204,10 @@ func createPwnedManifest(directory, manifestPath, snapshotDate string, prefixCou
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot sync manifest: %w", err)
 	}
 	if err := output.Close(); err != nil {
+		outputClosed = true
 		return pwnedManifestHeader{}, "", fmt.Errorf("cannot close manifest: %w", err)
 	}
+	outputClosed = true
 	digest, err := hashPwnedManifest(manifestPath)
 	if err != nil {
 		return pwnedManifestHeader{}, "", err
@@ -324,6 +352,13 @@ func createVerifiedPwnedManifestSnapshot(source *os.File, size int64, expectedDi
 	}
 	keep = true
 	return temporary, nil
+}
+
+func removePwnedTemporary(path, label string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cannot remove %s: %w", label, err)
+	}
+	return nil
 }
 
 func scanPwnedRangeDirectory(directory string, prefixCount int) ([]byte, error) {

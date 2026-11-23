@@ -72,10 +72,35 @@ func TestPwnedManifestRejectsMissingUnexpectedAndMalformedRanges(t *testing.T) {
 			if err := test.mutate(directory); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := createPwnedManifest(directory, filepath.Join(root, "ranges.jsonl"), "2026-11-18", 4); err == nil {
+			manifest := filepath.Join(root, "ranges.jsonl")
+			if _, _, err := createPwnedManifest(directory, manifest, "2026-11-18", 4); err == nil {
 				t.Fatal("expected invalid range directory to be rejected")
 			}
+			if _, err := os.Stat(manifest); !os.IsNotExist(err) {
+				t.Fatalf("incomplete manifest was not removed after failure: stat error = %v", err)
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("temporary manifest artifacts remain after failure: %v", entries)
+			}
 		})
+	}
+}
+
+func TestRemovePwnedTemporaryReportsRemovalFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "non-empty")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "keep"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := removePwnedTemporary(path, "temporary directory"); err == nil {
+		t.Fatal("non-empty temporary directory removal failure must be returned")
 	}
 }
 
