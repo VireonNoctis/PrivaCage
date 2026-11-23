@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -37,6 +38,7 @@ class PwnedPasswordCheckActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var destroyed = false
     private var worker: Thread? = null
+    @Volatile private var providerCancellationSignal: CancellationSignal? = null
     private var checking = false
     @Volatile private var cancellationRequested = false
     private var selectedManifestUri: Uri? = null
@@ -207,6 +209,8 @@ class PwnedPasswordCheckActivity : Activity() {
         }
 
         cancellationRequested = false
+        val operationCancellationSignal = CancellationSignal()
+        providerCancellationSignal = operationCancellationSignal
         checking = true
         checkButton.isEnabled = false
         cancelButton.isEnabled = true
@@ -226,7 +230,7 @@ class PwnedPasswordCheckActivity : Activity() {
                     manifestUri = manifestUri.toString(),
                     expectedManifestSha256 = expectedDigest,
                     rangeUri = rangeUri.toString(),
-                    documents = AndroidPwnedPasswordDocumentAccess(appContext.contentResolver),
+                    documents = AndroidPwnedPasswordDocumentAccess(appContext.contentResolver, operationCancellationSignal),
                     cacheDirectory = appContext.cacheDir.toPath()
                 ).use { snapshot ->
                     result = snapshot.checkAndClear(password)
@@ -249,6 +253,7 @@ class PwnedPasswordCheckActivity : Activity() {
                 if (activity.destroyed || activity.isFinishing || activity.isDestroyed) return@post
                 activity.checking = false
                 activity.worker = null
+                activity.providerCancellationSignal = null
                 activity.progressIndicator.visibility = View.GONE
                 activity.cancelButton.visibility = View.GONE
                 activity.cancelButton.isEnabled = true
@@ -270,7 +275,9 @@ class PwnedPasswordCheckActivity : Activity() {
     }
 
     private fun requestCancellation(message: String) {
-        if (!PwnedPasswordCheckLifecycle.requestCancellation(worker)) return
+        if (!PwnedPasswordCheckLifecycle.requestCancellation(worker) {
+                providerCancellationSignal?.cancel()
+            }) return
         cancellationRequested = true
         cancelButton.isEnabled = false
         statusText.text = message
@@ -278,7 +285,7 @@ class PwnedPasswordCheckActivity : Activity() {
 
     private fun cancelCheck() {
         requestCancellation(
-            "Cancellation requested. A document provider may take time to return from an active blocking read."
+            "Cancellation requested. The provider receives an Android cancellation signal, but a provider that ignores it may still delay a blocked read."
         )
     }
 
@@ -313,7 +320,7 @@ class PwnedPasswordCheckActivity : Activity() {
     override fun onPause() {
         if (checking) {
             requestCancellation(
-                "FOREGROUND LOST · Cancellation requested. A document provider may delay cleanup while a read is blocked."
+                "FOREGROUND LOST · Worker interruption and an Android provider-cancellation signal were requested. A provider that ignores cancellation may still delay cleanup."
             )
         }
         if (::passwordInput.isInitialized) {
@@ -326,6 +333,8 @@ class PwnedPasswordCheckActivity : Activity() {
     override fun onDestroy() {
         destroyed = true
         worker?.interrupt()
+        providerCancellationSignal?.cancel()
+        providerCancellationSignal = null
         if (::passwordInput.isInitialized) passwordInput.text.clear()
         super.onDestroy()
     }
