@@ -150,7 +150,7 @@ The check runs off the UI thread. Explicit cancellation and loss of Activity for
 
 The password field is excluded from Android view-state saving and autofill, cleared before processing and when the screen pauses, and copied directly from its editable buffer into a dedicated CharArray that the matcher clears on all paths. This does not guarantee zeroization of keyboard/input-method buffers or every copy held by Android. A NOT_FOUND_IN_SNAPSHOT result applies only to the supplied manifest-declared snapshot; it is not a password-strength or safety verdict. The manifest remains unsigned, and its expected digest does not authenticate HIBP or prove freshness/completeness. Email/account breach lookup is not implemented.
 
-No new Android permission, background service, network request, persistent URI grant, telemetry or upload was added. Exact-head CI and physical-device/DocumentProvider validation are required before release.
+No new Android permission, background service, network request, persistent URI grant, telemetry or upload was added. The code-bearing PR head af419f7 passed all nine GitHub workflows on 23 November 2026; the performance benchmark step was skipped because emulator acceleration was unavailable. Physical-device/DocumentProvider validation remains required before release.
 
 ## Source layout
 
