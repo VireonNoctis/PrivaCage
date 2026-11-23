@@ -2,6 +2,8 @@ package org.privacage.security
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
 import android.provider.OpenableColumns
 import java.io.IOException
 import java.io.InputStream
@@ -35,7 +37,8 @@ internal interface PwnedPasswordDocumentAccess {
 
 /** ContentResolver adapter for SAF document URIs. No storage permission is required. */
 internal class AndroidPwnedPasswordDocumentAccess(
-    private val resolver: ContentResolver
+    private val resolver: ContentResolver,
+    private val cancellationSignal: CancellationSignal
 ) : PwnedPasswordDocumentAccess {
     override fun displayName(uri: String): String? {
         val documentUri = parseContentUri(uri)
@@ -45,8 +48,11 @@ internal class AndroidPwnedPasswordDocumentAccess(
                 arrayOf(OpenableColumns.DISPLAY_NAME),
                 null,
                 null,
-                null
+                null,
+                cancellationSignal
             )
+        } catch (exception: OperationCanceledException) {
+            throw cancelledDocumentOperation(exception)
         } catch (exception: SecurityException) {
             throw IOException("Selected document access is unavailable or was revoked.", exception)
         } ?: return null
@@ -58,12 +64,30 @@ internal class AndroidPwnedPasswordDocumentAccess(
     }
 
     override fun open(uri: String): InputStream? {
-        return try {
-            resolver.openInputStream(parseContentUri(uri))
+        val descriptor = try {
+            resolver.openAssetFileDescriptor(parseContentUri(uri), "r", cancellationSignal)
+        } catch (exception: OperationCanceledException) {
+            throw cancelledDocumentOperation(exception)
         } catch (exception: SecurityException) {
             throw IOException("Selected document access is unavailable or was revoked.", exception)
+        } ?: return null
+
+        return try {
+            descriptor.createInputStream()
+        } catch (exception: IOException) {
+            try {
+                descriptor.close()
+            } catch (closeFailure: IOException) {
+                exception.addSuppressed(closeFailure)
+            }
+            throw exception
         }
     }
+
+    private fun cancelledDocumentOperation(exception: OperationCanceledException): InterruptedIOException =
+        InterruptedIOException("Selected document provider operation was cancelled.").apply {
+            initCause(exception)
+        }
 
     private fun parseContentUri(value: String): Uri {
         val parsed = try {
