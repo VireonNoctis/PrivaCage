@@ -1,0 +1,9 @@
+{
+  "format": "pcage-pwned-manifest-attestation",
+  "version": 1,
+  "signature_algorithm": "ECDSA-P256-SHA256",
+  "manifest_sha256": "BB5A8AA3754FD3A62A59C679441858269D2534D94129826F78FA26FFC6FACD91",
+  "signer_public_key_x509_base64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEze+D+VwEtOXjgo/Pokrh6ppopd/XL38ume4nyVsJBsAw0iwTiebpzoFmrZ5VMEnJkf4pJMOX88lMl+YNGxVaMQ==",
+  "signer_public_key_sha256": "FF98F019B3BCE2F0A90E4D3120362D36117D449AF5442A4BCA0D11164888EDFC",
+  "signature_base64": "MEQCICHPMoUPr6vBvvE5i5Yl9/qzpCa9gJw9pwyiJbJNM1UZAiBOSWgRPjZPrFl47gkhqMKn3kViTUaalIbaegxYbb2Amw=="
+}

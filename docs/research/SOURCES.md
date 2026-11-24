@@ -562,3 +562,22 @@ https://developer.android.com/reference/android/content/ContentProvider#openAsse
 https://developer.android.com/reference/android/content/res/AssetFileDescriptor#createInputStream()
 
 ContentResolver exposes cancellation-aware document metadata queries and openAssetFileDescriptor (API 19+). ContentProvider receives the signal and can call CancellationSignal.throwIfCanceled() while performing provider-side work; AssetFileDescriptor.createInputStream() returns an auto-close stream that handles complete files and sub-sections. This is a cooperative provider contract, not a guarantee that every provider honors cancellation or that a client-side read already blocked after open will be interrupted. PrivaCage passes one per-check signal to the metadata query and asset-open request, while retaining worker interruption and bounded stream reads. Checked 23 November 2026.
+
+
+<a id="s09j"></a>
+### S09j — Android Developers: Android Keystore system
+https://developer.android.com/privacy-and-security/keystore
+
+Documents non-exportable Android Keystore private-key material and cryptographic operations performed through the Keystore provider. Secure-hardware binding is device/algorithm dependent; PrivaCage does not claim every generated key is hardware-backed. Checked 24 November 2026.
+
+<a id="s09k"></a>
+### S09k — Android Developers: KeyGenParameterSpec
+https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec
+
+Documents EC key generation in Android Keystore, retrieval of the public key from its certificate, and the P-256/secp256r1 plus SHA256withECDSA pattern used by the local manifest attestor. Checked 24 November 2026.
+
+<a id="s09l"></a>
+### S09l — NIST FIPS 186-5: Digital Signature Standard
+https://csrc.nist.gov/pubs/fips/186-5/final
+
+Specifies digital-signature algorithms including ECDSA. The publication page records a 12 May 2025 planning note that issues have been identified for a future revision; the implementation is not claimed to be FIPS-validated. Checked 24 November 2026.

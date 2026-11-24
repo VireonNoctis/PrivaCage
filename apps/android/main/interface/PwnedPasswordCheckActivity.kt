@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
@@ -25,13 +26,17 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import org.privacage.security.AndroidPwnedPasswordDocumentAccess
+import org.privacage.security.AndroidPwnedManifestAttestor
+import org.privacage.security.PwnedPasswordManifestAttestation
 import org.privacage.security.PwnedPasswordExposureResult
 import org.privacage.security.PwnedPasswordExposureStatus
 import org.privacage.security.PwnedPasswordInput
 import org.privacage.security.PwnedPasswordCheckLifecycle
 import org.privacage.security.PwnedPasswordRangeLookup
 import org.privacage.security.PwnedPasswordSafSnapshot
+import java.io.IOException
 import java.io.InterruptedIOException
+import java.nio.charset.StandardCharsets
 import java.lang.ref.WeakReference
 
 class PwnedPasswordCheckActivity : Activity() {
@@ -40,6 +45,8 @@ class PwnedPasswordCheckActivity : Activity() {
     private var worker: Thread? = null
     @Volatile private var providerCancellationSignal: CancellationSignal? = null
     private var checking = false
+    private var exportingAttestation = false
+    private var verifiedManifestSha256: String? = null
     @Volatile private var cancellationRequested = false
     private var selectedManifestUri: Uri? = null
     private var selectedRangeUri: Uri? = null
@@ -50,6 +57,7 @@ class PwnedPasswordCheckActivity : Activity() {
     private lateinit var passwordInput: EditText
     private lateinit var checkButton: Button
     private lateinit var cancelButton: Button
+    private lateinit var attestationButton: Button
     private lateinit var progressIndicator: ProgressBar
     private lateinit var statusText: TextView
 
@@ -111,8 +119,16 @@ class PwnedPasswordCheckActivity : Activity() {
 
         checkButton = controlButton("Check selected snapshot") { runCheck() }.apply { isEnabled = false }
         root.addView(checkButton, matchWidth())
-        cancelButton = controlButton("Cancel check") { cancelCheck() }.apply { visibility = View.GONE }
+        cancelButton = controlButton("Cancel operation") { cancelCheck() }.apply { visibility = View.GONE }
         root.addView(cancelButton, matchWidth())
+        attestationButton = controlButton("Export local manifest attestation") { openAttestationExport() }.apply {
+            visibility = View.GONE
+        }
+        root.addView(attestationButton, matchWidth())
+        root.addView(body(
+            "A local attestation binds only the manifest SHA-256 to a dedicated Android Keystore key. " +
+                "It does not authenticate HIBP or prove every range was checked. Record the public-key fingerprint separately."
+        ))
 
         progressIndicator = ProgressBar(this).apply {
             isIndeterminate = true
@@ -132,6 +148,15 @@ class PwnedPasswordCheckActivity : Activity() {
         root.addView(controlButton("Close check") { finish() }, matchWidth())
 
         attachAvailabilityWatcher(expectedDigestInput)
+        expectedDigestInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                verifiedManifestSha256 = null
+                if (::attestationButton.isInitialized) attestationButton.visibility = View.GONE
+                updateCheckButton()
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
         attachAvailabilityWatcher(passwordInput)
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -139,7 +164,7 @@ class PwnedPasswordCheckActivity : Activity() {
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         PrivaCageDesign.apply(this, root, scroll, statusText)
-        listOf(manifestButton, rangeButton, checkButton, cancelButton).forEach {
+        listOf(manifestButton, rangeButton, checkButton, cancelButton, attestationButton).forEach {
             PrivaCageDesign.styleControl(this, it)
         }
         scroll.addView(root)
@@ -148,6 +173,7 @@ class PwnedPasswordCheckActivity : Activity() {
     }
 
     private fun openDocument(requestCode: Int) {
+        if (checking || exportingAttestation) return
         try {
             startActivityForResult(
                 Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -172,6 +198,17 @@ class PwnedPasswordCheckActivity : Activity() {
             statusText.text = "Select a readable content:// document. No file was imported."
             return
         }
+        if (requestCode == REQUEST_ATTESTATION_EXPORT) {
+            val digest = verifiedManifestSha256
+            if (digest == null) {
+                statusText.text = "ATTESTATION UNAVAILABLE · Run a successful snapshot check before exporting."
+                return
+            }
+            exportAttestation(uri, digest)
+            return
+        }
+        verifiedManifestSha256 = null
+        attestationButton.visibility = View.GONE
         when (requestCode) {
             REQUEST_MANIFEST -> {
                 selectedManifestUri = uri
@@ -200,6 +237,8 @@ class PwnedPasswordCheckActivity : Activity() {
             statusText.text = "Enter the independently retained 64-character manifest SHA-256."
             return
         }
+        verifiedManifestSha256 = null
+        attestationButton.visibility = View.GONE
 
         val password = PwnedPasswordInput.takeAndClear(passwordInput.text) { passwordInput.text.clear() }
         if (password.isEmpty()) {
@@ -212,6 +251,8 @@ class PwnedPasswordCheckActivity : Activity() {
         val operationCancellationSignal = CancellationSignal()
         providerCancellationSignal = operationCancellationSignal
         checking = true
+        expectedDigestInput.isEnabled = false
+        passwordInput.isEnabled = false
         checkButton.isEnabled = false
         cancelButton.isEnabled = true
         cancelButton.visibility = View.VISIBLE
@@ -257,6 +298,8 @@ class PwnedPasswordCheckActivity : Activity() {
                 activity.progressIndicator.visibility = View.GONE
                 activity.cancelButton.visibility = View.GONE
                 activity.cancelButton.isEnabled = true
+                activity.expectedDigestInput.isEnabled = true
+                activity.passwordInput.isEnabled = true
                 activity.updateCheckButton()
                 when {
                     cancelled || activity.cancellationRequested -> activity.statusText.text =
@@ -264,11 +307,130 @@ class PwnedPasswordCheckActivity : Activity() {
                     failure != null -> activity.statusText.text =
                         "CHECK UNAVAILABLE · " + (failure?.message ?: "The selected snapshot could not be verified.") +
                             " No clean/no-match result was produced."
-                    result != null -> activity.renderResult(result!!)
+                    result != null -> {
+                        activity.verifiedManifestSha256 = expectedDigest.uppercase()
+                        activity.attestationButton.visibility = View.VISIBLE
+                        activity.updateCheckButton()
+                        activity.renderResult(result!!)
+                    }
                     else -> activity.statusText.text = "CHECK UNAVAILABLE · No verified result was produced."
                 }
             }
         }, "PrivaCage-offline-password-check")
+        task.isDaemon = true
+        worker = task
+        task.start()
+    }
+
+
+    private fun openAttestationExport() {
+        val digest = verifiedManifestSha256
+        if (digest == null || checking || exportingAttestation) {
+            statusText.text = "ATTESTATION UNAVAILABLE · Complete a successful snapshot check first."
+            return
+        }
+        try {
+            startActivityForResult(
+                Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_TITLE, "pcage-pwned-manifest-attestation.json")
+                    addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                },
+                REQUEST_ATTESTATION_EXPORT
+            )
+        } catch (exception: ActivityNotFoundException) {
+            statusText.text = "Android did not provide a compatible document destination."
+        } catch (exception: SecurityException) {
+            statusText.text = "Android did not allow the attestation destination picker to open."
+        }
+    }
+
+    private fun exportAttestation(destination: Uri, manifestSha256: String) {
+        if (checking || exportingAttestation) return
+        cancellationRequested = false
+        val operationCancellationSignal = CancellationSignal()
+        providerCancellationSignal = operationCancellationSignal
+        exportingAttestation = true
+        checkButton.isEnabled = false
+        attestationButton.isEnabled = false
+        expectedDigestInput.isEnabled = false
+        passwordInput.isEnabled = false
+        cancelButton.isEnabled = true
+        cancelButton.visibility = View.VISIBLE
+        progressIndicator.visibility = View.VISIBLE
+        statusText.text = "Creating a local P-256 attestation and writing it to the selected document provider."
+
+        val appContext = applicationContext
+        val activityReference = WeakReference(this)
+        val handler = mainHandler
+        val task = Thread({
+            var signerFingerprint: String? = null
+            var failure: Exception? = null
+            var cancelled = false
+            var outputBytes: ByteArray? = null
+            try {
+                val attestation = AndroidPwnedManifestAttestor.sign(manifestSha256)
+                signerFingerprint = attestation.signerPublicKeySha256
+                outputBytes = attestation.json.toByteArray(StandardCharsets.UTF_8)
+                if (outputBytes!!.size > PwnedPasswordManifestAttestation.MAX_BYTES) {
+                    throw IOException("The local attestation exceeds the 4 KiB output limit.")
+                }
+                if (Thread.currentThread().isInterrupted || operationCancellationSignal.isCanceled) {
+                    throw InterruptedIOException("Attestation export was cancelled.")
+                }
+                val descriptor = appContext.contentResolver.openFileDescriptor(
+                    destination,
+                    "wt",
+                    operationCancellationSignal
+                ) ?: throw IOException("The selected document provider did not open a writable destination.")
+                ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
+                    output.write(outputBytes!!)
+                    output.flush()
+                }
+                if (Thread.currentThread().isInterrupted || operationCancellationSignal.isCanceled) {
+                    throw InterruptedIOException("Attestation export was cancelled.")
+                }
+            } catch (exception: Exception) {
+                if (exception is InterruptedIOException ||
+                    Thread.currentThread().isInterrupted ||
+                    operationCancellationSignal.isCanceled
+                ) {
+                    cancelled = true
+                } else {
+                    failure = exception
+                }
+            } finally {
+                outputBytes?.fill(0)
+            }
+
+            val activity = activityReference.get() ?: return@Thread
+            handler.post {
+                if (activity.destroyed || activity.isFinishing || activity.isDestroyed) return@post
+                activity.exportingAttestation = false
+                activity.worker = null
+                activity.providerCancellationSignal = null
+                activity.progressIndicator.visibility = View.GONE
+                activity.cancelButton.visibility = View.GONE
+                activity.cancelButton.isEnabled = true
+                activity.expectedDigestInput.isEnabled = true
+                activity.passwordInput.isEnabled = true
+                activity.updateCheckButton()
+                when {
+                    cancelled || activity.cancellationRequested -> activity.statusText.text =
+                        "CANCELLED · The destination may contain an incomplete attestation. Do not trust it; remove it before retrying."
+                    failure != null -> activity.statusText.text =
+                        "ATTESTATION EXPORT FAILED · " + (failure?.message ?: "The selected destination could not be written.") +
+                            " The destination may be empty or incomplete."
+                    signerFingerprint != null -> activity.statusText.text =
+                        "ATTESTATION EXPORTED · Manifest SHA-256: " + manifestSha256.uppercase() +
+                            "\nSigner public-key SHA-256: " + signerFingerprint +
+                            "\nConfirm this fingerprint through a separate trusted channel. The signature does not authenticate HIBP, " +
+                            "prove source completeness/freshness, or show that every range file was checked."
+                    else -> activity.statusText.text = "ATTESTATION EXPORT FAILED · No verified attestation was produced."
+                }
+            }
+        }, "PrivaCage-pwned-attestation-export")
         task.isDaemon = true
         worker = task
         task.start()
@@ -285,7 +447,7 @@ class PwnedPasswordCheckActivity : Activity() {
 
     private fun cancelCheck() {
         requestCancellation(
-            "Cancellation requested. The provider receives an Android cancellation signal, but a provider that ignores it may still delay a blocked read."
+            "Cancellation requested. The provider receives an Android cancellation signal, but a provider that ignores it may still delay a blocked operation."
         )
     }
 
@@ -305,8 +467,12 @@ class PwnedPasswordCheckActivity : Activity() {
     private fun updateCheckButton() {
         if (!::checkButton.isInitialized || !::expectedDigestInput.isInitialized || !::passwordInput.isInitialized) return
         val digestValid = expectedDigestInput.text.toString().trim().matches(Regex("[0-9A-Fa-f]{64}"))
-        checkButton.isEnabled = !checking && selectedManifestUri != null && selectedRangeUri != null &&
+        val busy = checking || exportingAttestation
+        checkButton.isEnabled = !busy && selectedManifestUri != null && selectedRangeUri != null &&
             digestValid && passwordInput.text.isNotEmpty()
+        if (::attestationButton.isInitialized) {
+            attestationButton.isEnabled = !busy && verifiedManifestSha256 != null
+        }
     }
 
     private fun attachAvailabilityWatcher(input: EditText) {
@@ -318,7 +484,7 @@ class PwnedPasswordCheckActivity : Activity() {
     }
 
     override fun onPause() {
-        if (checking) {
+        if (checking || exportingAttestation) {
             requestCancellation(
                 "FOREGROUND LOST · Worker interruption and an Android provider-cancellation signal were requested. A provider that ignores cancellation may still delay cleanup."
             )
@@ -381,5 +547,6 @@ class PwnedPasswordCheckActivity : Activity() {
     companion object {
         private const val REQUEST_MANIFEST = 8101
         private const val REQUEST_RANGE = 8102
+        private const val REQUEST_ATTESTATION_EXPORT = 8103
     }
 }

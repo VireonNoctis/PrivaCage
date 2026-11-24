@@ -28,6 +28,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - A legal workflow implies that a company deleted data when it has not.
 - A user mistakes a bounded Usage Access observation window for a complete app-usage history.
 - A user interprets a legitimate accessibility service, device administrator, notification listener, or VPN as proof of abuse.
+- A user mistakes a self-asserted local manifest-attestation key for HIBP publisher identity or accepts a substituted public-key fingerprint.
 - A missing, stale, truncated, or malformed password range is misreported as a clean result.
 - A malicious, revoked, unstable, or remote SAF document provider returns partial or substituted bytes, or leaves temporary dataset copies behind.
 - A user mistakes a password-hash corpus for an email/account breach database or treats a no-match as proof of password safety.
@@ -52,6 +53,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Require the user's Usage Access grant, inspect only launcher-visible packages, bound app-open queries to the most recent 24 hours, and describe the result as partial rather than a complete usage history.
 - The monitoring-access review is user-triggered, reads only four documented Android settings surfaces, does not persist or upload its results, and presents benign use cases and uncertainty beside each observation.
 - Never disable an accessibility service, administrator, notification listener, or VPN automatically; a settings handoff is not a recommendation to change access.
+- The offline password attestation requires an independently supplied public-key fingerprint and describes the signature as a local-key statement only; it never treats the embedded public key as a publisher identity or proof of dataset completeness. The key has no per-use user-authentication requirement, so code executing in the app process can request signatures; the attestation does not prove the app actually performed the check.
 
 ## Non-goals and limits
 
@@ -93,7 +95,7 @@ The project does not build an authority-access API or maintain a central PrivaCa
 - **Threats:** missing or substituted prefix files, unexpected files, symbolic links, malformed/unsorted suffix records, oversized ranges, post-import file changes, and a replaced manifest.
 - **Current mitigation on PR #26:** the Go verifier requires the complete 1,048,576-file inventory, validates bounded records, hashes each range, writes an unsigned JSONL manifest, and verifies the directory against that manifest plus an independently retained SHA-256. Kotlin validates the full ordered manifest and aggregate totals, then verifies the selected range's size, record count and SHA-256 on the same open channel used for matching. A verified empty range can produce only a snapshot-scoped no-match.
 - **Residual risk:** the manifest is unsigned. If the manifest and its expected digest are both replaced, the verifier cannot authenticate the inventory. It cannot prove HIBP publisher identity, remote completeness, or freshness; a syntactically valid truncated range can be included. The snapshot date is an operator claim. Android checks only the selected range's bytes during a lookup. The SAF adapter does not prove a provider is local or honest; the provider may fetch remote content, revoke access, or change its source between separate opens. The copied snapshot is bounded and digest-checked, but the experimental UI and one-shot SAF flow are present on PR #26; persistent-grant lifecycle and physical-device/provider validation remain outstanding.
-- **Required next control:** test the Kotlin consumer against a user-selected SAF provider, then design a local signing-key custody flow. Any signature must be described as a user-local attestation, not an HIBP publisher signature.
+- **Required next control:** validate the Android Keystore alias lifecycle on physical devices, including key persistence, missing/unusable alias behavior, app-data clear/reinstall, and fingerprint continuity. The current signature remains a local-key statement, not an HIBP publisher signature or proof that the app performed a check.
 
 
 ### Android password-entry and document-provider boundary
