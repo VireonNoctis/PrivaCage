@@ -216,3 +216,43 @@ func runVerifyPwnedAttestation(args []string) int {
 	fmt.Fprintln(os.Stdout, "The signer fingerprint matches the independently supplied trust anchor. This does not authenticate HIBP, prove every range file is complete, or establish a trusted timestamp.")
 	return 0
 }
+
+
+func verifyPwnedBundle(directory, manifestPath, attestationPath, trustedFingerprint string, prefixCount int) (pwnedManifestHeader, string, error) {
+	attestationBytes, err := readPwnedAttestationFile(attestationPath)
+	if err != nil {
+		return pwnedManifestHeader{}, "", err
+	}
+	manifestDigest, signerFingerprint, err := verifyPwnedManifestAttestation(attestationBytes, trustedFingerprint)
+	if err != nil {
+		return pwnedManifestHeader{}, "", err
+	}
+	header, err := verifyPwnedManifest(directory, manifestPath, manifestDigest, prefixCount)
+	if err != nil {
+		return pwnedManifestHeader{}, "", fmt.Errorf("signed manifest or range inventory verification failed: %w", err)
+	}
+	return header, signerFingerprint, nil
+}
+
+func runVerifyPwnedBundle(args []string) int {
+	flags := newFlagSet("verify-pwned-bundle")
+	directory := flags.String("directory", "", "complete local SHA-1 PREFIX.txt range directory")
+	manifestPath := flags.String("manifest", "", "JSONL manifest signed by the local attestation")
+	attestationPath := flags.String("attestation", "", "local manifest attestation JSON file")
+	trustedFingerprint := flags.String("trusted-public-key-sha256", "", "public-key SHA-256 confirmed through a separate trusted channel")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 || *directory == "" || *manifestPath == "" || *attestationPath == "" || *trustedFingerprint == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --directory, --manifest, --attestation and --trusted-public-key-sha256 are required")
+		return 2
+	}
+	header, fingerprint, err := verifyPwnedBundle(*directory, *manifestPath, *attestationPath, *trustedFingerprint, pwnedRangeCount)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Printf("OK: local attestation is valid and all %d range files match the signed manifest\nRecords: %d\nBytes: %d\nSnapshot date claim: %s\nSigner public-key SHA-256: %s\n", header.RangeCount, header.TotalRecords, header.TotalBytes, header.SnapshotDate, fingerprint)
+	fmt.Fprintln(os.Stdout, "This verifies local bundle integrity against the independently trusted signer fingerprint. It does not authenticate HIBP, prove upstream response completeness, or establish source freshness or a trusted date.")
+	return 0
+}

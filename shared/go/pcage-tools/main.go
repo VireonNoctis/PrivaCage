@@ -234,6 +234,8 @@ func run(args []string) int {
 		return runVerifyPwnedManifest(args[1:])
 	case "verify-pwned-attestation":
 		return runVerifyPwnedAttestation(args[1:])
+	case "verify-pwned-bundle":
+		return runVerifyPwnedBundle(args[1:])
 	case "help", "-h", "--help":
 		printUsage(os.Stdout)
 		return 0
@@ -256,7 +258,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  validate-android-privacy Check sensitive permissions and known telemetry SDK/advertising markers in the Android manifest, Gradle files, and app source")
 	fmt.Fprintln(w, "  create-pwned-manifest    Validate all 1,048,576 local SHA-1 ranges and write an unsigned SHA-256 inventory")
 	fmt.Fprintln(w, "  verify-pwned-manifest    Verify range files against a manifest and an independently retained SHA-256")
-	fmt.Fprintln(w, "  verify-pwned-attestation Verify a local P-256 manifest attestation and out-of-band signer fingerprint")
+	fmt.Fprintln(w, "  verify-pwned-attestation Verify a local P-256 manifest signature and exact manifest bytes")
+	fmt.Fprintln(w, "  verify-pwned-bundle      Verify the signature, complete manifest, and all 1,048,576 range files")
 }
 
 func newFlagSet(name string) *flag.FlagSet {
