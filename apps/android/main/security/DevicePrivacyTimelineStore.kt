@@ -298,6 +298,7 @@ internal object DevicePrivacyTimelineStore {
     }
 
     private fun validateText(value: String, label: String) {
+    // These values are rendered in the history view; reject controls and bidi/line formatting that could spoof entries.
         if (value.isBlank() || value.length > MAX_FIELD_CHARS ||
             value.any { character ->
                 val category = Character.getType(character)
