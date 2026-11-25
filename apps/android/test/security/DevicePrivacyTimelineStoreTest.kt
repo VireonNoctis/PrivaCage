@@ -111,6 +111,23 @@ class DevicePrivacyTimelineStoreTest {
     }
 
     @Test
+    fun refusesPayloadBeyond256KiB() {
+        val largePermissions = List(32) { index ->
+            index.toString().padStart(2, '0') + "x".repeat(510)
+        }
+        val records = (0 until 15).map { index ->
+            entry(
+                id = UUID(0L, index.toLong() + 100L).toString(),
+                observedAt = Instant.parse("2026-11-25T09:00:00Z").plusSeconds(index.toLong()),
+                value = snapshot(permissions = largePermissions)
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            DevicePrivacyTimelineStore.encodeRecords(records)
+        }
+    }
+
+    @Test
     fun appendRetainsOnlyTheNewestThirtyObservations() {
         val initial = (0 until DevicePrivacyTimelineStore.MAX_RECORDS).map { index ->
             entry(

@@ -125,8 +125,13 @@ internal object DevicePrivacyTimelineStore {
             .put("schema_version", SCHEMA_VERSION)
             .put("entries", encodedEntries)
             .toString()
-        require(encoded.toByteArray(Charsets.UTF_8).size <= MAX_PLAINTEXT_BYTES) {
-            "Device privacy history exceeds its encrypted storage limit."
+        val encodedBytes = encoded.toByteArray(Charsets.UTF_8)
+        try {
+            require(encodedBytes.size <= MAX_PLAINTEXT_BYTES) {
+                "Device privacy history exceeds its encrypted storage limit."
+            }
+        } finally {
+            encodedBytes.fill(0)
         }
         decodeRecords(encoded)
         return encoded
@@ -134,10 +139,11 @@ internal object DevicePrivacyTimelineStore {
 
     internal fun decodeRecords(encoded: String): List<DevicePrivacyTimelineEntry> {
         val bytes = encoded.toByteArray(Charsets.UTF_8)
-        if (bytes.isEmpty() || bytes.size > MAX_PLAINTEXT_BYTES) {
+        val invalidSize = bytes.isEmpty() || bytes.size > MAX_PLAINTEXT_BYTES
+        bytes.fill(0)
+        if (invalidSize) {
             throw IllegalStateException("Device privacy history is empty or exceeds its size limit.")
         }
-        bytes.fill(0)
         try {
             StrictJsonKeyScanner.validate(encoded, "Device privacy snapshot history")
         } catch (exception: Exception) {

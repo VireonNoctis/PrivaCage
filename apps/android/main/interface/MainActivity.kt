@@ -283,7 +283,7 @@ class MainActivity : Activity() {
             setOnClickListener { refreshDevicePrivacySnapshot() }
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "History is off by default. Save only when you choose; saved observations include the Private DNS provider hostname when Android exposes it and are encrypted locally."
+            text = "History is off by default. Save only when you choose; up to 30 observations (256 KiB maximum) are encrypted locally. Saved values include the Private DNS provider hostname when exposed and PrivaCage's own declared permission list."
             textSize = 12f
             setPadding(0, dp(4), 0, dp(4))
         })
