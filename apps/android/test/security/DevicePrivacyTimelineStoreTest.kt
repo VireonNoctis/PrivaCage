@@ -111,6 +111,11 @@ class DevicePrivacyTimelineStoreTest {
                     listOf(entry(value = snapshot(privateDns = invalidValue)))
                 )
             }
+            assertFailsWith<IllegalStateException> {
+                DevicePrivacyTimelineStore.encodeRecords(
+                    listOf(entry(value = snapshot(permissions = listOf(invalidValue))))
+                )
+            }
         }
     }
 
