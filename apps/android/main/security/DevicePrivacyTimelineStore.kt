@@ -97,7 +97,9 @@ internal object DevicePrivacyTimelineStore {
             observedAt = observedAt,
             snapshot = snapshot
         )
-        return (validated + entry).takeLast(MAX_RECORDS).also(::encodeRecords)
+        val updated = (validated + entry).takeLast(MAX_RECORDS)
+        encodeRecords(updated)
+        return updated
     }
 
     internal fun encodeRecords(records: List<DevicePrivacyTimelineEntry>): String {

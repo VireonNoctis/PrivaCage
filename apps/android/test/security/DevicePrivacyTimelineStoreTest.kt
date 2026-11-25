@@ -70,18 +70,30 @@ class DevicePrivacyTimelineStoreTest {
     @Test
     fun rejectsDuplicateIdsAndInvalidText() {
         val same = entry(id = "00000000-0000-4000-8000-000000000001")
-        val duplicateIds = DevicePrivacyTimelineStore.encodeRecords(listOf(same, same))
+        val single = DevicePrivacyTimelineStore.encodeRecords(listOf(same))
+        val marker = "\"entries\":["
+        val entryStart = single.indexOf(marker) + marker.length
+        val entryEnd = single.lastIndexOf("]}")
+        val entryJson = single.substring(entryStart, entryEnd)
+        val duplicateIds = single.replaceRange(entryStart, entryEnd, "$entryJson,$entryJson")
         assertFailsWith<IllegalStateException> {
             DevicePrivacyTimelineStore.decodeRecords(duplicateIds)
         }
 
         val valid = DevicePrivacyTimelineStore.encodeRecords(listOf(entry()))
         val controlCharacter = valid.replace(
-            "wifi_radio\":\"ON",
-            "wifi_radio\":\"line\\nfeed"
+            "\"wifi_radio\":\"ON\"",
+            "\"wifi_radio\":\"line\\nfeed\""
+        )
+        val overlong = valid.replace(
+            "\"wifi_radio\":\"ON\"",
+            "\"wifi_radio\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\""
         )
         assertFailsWith<IllegalStateException> {
             DevicePrivacyTimelineStore.decodeRecords(controlCharacter)
+        }
+        assertFailsWith<IllegalStateException> {
+            DevicePrivacyTimelineStore.decodeRecords(overlong)
         }
     }
 
@@ -131,7 +143,10 @@ class DevicePrivacyTimelineStoreTest {
     fun detectsChangesToPrivaCagePermissionDeclarationsWithoutClaimingOtherApps() {
         val changes = DevicePrivacyTimelineStore.changesBetween(
             snapshot(),
-            snapshot(permissions = listOf("android.permission.INTERNET — normal; DNS forwarding", "android.permission.CAMERA — dangerous"))
+            snapshot(permissions = listOf(
+                "android.permission.INTERNET — normal; DNS forwarding",
+                "android.permission.CAMERA — dangerous"
+            ))
         )
         assertEquals(1, changes.size)
         assertTrue(changes.single().contains("PrivaCage's own declared-permission inventory"))
