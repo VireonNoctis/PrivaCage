@@ -115,7 +115,7 @@ class DevicePrivacyTimelineStoreTest {
         val largePermissions = List(32) { index ->
             index.toString().padStart(2, '0') + "x".repeat(510)
         }
-        val records = (0 until 15).map { index ->
+        val records = (0 until 16).map { index ->
             entry(
                 id = UUID(0L, index.toLong() + 100L).toString(),
                 observedAt = Instant.parse("2026-11-25T09:00:00Z").plusSeconds(index.toLong()),
