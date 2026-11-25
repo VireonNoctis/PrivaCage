@@ -37,6 +37,14 @@ The main activity registers `TelephonyCallback.DisplayInfoListener` only while i
 
 The separate onboarding activity reads `KeyguardManager.isDeviceSecure()` and `Build.VERSION.SECURITY_PATCH`, and on Android 16+ reads only the overall `AdvancedProtectionManager.isAdvancedProtectionEnabled()` state with the normal `QUERY_ADVANCED_PROTECTION_MODE` permission. It does not infer the state of individual bundled mitigations. User-reviewed SIM, alert, update, USB-debugging, Play Protect, Theft Protection, USB Protection and Intrusion Logging choices are explicitly user reports. The checklist is stored through the existing Android Keystore AES-GCM preference vault with its own key alias/AAD label. Schema-v1 values preserve their five prior choices during the tested JSON migration; new fields start as `NOT_REVIEWED`. Device-level Keystore migration/lifecycle validation remains outstanding. No system setting is changed by PrivaCage.
 
+## Android user-saved device privacy timeline
+
+The experimental stock-Android timeline is an explicit user-saved comparison, not a system event collector. Refreshing the current snapshot does not persist it; only the Save action appends an observation. The snapshot contains the device-wide location-services toggle, Wi-Fi radio enabled state, best-effort Private DNS mode/strict hostname from raw `Settings.Global` keys, current default-network VPN transport, and PrivaCage's own manifest-declared permission names. It does not read coordinates, SSIDs, scan results, other-app permissions, notification contents, sensors or clipboard data. No background polling or upload is performed.
+
+Each observation uses the device clock and is appended in save order. Differences describe only the fields exposed by the two saved snapshots; they cannot identify an actor or the actual time of a setting change. Missing/unrecognized Private DNS values remain unknown, and a VPN transport flag does not identify the provider or prove full-device routing.
+
+History is off by default and encrypted through a dedicated Android Keystore AES-256-GCM preference envelope with purpose-bound AAD. The store is capped at 30 observations / 256 KiB, with 512-character fields, 64 permission entries and 16 KiB total permission text. The oldest record is dropped when the user saves beyond the retention count; Clear removes the stored history. Physical-device/OEM and Keystore lifecycle validation remain outstanding.
+
 ## Proposed layers
 
 1. Platform adapters collect facts exposed by supported OS APIs.

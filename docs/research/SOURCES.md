@@ -581,3 +581,40 @@ Documents EC key generation in Android Keystore, retrieval of the public key fro
 https://csrc.nist.gov/pubs/fips/186-5/final
 
 Specifies digital-signature algorithms including ECDSA. The publication page records a 12 May 2025 planning note that issues have been identified for a future revision; the implementation is not claimed to be FIPS-validated. Checked 24 November 2026.
+
+
+<a id="s73"></a>
+### S73 — Android Developers: LocationManager and location settings
+https://developer.android.com/reference/android/location/LocationManager
+https://developer.android.com/reference/android/provider/Settings.Secure
+
+Documents `LocationManager.isLocationEnabled()` and the legacy `Settings.Secure.LOCATION_MODE` setting. Android marks LOCATION_MODE deprecated from API 28 and recommends LocationManager for current location-enabled state. PrivaCage reads only the enabled/disabled state; it does not request or read location coordinates. Checked 25 November 2026.
+
+
+<a id="s74"></a>
+### S74 — Android Developers: WifiManager
+https://developer.android.com/reference/android/net/wifi/WifiManager
+
+Documents the Wi-Fi enabled-state APIs, including `isWifiEnabled()` / `getWifiState()`. The timeline records only the radio enabled state and does not request SSIDs, configured networks or scan results. Checked 25 November 2026.
+
+
+<a id="s75"></a>
+### S75 — Android Developers: Settings.Global
+https://developer.android.com/reference/android/provider/Settings.Global
+
+Documents that global system settings are readable by applications but are not writable by ordinary applications. PrivaCage reads the raw string keys `private_dns_mode` and `private_dns_specifier`; these key strings are not treated as a stable public SDK contract. Missing or unrecognized values remain unknown, and a configured hostname is not proof that encrypted DNS is active. Checked 25 November 2026.
+
+
+<a id="s76"></a>
+### S76 — Android Developers: ConnectivityManager network capabilities
+https://developer.android.com/reference/android/net/ConnectivityManager
+https://developer.android.com/reference/android/net/NetworkCapabilities
+
+Documents `getActiveNetwork()`, `getNetworkCapabilities()` and the `ACCESS_NETWORK_STATE` requirement. The timeline records only whether the current default network reports VPN transport; it does not identify the VPN owner or prove that all traffic is routed through that VPN. Checked 25 November 2026.
+
+
+<a id="s77"></a>
+### S77 — Android Developers: PackageManager permission metadata
+https://developer.android.com/reference/android/content/pm/PackageManager
+
+Documents `GET_PERMISSIONS` for reading a package's declared permission metadata. PrivaCage applies this to its own package only; the timeline does not inventory other apps or report their runtime grants. Checked 25 November 2026.

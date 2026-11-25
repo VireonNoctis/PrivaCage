@@ -299,7 +299,13 @@ internal object DevicePrivacyTimelineStore {
 
     private fun validateText(value: String, label: String) {
         if (value.isBlank() || value.length > MAX_FIELD_CHARS ||
-            value.any { it.code < 0x20 || it.code == 0x7f }
+            value.any { character ->
+                val category = Character.getType(character)
+                Character.isISOControl(character) ||
+                    category == Character.FORMAT.toInt() ||
+                    category == Character.LINE_SEPARATOR.toInt() ||
+                    category == Character.PARAGRAPH_SEPARATOR.toInt()
+            }
         ) {
             throw IllegalStateException("Device privacy history " + label + " is blank, too long, or contains control characters.")
         }

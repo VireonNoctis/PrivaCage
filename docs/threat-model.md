@@ -14,6 +14,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - Transient Android monitoring-access observations shown on the review screen.
 - Password characters and derived hashes during an explicitly requested local exposure check.
 - User-supplied offline password-hash range files and their claimed snapshot date.
+- User-saved device privacy snapshots, including the exposed Private DNS provider hostname and PrivaCage's own declared-permission list.
 
 ## Threats
 
@@ -32,6 +33,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - A missing, stale, truncated, or malformed password range is misreported as a clean result.
 - A malicious, revoked, unstable, or remote SAF document provider returns partial or substituted bytes, or leaves temporary dataset copies behind.
 - A user mistakes a password-hash corpus for an email/account breach database or treats a no-match as proof of password safety.
+- A user mistakes a manually saved device-settings comparison for a continuous event history, reliable change timestamp, or attribution of who changed a setting.
 
 ## Mitigations
 
@@ -54,6 +56,7 @@ This is a working threat model, not a security audit. Update it as executable co
 - The monitoring-access review is user-triggered, reads only four documented Android settings surfaces, does not persist or upload its results, and presents benign use cases and uncertainty beside each observation.
 - Never disable an accessibility service, administrator, notification listener, or VPN automatically; a settings handoff is not a recommendation to change access.
 - The offline password attestation requires an independently supplied public-key fingerprint and describes the signature as a local-key statement only; it never treats the embedded public key as a publisher identity or proof of dataset completeness. The key has no per-use user-authentication requirement, so code executing in the app process can request signatures; the attestation does not prove the app actually performed the check.
+- The device privacy timeline is off by default, saves only after an explicit user action, uses a separate purpose-bound Keystore AES-GCM envelope, and retains at most 30 records / 256 KiB. It records the device clock and only the exposed fields described in the Android guide; no background feed, actor attribution or other-app permission inventory is claimed.
 
 ## Non-goals and limits
 
@@ -74,6 +77,7 @@ Stalkerware signals must be framed carefully: an enabled accessibility service, 
 | Asset / process | Threat | Mitigation and remaining boundary |
 |---|---|---|
 | Local DNS settings, rights tracker, permission baseline and cellular checklist | Device storage inspection, offline modification, corrupted ciphertext, or an update overwriting unreadable data | Separate AES-256-GCM encrypted preference envelopes, per-purpose Android Keystore keys and authenticated purpose labels. Reads and replacement writes authenticate the existing envelope and validate its schema before use/overwrite; failures preserve the prior ciphertext. This does not protect plaintext in memory, a rooted/compromised OS, unlocked-device access, or every operational preference. |
+| User-saved device privacy timeline | A Private DNS hostname or settings snapshot is exposed from local storage, or a user mistakes a saved comparison for an event feed | A separate Android Keystore AES-256-GCM envelope protects the opt-in history; retention is 30 records / 256 KiB and only explicit Save actions create entries. The timestamp is the device clock. Clear removes the stored envelope. The timeline does not identify who changed a setting, when it changed, or the state of unexposed settings; physical-device/Keystore lifecycle validation remains pending. |
 | Permission audit evidence | Missing metadata is mistaken for a negative result, or an unusually large package inventory consumes excessive resources or is truncated into a false comparison | Unresolved protection levels and missing/misaligned grant flags are reported as unknown. Scanning is capped at 512 declared permissions per package and 50,000 declarations per scan; any cap hit marks the scan incomplete and blocks comparison/baseline replacement. The encrypted snapshot is also checked against the 4 MiB, 2,000-package, 256-dangerous-permission-per-package and name limits before comparison. The prior encrypted baseline is preserved on every incomplete/over-limit path. This still covers only launcher-visible packages and Android-exposed metadata. |
 | Product telemetry | Analytics/crash SDK or custom source code added by a future dependency/change | Strict no-telemetry policy and CI scan across Android Gradle dependencies, main Kotlin/Java/XML source and manifest. Manual review remains necessary for unknown SDKs, hand-written requests, platform/OEM diagnostics and transitive behaviour outside the marker list. |
 | Functional network requests | DNS resolver, relay, reverse proxy or host observes information needed for the feature | Explicit destination selection/confirmation where appropriate; DNS and sync data boundaries are documented. Provider/host policies and logs remain outside the local client. Relay content is encrypted, but metadata is visible. |

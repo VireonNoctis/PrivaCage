@@ -108,6 +108,14 @@ The checklist schema is now version 2. Existing encrypted schema-v1 records are 
 
 The checklist does not request Accessibility, phone-state, cell-location, location, package-inventory or new runtime permissions. It does declare the normal QUERY_ADVANCED_PROTECTION_MODE permission to read Android 16's public overall-mode API; it does not request privileged Intrusion Detection permissions. It does not read ADB state (Android specifies that the public global setting reads as zero for all third-party apps), bootloader state, all-SIM radio state, Play Protect status, Theft Protection state, USB Protection state or carrier SIM-port settings. Settings handoffs remain user-controlled.
 
+## User-saved device privacy timeline (experimental stock Android)
+
+History is off by default; only the explicit Save action appends a snapshot. Refresh is memory-only. Up to 30 observations / 256 KiB are encrypted with a separate Android Keystore AES-256-GCM preference key. Each text field is capped at 512 characters; permission declarations are capped at 64 entries / 16 KiB total.
+
+The snapshot contains only the location-services enabled state, Wi-Fi radio enabled state, best-effort Private DNS mode/strict hostname from raw `Settings.Global` keys, current default-network VPN transport, and PrivaCage's own manifest-declared permission names. It does not read coordinates, SSIDs, Wi-Fi scans, other-app permissions, notification contents, sensors or clipboard data. The Private DNS keys are not treated as a stable public SDK contract; missing or unrecognized values remain unknown. A VPN transport flag does not identify its owner or prove all traffic is tunneled.
+
+Timestamps use the device clock and records are compared in user-save order. The history cannot establish when or who changed a setting. The oldest record is dropped after the 30-record limit; Clear removes the stored envelope. Decrypted values can exist in memory while displayed. No background polling, notification, new permission, network request or upload is added. Physical-device/OEM and Keystore lifecycle validation remain pending.
+
 ## Limits
 
 - A signed checkpoint detects changes to the exported snapshot but cannot prove that unrecorded events never occurred, that the device clock is correct, or that the signer is a particular person. The public-key fingerprint must be trusted independently. Android Keystore hardware backing is device-dependent. Deleting or losing the signing key can leave old checkpoints cryptographically verifiable but no longer anchored to this installation. Checkpoint JSON is not encrypted.
@@ -135,12 +143,14 @@ The checklist does not request Accessibility, phone-state, cell-location, locati
 - Roster-owner key rotation uses a dual-signed transition from the current and replacement owner keys, bound to the relay space and exact next roster revision. Import also requires the full replacement fingerprint to be independently confirmed out of band and the next roster to verify. The replacement private bundle stays in the Android Keystore-protected local record; only the signed transition and public roster are exported. The public handoff package is retained in the protected local record for re-copying, and further owner rotation or recovery replacement/export is blocked until the user acknowledges that every intended peer accepted the new owner and roster. That acknowledgement cannot be independently proven by this client. Relay member credentials may need separate administrator replacement, and a lost old owner key cannot perform this continuity-preserving rotation.
 
 
-## Platform API references checked (3 November 2026)
+## Platform API references checked (25 November 2026)
 
 - Android's [UsageStatsManager API reference](https://developer.android.com/reference/android/app/usage/UsageStatsManager) documents that `queryEvents` requires `PACKAGE_USAGE_STATS` and that usage events are retained by the system for only a few days. PrivaCage requests no app-open observations until the user grants Usage Access in Android Settings and bounds each scan to a recent 24-hour window.
 - Android's [package visibility guide](https://developer.android.com/training/package-visibility) describes the manifest `<queries>` declarations used to discover launcher activities without requesting `QUERY_ALL_PACKAGES`. The resulting inventory remains launcher-visible only.
 - Android's [`SigningInfo` API reference](https://developer.android.com/reference/android/content/pm/SigningInfo) documents the ordered, oldest-to-current signing history for single-signer packages and the separate multiple-signer model. PrivaCage uses that history only when the independent APK signature verifier accepts the file; otherwise lineage remains unavailable.
 
+
+Timeline API references checked 25 November 2026: [LocationManager](https://developer.android.com/reference/android/location/LocationManager) and legacy [Settings.Secure](https://developer.android.com/reference/android/provider/Settings.Secure); [WifiManager](https://developer.android.com/reference/android/net/wifi/WifiManager); [Settings.Global](https://developer.android.com/reference/android/provider/Settings.Global); [ConnectivityManager](https://developer.android.com/reference/android/net/ConnectivityManager) / [NetworkCapabilities](https://developer.android.com/reference/android/net/NetworkCapabilities); and [PackageManager](https://developer.android.com/reference/android/content/pm/PackageManager). `private_dns_mode` and `private_dns_specifier` are read as best-effort raw keys, not stable public SDK constants.
 
 ## Offline Pwned Passwords check (experimental)
 

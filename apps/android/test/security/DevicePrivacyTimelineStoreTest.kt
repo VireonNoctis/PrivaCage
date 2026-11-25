@@ -98,6 +98,23 @@ class DevicePrivacyTimelineStoreTest {
     }
 
     @Test
+    fun rejectsUnicodeControlsAndDirectionalFormattingCharacters() {
+        val invalidValues = listOf(
+            "Strict mode: dns\u0085.example",
+            "Strict mode: dns\u2028.example",
+            "Strict mode: dns\u2029.example",
+            "Strict mode: dns\u202E.example"
+        )
+        invalidValues.forEach { invalidValue ->
+            assertFailsWith<IllegalStateException> {
+                DevicePrivacyTimelineStore.encodeRecords(
+                    listOf(entry(value = snapshot(privateDns = invalidValue)))
+                )
+            }
+        }
+    }
+
+    @Test
     fun refusesMoreThanThirtyRecords() {
         val records = (0..DevicePrivacyTimelineStore.MAX_RECORDS).map { index ->
             entry(
