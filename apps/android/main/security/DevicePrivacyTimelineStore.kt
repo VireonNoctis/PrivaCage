@@ -307,7 +307,7 @@ internal object DevicePrivacyTimelineStore {
                     category == Character.PARAGRAPH_SEPARATOR.toInt()
             }
         ) {
-            throw IllegalStateException("Device privacy history " + label + " is blank, too long, or contains control characters.")
+            throw IllegalStateException("Device privacy history " + label + " is blank, too long, or contains control or display-formatting characters.")
         }
     }
 }
