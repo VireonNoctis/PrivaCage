@@ -282,6 +282,19 @@ class MainActivity : Activity() {
             text = "Refresh device privacy snapshot"
             setOnClickListener { refreshDevicePrivacySnapshot() }
         }, matchWidth())
+        root.addView(TextView(this).apply {
+            text = "History is off by default. Save only when you choose; saved observations include the Private DNS provider hostname when Android exposes it and are encrypted locally."
+            textSize = 12f
+            setPadding(0, dp(4), 0, dp(4))
+        })
+        root.addView(Button(this).apply {
+            text = "Save current snapshot to encrypted history"
+            setOnClickListener { saveDevicePrivacySnapshot() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "View / clear saved snapshots"
+            setOnClickListener { showDevicePrivacyTimeline() }
+        }, matchWidth())
         root.addView(Button(this).apply {
             text = "Audit visible apps' sensitive permissions"
             setOnClickListener {
@@ -2085,6 +2098,58 @@ class MainActivity : Activity() {
 
     private fun refreshDevicePrivacySnapshot() {
         devicePrivacyText.text = DevicePrivacySnapshot.capture(this).render()
+    }
+
+    private fun saveDevicePrivacySnapshot() {
+        try {
+            val snapshot = DevicePrivacySnapshot.capture(this)
+            val records = DevicePrivacyTimelineStore.save(this, snapshot)
+            val saved = records.last()
+            devicePrivacyText.text = snapshot.render() +
+                "\n\nSaved encrypted local observation: " + saved.observedAt +
+                " (" + records.size + "/" + DevicePrivacyTimelineStore.MAX_RECORDS + ")."
+        } catch (exception: Exception) {
+            devicePrivacyText.text = "Could not save the encrypted local snapshot history: " +
+                (exception.message ?: exception.javaClass.simpleName) +
+                ". Existing stored history was not intentionally replaced."
+        }
+    }
+
+    private fun showDevicePrivacyTimeline() {
+        val records = try {
+            DevicePrivacyTimelineStore.read(this)
+        } catch (exception: Exception) {
+            devicePrivacyText.text = "Saved device privacy history could not be read: " +
+                (exception.message ?: exception.javaClass.simpleName) +
+                ". Existing encrypted data was preserved."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Saved device privacy observations")
+            .setMessage(DevicePrivacyTimelineStore.renderHistory(records))
+            .setNegativeButton("Close", null)
+            .setNeutralButton("Clear history") { _, _ -> confirmClearDevicePrivacyTimeline() }
+            .show()
+    }
+
+    private fun confirmClearDevicePrivacyTimeline() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear saved observations?")
+            .setMessage("This removes the encrypted local device-privacy snapshot history from this installation. It does not change Android settings.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear history") { _, _ ->
+                try {
+                    devicePrivacyText.text = if (DevicePrivacyTimelineStore.clear(this)) {
+                        "Saved device privacy snapshot history was cleared. No Android settings were changed."
+                    } else {
+                        "Android did not confirm removal of the saved device privacy history."
+                    }
+                } catch (exception: Exception) {
+                    devicePrivacyText.text = "Could not clear saved device privacy history: " +
+                        (exception.message ?: exception.javaClass.simpleName)
+                }
+            }
+            .show()
     }
 
     private fun chooseMetadataFile() {
