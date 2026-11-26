@@ -618,3 +618,10 @@ Documents `getActiveNetwork()`, `getNetworkCapabilities()` and the `ACCESS_NETWO
 https://developer.android.com/reference/android/content/pm/PackageManager
 
 Documents `GET_PERMISSIONS` for reading a package's declared permission metadata. PrivaCage applies this to its own package only; the timeline does not inventory other apps or report their runtime grants. Checked 25 November 2026.
+
+
+<a id="s78"></a>
+### S78 — Android Developers: Access documents and other files using the Storage Access Framework
+https://developer.android.com/training/data-storage/shared/documents-files
+
+Documents `ACTION_CREATE_DOCUMENT` as a user-selected destination for a new file without broad storage permissions. PrivaCage uses the system picker for the explicit device-privacy timeline export and warns that a selected provider may be cloud-backed. Checked 26 November 2026.

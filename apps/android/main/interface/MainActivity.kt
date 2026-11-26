@@ -89,6 +89,7 @@ class MainActivity : Activity() {
     private var pendingEncryptedBackup: ByteArray? = null
     private var pendingImportBackup: ByteArray? = null
     private var pendingAuditExport: ByteArray? = null
+    private var pendingDevicePrivacyTimelineExport: ByteArray? = null
     private var pendingAuditExportFileName: String? = null
     private var pendingAuditExportIsSignedCheckpoint = false
     private var pendingCheckpointComparisonFirst: ByteArray? = null
@@ -283,7 +284,7 @@ class MainActivity : Activity() {
             setOnClickListener { refreshDevicePrivacySnapshot() }
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "History is off by default. Save only when you choose; up to 30 observations (256 KiB maximum) are encrypted locally. Saved values include the Private DNS provider hostname when exposed and PrivaCage's own declared permission list."
+            text = "History is off by default. Save only when you choose; up to 30 observations (256 KiB maximum) are encrypted locally. Redacted exports always omit Private DNS provider hostnames and record IDs; the JSON file is plaintext and unsigned."
             textSize = 12f
             setPadding(0, dp(4), 0, dp(4))
         })
@@ -294,6 +295,10 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "View / clear saved snapshots"
             setOnClickListener { showDevicePrivacyTimeline() }
+        }, matchWidth())
+        root.addView(Button(this).apply {
+            text = "Export redacted history"
+            setOnClickListener { prepareDevicePrivacyTimelineExport() }
         }, matchWidth())
         root.addView(Button(this).apply {
             text = "Audit visible apps' sensitive permissions"
@@ -1387,6 +1392,7 @@ class MainActivity : Activity() {
             }
             REQUEST_EXPORT_FILE -> writeEncryptedBackup(resultCode, data?.data)
             REQUEST_AUDIT_EXPORT -> writeLocalAuditExport(resultCode, data?.data)
+            REQUEST_DEVICE_PRIVACY_TIMELINE_EXPORT -> writeDevicePrivacyTimelineExport(resultCode, data?.data)
             REQUEST_AUDIT_CHECKPOINT_VERIFY -> verifyAuditCheckpoint(resultCode, data?.data)
             REQUEST_AUDIT_COMPARE_FIRST -> readFirstCheckpointForComparison(resultCode, data?.data)
             REQUEST_AUDIT_COMPARE_SECOND -> compareSelectedCheckpoints(resultCode, data?.data)
@@ -1409,6 +1415,8 @@ class MainActivity : Activity() {
         pendingImportBackup = null
         pendingAuditExport?.fill(0)
         pendingAuditExport = null
+        pendingDevicePrivacyTimelineExport?.fill(0)
+        pendingDevicePrivacyTimelineExport = null
         pendingAuditExportFileName = null
         pendingCheckpointComparisonFirst?.fill(0)
         pendingCheckpointComparisonFirst = null
@@ -2130,6 +2138,96 @@ class MainActivity : Activity() {
             .setNegativeButton("Close", null)
             .setNeutralButton("Clear history") { _, _ -> confirmClearDevicePrivacyTimeline() }
             .show()
+    }
+
+    private fun prepareDevicePrivacyTimelineExport() {
+        val records = try {
+            DevicePrivacyTimelineStore.read(this)
+        } catch (exception: Exception) {
+            devicePrivacyText.text = "Saved device privacy history could not be read for export: " +
+                (exception.message ?: exception.javaClass.simpleName) +
+                ". Existing encrypted data was preserved."
+            return
+        }
+        val prepared = try {
+            DevicePrivacyTimelineExporter.prepare(records)
+        } catch (exception: Exception) {
+            devicePrivacyText.text = "Could not prepare the redacted device privacy history export: " +
+                (exception.message ?: exception.javaClass.simpleName)
+            return
+        }
+
+        pendingDevicePrivacyTimelineExport?.fill(0)
+        pendingDevicePrivacyTimelineExport = prepared.json.toByteArray(StandardCharsets.UTF_8)
+        AlertDialog.Builder(this)
+            .setTitle("Redacted device privacy history export")
+            .setMessage(prepared.previewText)
+            .setNegativeButton("Cancel and discard") { _, _ ->
+                discardPendingDevicePrivacyTimelineExport("Device privacy history export discarded; no file was saved.")
+            }
+            .setPositiveButton("Choose save location") { _, _ ->
+                chooseDevicePrivacyTimelineExportDestination()
+            }
+            .setOnCancelListener {
+                discardPendingDevicePrivacyTimelineExport("Device privacy history export discarded; no file was saved.")
+            }
+            .show()
+    }
+
+    private fun discardPendingDevicePrivacyTimelineExport(message: String) {
+        pendingDevicePrivacyTimelineExport?.fill(0)
+        pendingDevicePrivacyTimelineExport = null
+        devicePrivacyText.text = message
+    }
+
+    private fun chooseDevicePrivacyTimelineExportDestination() {
+        if (pendingDevicePrivacyTimelineExport == null) {
+            devicePrivacyText.text = "The prepared device privacy export is no longer available. Prepare it again."
+            return
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "privacage-device-privacy-history-" + LocalDate.now() + ".json")
+        }
+        try {
+            startActivityForResult(intent, REQUEST_DEVICE_PRIVACY_TIMELINE_EXPORT)
+        } catch (exception: Exception) {
+            discardPendingDevicePrivacyTimelineExport(
+                "Could not open Android's save picker (" + exception.javaClass.simpleName + "). The export was discarded."
+            )
+        }
+    }
+
+    private fun writeDevicePrivacyTimelineExport(resultCode: Int, uri: Uri?) {
+        val bytes = pendingDevicePrivacyTimelineExport
+        pendingDevicePrivacyTimelineExport = null
+        if (resultCode != RESULT_OK || uri == null) {
+            bytes?.fill(0)
+            devicePrivacyText.text = "Device privacy history export cancelled; no file was saved."
+            return
+        }
+        try {
+            val content = bytes ?: throw IOException("The prepared device privacy export is missing.")
+            if (content.size > DevicePrivacyTimelineExporter.MAX_EXPORT_BYTES) {
+                throw IOException("The prepared device privacy export exceeds its size limit.")
+            }
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IOException("The selected document provider could not open the destination.")
+            output.use { stream ->
+                stream.write(content)
+                stream.flush()
+            }
+            devicePrivacyText.text =
+                "Redacted device privacy history export saved. The JSON is plaintext, unsigned and not tamper-evident; the selected provider may sync it."
+        } catch (exception: Exception) {
+            devicePrivacyText.text =
+                "Could not complete the device privacy history export: " +
+                    (exception.message ?: exception.javaClass.simpleName) +
+                    ". The provider may have created a partial file; check the destination before retrying."
+        } finally {
+            bytes?.fill(0)
+        }
     }
 
     private fun confirmClearDevicePrivacyTimeline() {
@@ -4017,6 +4115,7 @@ class MainActivity : Activity() {
         private const val REQUEST_APK_DIFF_BASELINE = 4115
         private const val REQUEST_APK_DIFF_CANDIDATE = 4116
         private const val REQUEST_AUDIT_EXPORT = 4117
+        private const val REQUEST_DEVICE_PRIVACY_TIMELINE_EXPORT = 4123
         private const val REQUEST_AUDIT_CHECKPOINT_VERIFY = 4118
         private const val REQUEST_AUDIT_COMPARE_FIRST = 4121
         private const val REQUEST_AUDIT_COMPARE_SECOND = 4122

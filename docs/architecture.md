@@ -43,6 +43,8 @@ The experimental stock-Android timeline is an explicit user-saved comparison, no
 
 Each observation uses the device clock and is appended in save order. Differences describe only the fields exposed by the two saved snapshots; they cannot identify an actor or the actual time of a setting change. Missing/unrecognized Private DNS values remain unknown, and a VPN transport flag does not identify the provider or prove full-device routing.
 
+A separate explicit export uses `ACTION_CREATE_DOCUMENT` to write a bounded JSON report. It omits local record IDs, always redacts Private DNS provider hostnames, normalizes unrecognized state values, and includes only PrivaCage's own declared permission names. The preview warns that the file is plaintext, unsigned and not tamper-evident and that the chosen provider may sync it. No storage permission or persistent URI grant is added.
+
 History is off by default and encrypted through a dedicated Android Keystore AES-256-GCM preference envelope with purpose-bound AAD. The store is capped at 30 observations / 256 KiB, with 512-character fields, 64 permission entries and 16 KiB total permission text. The oldest record is dropped when the user saves beyond the retention count; Clear removes the stored history. Physical-device/OEM and Keystore lifecycle validation remain outstanding.
 
 ## Proposed layers
