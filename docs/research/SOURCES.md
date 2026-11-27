@@ -625,3 +625,16 @@ Documents `GET_PERMISSIONS` for reading a package's declared permission metadata
 https://developer.android.com/training/data-storage/shared/documents-files
 
 Documents `ACTION_CREATE_DOCUMENT` as a user-selected destination for a new file without broad storage permissions. PrivaCage uses the system picker for the explicit device-privacy timeline export and warns that a selected provider may be cloud-backed. Checked 26 November 2026.
+
+
+<a id="s79"></a>
+### S79 — Android Developers: EditorInfo IME_FLAG_NO_PERSONALIZED_LEARNING
+https://developer.android.com/reference/android/view/inputmethod/EditorInfo#IME_FLAG_NO_PERSONALIZED_LEARNING
+
+Added in API level 26. Requests that an input method not update personalized data such as typing history or a personalized language model from this editor. Android explicitly warns that an IME may ignore the flag; the IME still receives the input needed to provide text entry. Checked 27 November 2026.
+
+<a id="s80"></a>
+### S80 — Android Developers: View Content Capture importance
+https://developer.android.com/reference/android/view/View#IMPORTANT_FOR_CONTENT_CAPTURE_NO
+
+Added in API level 29. `IMPORTANT_FOR_CONTENT_CAPTURE_NO` marks the view as not important for Content Capture, while child views may still be traversed. The password EditText is a leaf view. This is not a guarantee against IME buffers, other system services, or a compromised OS. Checked 27 November 2026.
