@@ -7,6 +7,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Handler
@@ -108,13 +109,18 @@ class PwnedPasswordCheckActivity : Activity() {
         ).apply {
             isSaveEnabled = false
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            imeOptions = PwnedPasswordInput.requestNoPersonalizedLearning(imeOptions)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO)
+            }
             setSingleLine(true)
         }
         root.addView(passwordInput, matchWidth())
         root.addView(body(
-            "The field is not saved in view state or offered to Android autofill. It is cleared before checking " +
-                "and when this screen pauses. Android keyboards/input methods may have their own buffers; PrivaCage " +
-                "cannot guarantee those external buffers are zeroized."
+            "The field is not saved in view state or offered to Android autofill. It requests that the keyboard not " +
+                "personalize from this field and, on Android 10+, is marked not important for Android Content Capture. " +
+                "An input method may ignore the learning request and still receives typed characters; PrivaCage cannot " +
+                "guarantee that keyboard or other system buffers are zeroized."
         ))
 
         checkButton = controlButton("Check selected snapshot") { runCheck() }.apply { isEnabled = false }
