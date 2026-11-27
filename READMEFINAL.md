@@ -38,7 +38,7 @@ The table is intentionally conservative. A unit test proves only the behavior it
 ---
 
 ## Table of Contents
-- [Current implementation status](#current-implementation-status-26-november-2026)
+- [Current implementation status](#current-implementation-status-27-november-2026)
 - [Target feature set and delivery status](#target-feature-set-and-delivery-status)
 - [Target architecture](#target-architecture-not-a-claim-that-each-component-is-shipped)
 - [Historical proposed repo structure](#original-proposed-repo-structure-historical-design-reference)
