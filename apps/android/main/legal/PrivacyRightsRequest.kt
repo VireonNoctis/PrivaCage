@@ -60,8 +60,9 @@ internal data class RightsResponsePlanningDates(
  * Generates a local draft and deadline guidance. It never sends a request, verifies identity,
  * confirms that a controller received a request, or claims the controller deleted data.
  *
- * Deadline-rule source review: 28 November 2026. The consumer-facing California DROP entrypoint
- * was rechecked on 8 November 2026. Deadline calculations are planning aids; applicable law,
+ * CCPA response-period sources rechecked 28 November 2026; UK GDPR source review 27 October 2026.
+ * The consumer-facing California DROP entrypoint was rechecked 8 November 2026. Deadline
+ * calculations are planning aids; applicable law,
  * eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
  */
 object PrivacyRightsRequestBuilder {
@@ -141,7 +142,7 @@ object PrivacyRightsRequestBuilder {
             RightsJurisdiction.CALIFORNIA_CCPA -> if (right == PrivacyRight.OPT_OUT) {
                 "The CPPA says a business must honor a sale/sharing opt-out as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 45-day/90-day planning rule for delete, correct and know requests does not apply to this opt-out path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
             } else {
-                "The CPPA states a 45-calendar-day response period for covered delete, correct and know requests, with up to another 45 days when necessary and after notice. Its FAQ describes confirmation within 10 business days for those specified request types. Verify eligibility, exceptions and current rules. This is not a legal determination."
+                "The CPPA states a 45-calendar-day response period for covered delete, correct and know requests, with up to another 45 days when necessary and after notice. Its FAQ describes confirmation within 10 business days for those specified request types; this tracker does not calculate a separate acknowledgement reminder. Verify eligibility, exceptions and current rules. This is not a legal determination."
             }
             RightsJurisdiction.CALIFORNIA_DROP ->
                 "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
