@@ -55,6 +55,31 @@ class PrivacyRightsRequestBuilderTest {
     }
 
     @Test
+    fun californiaOptOutUsesFifteenBusinessDaysAndNoFortyFiveDayExtension() {
+        val draft = PrivacyRightsRequestBuilder.createDraft(
+            jurisdiction = RightsJurisdiction.CALIFORNIA_CCPA,
+            right = PrivacyRight.OPT_OUT,
+            controllerName = "Example Business",
+            preparedOn = LocalDate.parse("2026-11-28"),
+            receivedOn = LocalDate.parse("2026-10-30"),
+            extensionNoticeRecorded = true
+        )
+
+        assertEquals(LocalDate.parse("2026-11-20"), draft.standardResponseDueOn)
+        assertNull(draft.extendedResponseDueOn)
+        assertTrue(draft.responsePeriodNote.contains("15 business days"))
+        assertTrue(draft.responsePeriodNote.contains("does not account for California state holidays"))
+        assertTrue(draft.responsePeriodNote.contains("does not extend this date"))
+    }
+
+    @Test
+    fun dropDoesNotSupportAnIndividualControllerReceiptDate() {
+        assertFalse(PrivacyRightsRequestBuilder.supportsIndividualReceiptDate(RightsJurisdiction.CALIFORNIA_DROP))
+        assertTrue(PrivacyRightsRequestBuilder.supportsIndividualReceiptDate(RightsJurisdiction.CALIFORNIA_CCPA))
+        assertTrue(PrivacyRightsRequestBuilder.supportsIndividualReceiptDate(RightsJurisdiction.UK_GDPR))
+    }
+
+    @Test
     fun preparationDoesNotPretendToBeSubmissionOrReceipt() {
         val draft = PrivacyRightsRequestBuilder.createDraft(
             jurisdiction = RightsJurisdiction.CALIFORNIA_CCPA,
