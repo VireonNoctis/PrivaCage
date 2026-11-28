@@ -1,6 +1,6 @@
 # 07 — Data Brokers and Data-Subject Rights Engine
 
-**Research status:** regulator/primary-law review; California DROP consumer sources rechecked 8 November 2026. UK/EU and California CCPA deadline research remains dated 25 October 2026.  
+**Research status:** regulator/primary-law review; California DROP consumer sources rechecked 8 November 2026; CCPA right-specific response periods rechecked 28 November 2026. UK/EU deadline research remains dated 25 October 2026.  
 **Decision this note supports:** deliver a useful request workflow without mis-stating the law or falsely claiming deletion.
 
 > This is engineering research, not legal advice. Before release, each jurisdiction template needs review by a qualified person, current source links and a visible eligibility explanation.
@@ -36,15 +36,17 @@ The UK ICO's current guidance states the response period for an erasure request 
 
 ## 3. California CCPA/CPRA: scope, identity and response timelines
 
-The California Privacy Protection Agency's published CCPA text effective 1 January 2026 says covered businesses must respond to delete/correct/know requests within 45 calendar days, with up to an additional 45 days where necessary and notice/explanation are provided; the 2026 rules also specify acknowledgement within 10 business days for covered request types ([S21](SOURCES.md#s21), [S22](SOURCES.md#s22)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
+The CPPA's current FAQ and the CCPA text effective 1 January 2026 distinguish request types. Covered delete, correct and know requests have a 45-calendar-day substantive response period, with up to another 45 calendar days when necessary and after notice; the FAQ describes confirmation within 10 business days for those request types. A sale/sharing opt-out must be honored as soon as feasibly possible and no later than 15 business days after receipt. The 45-day/90-day extension rule does not apply to that opt-out path ([S81](SOURCES.md#s81), [S82](SOURCES.md#s82)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
 
-Therefore:
+Engineering implications:
 
-- Use 45 calendar days as the standard configured deadline where the current applicable CCPA rule supports it, not as a universal privacy-law deadline.
+- Keep the 45-calendar-day plus noticed 45-day extension calculation for covered delete, correct and know requests.
+- Use a separate 15-business-day planning rule for sale/sharing opt-out; do not apply the 45-day extension to it.
+- The current app calculation counts Monday-Friday only and does not model California state holidays or business closures; label it as a planning aid, not a legal determination.
+- The current PrivacyRight model does not yet include the separate right to limit sensitive-personal-information use, which the CPPA also places in the 15-business-day category.
 - Store the law/version and date last reviewed with every template.
-- Include an optional extension event and deadline change, not an automatically extended timer for every company.
 - Add identity verification as a separate workflow; don't equate a successful email delivery with verification.
-- Explain that the request can be denied or partially honored under applicable exceptions.
+- Explain that a request can be denied or partially honored under applicable exceptions.
 - Make the controller and state/jurisdiction assumptions reviewable before the request is sent.
 
 ## 4. California DROP — timely opportunity
