@@ -1,6 +1,6 @@
 # 07 — Data Brokers and Data-Subject Rights Engine
 
-**Research status:** regulator/primary-law review, 25 October 2026  
+**Research status:** regulator/primary-law review; California DROP consumer sources rechecked 8 November 2026; CCPA right-specific response periods rechecked 28 November 2026. UK/EU deadline research remains dated 25 October 2026.  
 **Decision this note supports:** deliver a useful request workflow without mis-stating the law or falsely claiming deletion.
 
 > This is engineering research, not legal advice. Before release, each jurisdiction template needs review by a qualified person, current source links and a visible eligibility explanation.
@@ -36,22 +36,26 @@ The UK ICO's current guidance states the response period for an erasure request 
 
 ## 3. California CCPA/CPRA: scope, identity and response timelines
 
-The California Privacy Protection Agency's published CCPA text effective 1 January 2026 says covered businesses must respond to delete/correct/know requests within 45 calendar days, with up to an additional 45 days where necessary and notice/explanation are provided; the 2026 rules also specify acknowledgement within 10 business days for covered request types ([S21](SOURCES.md#s21), [S22](SOURCES.md#s22)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
+The CPPA's 2026 regulations distinguish three timing paths. Under 11 CCR §7021(a), a business must confirm receipt of a delete, correct or know request no later than 10 business days after receipt (unless already granted or denied). Under §7021(b), the substantive response is due within 45 calendar days of receipt; the regulation says the period begins on the receipt date, so the planning calculation counts that date as day one. Up to another 45 calendar days may be used when necessary and after notice, for a maximum 90-calendar-day period also counted from receipt. Under §7026(f) and §7027(g), sale/sharing opt-outs and right-to-limit requests must be honored as soon as feasibly possible and no later than 15 business days after receipt; the 10-day acknowledgement and 45/90-day response rules do not apply to those paths ([S81](SOURCES.md#s81), [S82](SOURCES.md#s82), [S83](SOURCES.md#s83), [S84](SOURCES.md#s84)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
 
-Therefore:
+Engineering implications:
 
-- Use 45 calendar days as the standard configured deadline where the current applicable CCPA rule supports it, not as a universal privacy-law deadline.
+- Keep the 45-calendar-day plus noticed 45-day extension calculation for covered delete, correct and know requests.
+- Use a separate 15-business-day planning rule for sale/sharing opt-out and the distinct right to limit sensitive-personal-information use; do not apply the 45-day extension to either path.
+- Calculate a separate 10-business-day receipt-confirmation planning date for delete/correct/know requests. Keep acknowledgement status user-reported; a calculated reminder is not proof of receipt.
+- Do not require a verifiable consumer request for sale/sharing opt-out or right-to-limit requests; request only information necessary to direct the request.
+- The app calculation counts Monday-Friday only and does not model California state holidays or business closures; label both business-day dates as planning reminders, not legal determinations.
+- Model the right to limit as its own LIMIT_SENSITIVE value; do not conflate it with sale/sharing opt-out. It applies only when the business uses or discloses sensitive personal information for non-exempt purposes.
 - Store the law/version and date last reviewed with every template.
-- Include an optional extension event and deadline change, not an automatically extended timer for every company.
 - Add identity verification as a separate workflow; don't equate a successful email delivery with verification.
-- Explain that the request can be denied or partially honored under applicable exceptions.
+- Explain that a request can be denied or partially honored under applicable exceptions.
 - Make the controller and state/jurisdiction assumptions reviewable before the request is sent.
 
 ## 4. California DROP — timely opportunity
 
-The California Privacy Protection Agency's DROP material describes a state-run mechanism for consumers to submit a single deletion request to registered data brokers for non-exempt personal information. The framework took effect on 1 January 2026. CPPA materials state that beginning 1 August 2026, data brokers must access DROP at least every 45 days to retrieve and process requests ([S23](SOURCES.md#s23), [S24](SOURCES.md#s24)).
+CalPrivacy's consumer-facing DROP service lets eligible California residents submit one request to registered data brokers for deletion of eligible, non-exempt personal information. The official consumer entrypoint is [privacy.ca.gov/drop](https://privacy.ca.gov/drop/); its page links directly to the service and explains residency eligibility, identity verification, optional information, and data handling. Consumer guidance says brokers began processing requests on 1 August 2026 and must access DROP at least once every 45 days. After initial processing, brokers must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker ([S23](SOURCES.md#s23), [S24](SOURCES.md#s24), [S30](SOURCES.md#s30), [S31](SOURCES.md#s31)). As of November 2026, CalPrivacy says brokers should have completed their initial download/upload cycle. The 45-day broker cycle and 90-day status-update window are not an individual consumer response deadline or a guaranteed outcome.
 
-**Buildable now:** a user-guided “California data broker deletion” workflow that explains the official state mechanism, prepares a checklist, opens the official service, and helps the user track their submission and subsequent statuses.
+**Buildable now:** a user-guided “California data broker deletion” workflow that opens the official consumer DROP landing page, explains California residency eligibility and the user-controlled information disclosure, prepares a checklist, and helps the user record user-reported submission/status milestones. The consumer service is external; PrivaCage does not collect identifiers or submit the request.
 
 **Not yet established by this research:** a public, supported API that permits a third-party app to submit or query DROP requests programmatically. Do not implement an undocumented API, scrape the platform, automate CAPTCHA/identity checks, or promise a one-tap fully automated deletion without verifying official technical terms and an authorized interface.
 
@@ -61,11 +65,11 @@ Suggested records:
 - `mechanism`: `CA-DROP`;
 - `submission_source`: user-confirmed official website;
 - `submitted_at`: set only on user confirmation / imported receipt;
-- `receipt_reference`: encrypted/local if the user wants it retained;
+- `receipt_reference`: not stored by default; for DROP, never collect or store the DROP ID in PrivaCage—the user keeps it private and checks status through the official profile;
 - `broker_outcomes`: unknown unless evidence is supplied;
 - `last_guidance_reviewed`: required.
 
-DROP is complementary to individual company requests, not proof that all data brokers have been covered or all exemptions have been removed.
+DROP is complementary to individual company requests. A broker status such as “record not found” or an exemption is not the same as verified deletion; users must review the official status explanations and may need a separate direct request for first-party data or exempt information. The consumer portal and guidance were rechecked on 8 November 2026.
 
 ## 5. Company registry and request templates
 

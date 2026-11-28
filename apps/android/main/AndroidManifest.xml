@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <package android:name="ch.protonmail.android" />
+        <package android:name="net.thunderbird.android" />
+        <package android:name="me.proton.android.drive" />
+        <package android:name="com.nextcloud.client" />
+        <package android:name="io.ente.photos" />
+        <package android:name="app.organicmaps" />
+        <package android:name="net.osmand" />
+        <package android:name="org.mozilla.firefox" />
+        <package android:name="com.brave.browser" />
+        <package android:name="com.duckduckgo.mobile.android" />
+        <package android:name="org.schabi.newpipe" />
+        <package android:name="com.github.libretube" />
+        <package android:name="ws.xsoh.etar" />
+        <package android:name="me.proton.android.calendar" />
+        <package android:name="net.cozic.joplin" />
+        <package android:name="com.menny.android.anysoftkeyboard" />
+        <package android:name="com.beemdevelopment.aegis" />
+        <package android:name="org.fossify.contacts" />
+        <package android:name="org.fdroid.fdroid" />
+        <package android:name="com.aurora.store" />
+        <package android:name="org.thoughtcrime.securesms" />
+        <package android:name="chat.simplex.app" />
+        <package android:name="org.jitsi.meet" />
+        <package android:name="com.x8bit.bitwarden" />
+        <package android:name="com.kunzisoft.keepass.free" />
+        <package android:name="com.nononsenseapps.feeder" />
+        <package android:name="com.bnyro.translate" />
+        <package android:name="com.collabora.libreoffice" />
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.google.android.gsf" />
+        <package android:name="com.android.vending" />
+    </queries>
+    <application android:allowBackup="false" android:label="PrivaCage Experimental" android:supportsRtl="true"
+        android:theme="@style/PrivaCageTheme">
+        <profileable android:shell="true" tools:targetApi="29" />
+        <activity android:name=".AppAlternativesActivity" android:exported="false" />
+        <activity android:name=".AppPolicyReviewActivity" android:exported="false" />
+        <activity android:name=".MonitoringAccessReviewActivity" android:exported="false" />
+        <activity android:name=".PwnedPasswordCheckActivity" android:exported="false" />
+        <activity android:name=".CellularSecurityOnboardingActivity" android:exported="false" />
+        <activity android:name=".LegalPrivacyActivity" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service android:name=".PrivacyDnsVpnService" android:exported="true"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="systemExempted">
+            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
+        </service>
+    </application>
+</manifest>

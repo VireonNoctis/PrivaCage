@@ -17,27 +17,47 @@ fi
 
 git worktree add --detach "$BASELINE" "$PERFORMANCE_BASELINE_SHA"
 
-# The pre-optimization commit intentionally lacks benchmark-only files. Copy the
-# identical harness/configuration into it while keeping the code under test pinned
-# to the baseline commit.
 copy_into_baseline() {
     local path="$1"
     mkdir -p "$BASELINE/$(dirname "$path")"
     cp "$ROOT/$path" "$BASELINE/$path"
 }
 
-copy_into_baseline "android-core/build.gradle.kts"
-copy_into_baseline "android-core/src/test/kotlin/org/privacage/dns/DnsPerformanceBenchmarkTest.kt"
-copy_into_baseline "shared/rust/tracker-intelligence/Cargo.toml"
-copy_into_baseline "shared/rust/tracker-intelligence/benches/apk_scan.rs"
-copy_into_baseline "android-app/settings.gradle.kts"
-copy_into_baseline "android-app/gradle.properties"
-copy_into_baseline "android-app/app/build.gradle.kts"
-copy_into_baseline "android-app/app/src/main/AndroidManifest.xml"
+# Install the current flat app/build harness into the historical worktree.
+copy_into_baseline "apps/android/settings.gradle.kts"
+copy_into_baseline "apps/android/gradle.properties"
+copy_into_baseline "apps/android/build.gradle.kts"
+copy_into_baseline "apps/android/main/AndroidManifest.xml"
+copy_into_baseline "apps/android/test/build.gradle.kts"
+copy_into_baseline "apps/android/test/AndroidManifest.xml"
+copy_into_baseline "apps/android/test/benchmark/PrivaCageStartupBenchmark.kt"
+copy_into_baseline "apps/android/test/dns/DnsPerformanceBenchmarkTest.kt"
+mkdir -p "$BASELINE/apps/android/main/res"
+cp -R "$ROOT/apps/android/main/res/." "$BASELINE/apps/android/main/res/"
 
-mkdir -p "$BASELINE/android-app/performance-macrobenchmark"
-cp -R "$ROOT/android-app/performance-macrobenchmark/." \
-    "$BASELINE/android-app/performance-macrobenchmark/"
+# The baseline predates the flat app layout. Re-home its original app and
+# Kotlin/JVM engine source files without copying candidate implementation.
+LEGACY_APP="$BASELINE/android-app/app/src/main/kotlin/org/privacage/android"
+LEGACY_CORE="$BASELINE/android-core/src/main/kotlin/org/privacage"
+if [[ ! -d "$LEGACY_APP" || ! -d "$LEGACY_CORE" ]]; then
+    echo "Historical Android application/core sources were not found in the baseline worktree." >&2
+    exit 1
+fi
+
+mkdir -p "$BASELINE/apps/android/main/interface" "$BASELINE/apps/android/main/sync"
+find "$LEGACY_APP" -maxdepth 1 -type f -name '*.kt' -exec cp {} "$BASELINE/apps/android/main/interface/" \;
+if [[ -d "$LEGACY_APP/sync" ]]; then
+    find "$LEGACY_APP/sync" -maxdepth 1 -type f -name '*.kt' -exec cp {} "$BASELINE/apps/android/main/sync/" \;
+fi
+
+for feature in audit crypto dns metadata; do
+    source_dir="$LEGACY_CORE/$feature"
+    destination="$BASELINE/apps/android/main/$feature"
+    if [[ -d "$source_dir" ]]; then
+        mkdir -p "$destination"
+        find "$source_dir" -maxdepth 1 -type f -name '*.kt' -exec cp {} "$destination/" \;
+    fi
+done
 
 echo "Baseline worktree: $BASELINE"
 echo "Baseline commit: $PERFORMANCE_BASELINE_SHA"

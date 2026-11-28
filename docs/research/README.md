@@ -1,6 +1,7 @@
 # PrivaCage Research Library
 
 **Research baseline:** 25 October 2026  
+**Most recent source review:** 14 November 2026 (PrivacySentry assessment)  
 **Purpose:** turn the PrivaCage concept into a technically honest, evidence-backed privacy roadmap.
 
 This library is deliberately not a claim that every described capability is already implemented. It separates platform facts, engineering conclusions, candidate features, and unresolved questions. Each research note should be reviewed when operating-system behavior, law, or source material changes.
@@ -22,7 +23,10 @@ This library is deliberately not a claim that every described capability is alre
 13. [Verification plan](13-verification-plan.md) — tests, evidence requirements, acceptance criteria, and adversarial review.
 14. [Assumption audit](14-assumption-audit.md) — high-impact claims in the initial idea that need rewording or gating.
 15. [Android local-history encryption](15-android-local-history-encryption.md) — encrypted DNS-history storage, migration behavior, failure cases, and the device-validation checklist.
-16. [Sources](SOURCES.md) — annotated source register with stable links.
+16. [Android device and application security risk register](16-android-device-security-risk-register.md) — update lag, Verified Boot, screen lock, special access, sideloading, radio risks, debugging, wireless, components and realistic stock-app coverage.
+17. [Offline password exposure lookup](17-offline-password-exposure.md) — official HIBP corpus scope, downloader format, local-only matching and account-breach limitations.
+18. [PrivacySentry assessment](18-privacy-sentry-assessment.md) — Android build-time ASM instrumentation, coverage boundaries, toolchain compatibility and why it is not a whole-device monitor.
+19. [Sources](SOURCES.md) — annotated source register with stable links.
 
 ## Evidence labels
 
@@ -54,4 +58,4 @@ The first useful release should prioritize Android APK inspection, local VPN-bas
 
 ## Source maintenance
 
-The sources were checked on 25 October 2026. The dates shown refer to source publication/effective status where available, not a promise that the linked page will remain unchanged. Before a legal template or OS-specific implementation ships, re-open the current official source and add a review date to the corresponding implementation issue.
+The original research sources were checked on 25 October 2026; the PrivacySentry assessment's repository, license and toolchain sources were re-opened on 14 November 2026. The dates shown refer to source publication/effective status where available, not a promise that the linked page will remain unchanged. Before a legal template or OS-specific implementation ships, re-open the current official source and add a review date to the corresponding implementation issue.

@@ -1,0 +1,5 @@
+{"type":"pcage-pwned-password-ranges","version":1,"source":"HIBP-Pwned-Passwords","hash":"SHA-1","snapshot_date":"2026-11-19","generated_at":"2026-11-19T10:00:00Z","range_count":4,"total_bytes":193,"total_records":5}
+{"prefix":"00000","size":118,"records":3,"sha256":"73419B636F39B3F6FE1BCD2393CE03B61959E7560288B43C12207E5A5BC7D768"}
+{"prefix":"00001","size":0,"records":0,"sha256":"E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"}
+{"prefix":"00002","size":37,"records":1,"sha256":"1599588D1ED3F4E56D900A8F6827A8159682E3178F1D9792C12762766DE5897D"}
+{"prefix":"00003","size":38,"records":1,"sha256":"DC3E04855C58CFA99E610745D52E96DB092FA1375325AA44745605CB15CA1E79"}

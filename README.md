@@ -13,6 +13,8 @@ PrivaCage is an open-source, local-first privacy auditing project. It combines e
 
 PrivaCage is **not** an anonymity product or a universal monitoring agent. Ordinary apps cannot reliably inspect every other app, override all OS permissions, decrypt arbitrary application traffic, or control firmware and manufacturer services. Those boundaries are part of the design—not fine print.
 
+> **Project status: EXPERIMENTAL — Android 0.2.0-experimental.** Treat this build as a development/evaluation release, not a production security product. New platform checks require physical-device and OEM validation. The cellular warning is informational: it cannot disable 2G, identify false base stations, or inspect the modem's encryption state.
+
 ## Contents
 
 - [Project status](#project-status)
@@ -42,18 +44,22 @@ Features do not all have the same maturity. A coded path is not the same as a te
 | Android VPN adapter | Early implementation; device validation pending | Routes only the configured virtual IPv4/IPv6 DNS endpoints, protects upstream sockets, supports optional DNS-over-TLS, and reports aggregate counters. It is not a general traffic VPN. |
 | In-app tracker list | Bundled catalogue and explicit import | Evidence and lifecycle status are inspectable. Only active domain indicators can be added to the rule editor; the user must save the resulting rules. |
 | APK static audit | Local static inspection | Reports package/version/target SDK, requested permissions, exported components, SHA-256, signer metadata, APK signature integrity and bounded DEX string matches. |
-| Permission audit | Launcher-visible inventory + local drift baseline | Compares dangerous-permission declarations/grant flags between complete scans. Does not claim to see every installed/system package or live permission use. |
+| Permission audit | Launcher-visible inventory + local drift baseline | Compares dangerous-permission declarations/grant flags only on complete scans. PR #26 caps scans at 512 declared permissions per package and 50,000 per scan; over-limit scans do not compare or replace the encrypted baseline. Exact head `3d73afd` passed all nine workflow runs; physical-device validation remains pending. No claim to see every installed/system package or live permission use. |
 | Encrypted profile transfer | Android implementation + shared format | PCAGE01 passphrase-encrypted profile files use Argon2id and AES-256-GCM. This protects file contents but does not authenticate the sender. |
 | E2EE sync | Rust protocol/relay and Android integration | Uses device identity, signed trust-roster state and encrypted payloads. Physical-device lifecycle, recovery and end-to-end integration still require validation. |
 | Metadata inspection/scrubbing | Rust core + Android UI | Handles JPEG, PNG and WebP with bounded parsing and output verification; it is not a universal metadata or visual-content anonymizer. |
 | Signed audit checkpoint comparison | Android + Web, local-only | Verifies both signatures, payload digests and record chains before comparing same-key, same-scope hash sequences. It cannot establish identity, trusted time or event completeness. |
-| Privacy-rights drafts | Android local workflow | Produces user-reviewed UK GDPR / California CCPA drafts and a user-guided DROP checklist. Nothing is sent automatically; legal review is required before release. |
+| Privacy-rights drafts | Android local workflow | User-reviewed UK GDPR / California CCPA drafts and a user-guided DROP checklist. CCPA sale/sharing opt-out uses a 15-business-day weekday-only planning reminder; delete/correct/know use 45 calendar days with a user-recorded extension. California holidays, separate 10-business-day acknowledgement reminders, and the distinct right to limit are not modeled. Nothing is sent automatically; legal review is required before release. |
+| Offline password exposure core | **Partial; Go full-range inventory verifier, Kotlin full-manifest/selected-range verifier, one-shot Android SAF snapshot adapter, experimental Android check screen, local P-256 manifest attestation, and portable Go bundle verifier on open PR #26; code-bearing head f00eabe1 passed all nine workflows on 24 November 2026; 27 November password-input privacy hardening added on PR #26 with exact-head CI pending; device validation pending; not merged** | The Go `verify-pwned-bundle` command verifies the attestation against an independently supplied signer fingerprint, then validates the exact signed manifest and every range file. The signature binds only the manifest digest; it does not authenticate HIBP, prove upstream completeness/freshness, establish trusted time, or prove the app performed a check. The JSONL manifest remains unsigned. Android Keystore hardware backing and lifecycle, physical-device/DocumentProvider behavior, and account/email breach lookup remain unverified or unimplemented. The password editor requests no personalized IME learning and is marked not important for Android Content Capture on API 29+; these controls are advisory and do not zeroize external IME/system buffers. The performance benchmark was skipped because the runner did not expose readable/writable `/dev/kvm`; no performance measurements were collected. |
 | App policy review queue | Implemented on Android; device verification pending | New launcher-visible apps detected on resume; optional app-open observations require Usage Access and are bounded to the recent 24-hour window. The user saves policy URLs, opens them in the browser and records review status; PrivaCage does not fetch or upload policy text. |
-| Monitoring-access review | First stock-Android implementation on PR #25; implementation head `6677751` passed all five workflow runs; performance measurement was skipped because the hosted runner lacked accessible `/dev/kvm`; physical-device/OEM validation pending. Subsequent documentation-only updates are validated separately. | User-triggered, local-only review of Android-reported accessibility services, active device administrators, best-effort notification-listener setting data and VPN transport on the current default network. Missing listener-setting data is unavailable, not an empty result. It is not a stalkerware diagnosis and does not identify intent or VPN ownership. |
-| Selected sensitive-store encryption | Android implementation; device verification pending | Separate Android Keystore AES-GCM stores protect selected DNS, rights, permission-baseline and app-review data; not every operational preference or exported checkpoint is encrypted. |
+| Monitoring-access review | Implemented on main through PR #25 merge commit `9853b65`; implementation head `6677751` passed all five workflow runs; performance measurement was skipped because the hosted runner lacked accessible `/dev/kvm`; physical-device/OEM validation pending. | User-triggered, local-only review of Android-reported accessibility services, active device administrators, best-effort notification-listener setting data and VPN transport on the current default network. Missing listener-setting data is unavailable, not an empty result. It is not a stalkerware diagnosis and does not identify intent or VPN ownership. |
+| User-saved device privacy timeline | Partial on open PR #26; redacted JSON export added 26 November 2026; code-bearing head 2682205 and documentation head a24f642 passed all nine workflows; physical-device/OEM and Keystore lifecycle validation pending | Opt-in snapshots are saved only after a user action, encrypted locally with a dedicated Android Keystore key, and capped at 30 records / 256 KiB. The explicit export omits local record IDs and always redacts Private DNS provider hostnames; it includes only PrivaCage's own declared permission names. Exported JSON is plaintext, unsigned and not tamper-evident, and the selected provider may sync it. It is not a background event feed and does not identify who changed a setting or when. |
+| Cellular downgrade warning | Experimental on open PR #26; exact head `3d73afd` passed all nine workflow runs; performance measurement skipped because hosted emulator acceleration was unavailable; physical-device/OEM/carrier validation pending | While PrivaCage is open, Android 12+ `TelephonyCallback.DisplayInfoListener` reports the packet-data network type for the default subscription; GSM 2G and legacy 2G-class types are warnings, not proof of a false base station. The check cannot read cipher state, cover every SIM/voice network, or disable 2G. Native Android settings remain the enforcement path. |
+| Cellular security onboarding | Experimental on open PR #26; exact head `3d73afd` passed all nine workflow runs; physical-device/OEM and Keystore lifecycle/migration validation pending | On Android 16+ where exposed, directly reads overall Advanced Protection Mode status via the Android API and a normal install-time permission. User-reported items cover per-SIM 2G protection, native unencrypted-network alerts, updates, USB debugging, Play Protect, Theft Protection, USB Protection and optional Intrusion Logging. Also displays patch date and secure-lock signals. Version-1 choices migrate without reset; manual confirmations are not OS verification or a security score. |
+| Selected sensitive-store encryption | Android implementation; device verification pending | Separate Android Keystore AES-GCM stores protect selected DNS, rights, permission-baseline, cellular-checklist, app-review and opt-in device-timeline data; not every operational preference or exported checkpoint is encrypted. PR #26 adds authenticate-and-schema-validate-before-replacement for existing ciphertext; exact head `3d73afd` passed all nine workflow runs; device Keystore lifecycle validation remains pending. |
 | Alternative-app picker | 29 curated options and local queue | Lets users select replacements, choose an available store/project source, and open the queue one item at a time. Download and install stay with that source and Android. |
 | Windows privacy tooling | Local Go auditor + reversible policy CLI | Read-only audit and documented, allowlisted policy changes with explicit confirmation, UAC, protected backup, verification and restore. Network isolation is separate and disruptive. |
-| Web console | Svelte 5 + TypeScript, Rust/Axum API | Displays tracker intelligence. It is not yet a live-device event ingestion dashboard. |
+| Web console | Svelte 5 + TypeScript, Rust/Axum API | Static console with branded 404 handling, evidence-backed tracker views, and per-client API rate limiting. It is not a live-device event ingestion dashboard. |
 | iOS | Planned / constrained | Must use public APIs and approved NetworkExtension capabilities; an ordinary iOS app cannot inspect other apps' binaries or override their permissions. |
 
 ## Design language
@@ -72,6 +78,9 @@ The Android app and web console use a strict black-and-white interface, monospac
 - Local metadata inspection and separate cleaned copies for supported image formats.
 - A local encrypted app-policy review queue for launcher-visible package changes; optional app-open observations require Usage Access and use a bounded recent 24-hour window.
 - A read-only, on-device status review for three named Google service/store packages, with handoff to Android's own app-info settings; it does not force-disable packages.
+- A local encrypted Android cellular/security checklist with user-reported SIM 2G, native alert, update, USB-debugging and Play Protect reviews; direct patch-date and secure-lock signals remain separate from user confirmations.
+- An opt-in, user-saved Android device privacy timeline with encrypted local history and an explicit redacted JSON export; exports omit record IDs and Private DNS provider hostnames, remain plaintext/unsigned, and are not a continuous device event feed.
+- A partial local-only Pwned Passwords implementation on PR #26: Kotlin checks one supplied range; Go validates the full 1,048,576-file inventory and writes/verifies an unsigned JSONL manifest. Android can export a separate P-256 local attestation, and the portable `verify-pwned-bundle` command verifies that signature against an independently trusted fingerprint before checking the exact manifest and every range file. This does not authenticate HIBP or prove source completeness/freshness. The Android manifest consumer, one-shot SAF snapshot and experimental screen remain unmerged and require physical-device/provider validation.
 - Windows baseline reports and policy changes that can be verified and restored.
 
 ### Principles
@@ -86,7 +95,7 @@ The Android app and web console use a strict black-and-white interface, monospac
 
 ## Android DNS policy and packet engine
 
-The DNS engine is in `android-core/`; the Android VPN adapter is in `android-app/`.
+The Android DNS policy engine, packet codecs, VPN adapter, audit models, cryptography, metadata and rights modules live together under `apps/android/main/<feature>/`, with matching tests under `apps/android/test/<feature>/`.
 
 ### What it does
 
@@ -109,7 +118,7 @@ The Android service routes only its virtual DNS endpoints, not all IP traffic. U
 - The engine does not reliably attribute every DNS query to its originating app.
 - Routing, revocation, lifecycle, OEM differences and resolver behavior still require emulator and physical-device validation. Unit tests cannot establish device-level coverage.
 
-Implementation notes and test commands are in [the Android core README](android-core/README.md) and [architecture guide](docs/architecture.md).
+Implementation notes and test commands are in [the Android DNS engine notes](apps/android/DNS.md) and [architecture guide](docs/architecture.md).
 
 ## Tracker intelligence
 
@@ -138,6 +147,15 @@ go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
 go -C shared/go/pcage-tools run . validate-app-alternatives
 go -C shared/go/pcage-tools run . app-alternatives-report --max-age-days 180 --fail-stale --format json
 go -C shared/go/pcage-tools run . tracker-report --format markdown
+
+# Full local Pwned Passwords range inventory (the manifest is unsigned)
+go -C shared/go/pcage-tools run . create-pwned-manifest --directory /path/to/pwned-passwords --manifest /path/out/ranges.jsonl --snapshot-date YYYY-MM-DD
+# Keep the printed digest separately, then verify the directory against it
+go -C shared/go/pcage-tools run . verify-pwned-manifest --directory /path/to/pwned-passwords --manifest /path/out/ranges.jsonl --expected-sha256 "$DIGEST_FROM_SEPARATE_RECORD"
+# Verify a local attestation; supply the signer fingerprint through a separate trusted channel
+go -C shared/go/pcage-tools run . verify-pwned-attestation --attestation /path/to/attestation.json --manifest /path/to/ranges.jsonl --trusted-public-key-sha256 "$TRUSTED_FINGERPRINT"
+# Verify the signed manifest and all 1,048,576 range files as one local bundle
+go -C shared/go/pcage-tools run . verify-pwned-bundle --directory /path/to/pwned-passwords --manifest /path/to/ranges.jsonl --attestation /path/to/attestation.json --trusted-public-key-sha256 "$TRUSTED_FINGERPRINT"
 ```
 
 A hosts feed or a match count is not proof of tracking behavior. Candidate feed updates should be staged, sourced, reviewed and diffed before they become active rules.
@@ -152,7 +170,7 @@ It does not install or execute the APK, upload it, or dynamically observe its be
 
 ### Permission audit
 
-The local audit lists dangerous permissions declared by launcher-visible apps and Android's exposed grant flags. A local baseline can compare subsequent complete scans and report newly requested permissions, newly granted permissions, revoked grants, and permissions no longer requested. Packages that disappear from the scan are reported separately; their disappearance is not misrepresented as permission revocation.
+The local audit lists dangerous permissions declared by launcher-visible apps and Android's exposed grant flags. A local baseline can compare subsequent complete scans and report newly requested permissions, newly granted permissions, revoked grants, and permissions no longer requested. Packages that disappear from the scan are reported separately; their disappearance is not misrepresented as permission revocation. The open PR #26 branch adds processing caps of 512 declared permissions per package and 50,000 declarations per scan. If either cap is reached, that branch marks the inventory incomplete and does not compare or replace the existing encrypted baseline. Exact-head CI passed on `3d73afd`; these additional scan caps are not yet part of main. The baseline itself remains bounded to 4 MiB, 2,000 packages and 256 dangerous permissions per package.
 
 The audit does not use `QUERY_ALL_PACKAGES` to claim a complete device inventory. Android package visibility, work profiles, manufacturer services and privileged/headless components can limit what is visible. Permission declarations do not prove live camera, microphone or sensor use, and the grant inventory is not a network-traffic monitor.
 
@@ -194,7 +212,7 @@ This is **not** a Google-services disable switch, a network monitor, or proof th
 
 ## Windows privacy audit and hardening
 
-The Go tool under `windows/pcage-audit/` provides a read-only local audit and a reversible policy-hardening workflow. The read-only report covers the three firewall profiles, selected diagnostic-data and Windows App Privacy policies, adapter DNS resolver addresses, and current-user WinINET proxy-state flags. It does not print proxy hostnames/PAC URLs or claim that resolver transport is encrypted. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
+The Go tool under `apps/windows/main/` provides a read-only local audit and a reversible policy-hardening workflow. The read-only report covers the three firewall profiles, selected diagnostic-data and Windows App Privacy policies, adapter DNS resolver addresses, and current-user WinINET proxy-state flags. It does not print proxy hostnames/PAC URLs or claim that resolver transport is encrypted. Policy changes are limited to an allowlist and require explicit confirmation and UAC elevation; prior values are backed up under protected permissions, writes are checked, and restore verifies the recovered state.
 
 ### Profiles and policy boundaries
 
@@ -204,38 +222,42 @@ The Go tool under `windows/pcage-audit/` provides a read-only local audit and a 
 
 Microsoft documents that the “Diagnostic data off” value for the described policy is supported only on specified Enterprise, Education and Server editions; the extra diagnostic-log and dump controls apply to Windows 11 and Windows Server 2022. Local policy values can be overridden by domain policy or MDM. None of these settings guarantees zero Windows communications or controls all desktop applications, services, drivers, firmware or external network paths.
 
-Read the [Windows tool guide](windows/pcage-audit/README.md) and [Windows privacy research](docs/research-notes/windows-privacy-hardening-2026-10-25.md) before applying changes. The separately pinned [Win11Debloat component](windows/Win11Debloat/) is user-selected software and is not covered by the audit CLI's rollback transaction.
+Read the [Windows tool guide](apps/windows/README.md) and [Windows privacy research](docs/research-notes/windows-privacy-hardening-2026-10-25.md) before applying changes. The separately pinned [Win11Debloat component](apps/windows/main/Win11Debloat/) is user-selected software and is not covered by the audit CLI's rollback transaction.
 
 ## Web and iOS
 
-- `web/` is a Svelte 5 + TypeScript static client.
-- `web-backend/` is a Rust/Axum API serving validated tracker catalogue data.
+- `apps/web/` is a Svelte 5 + TypeScript static client with a custom branded 404 page for unknown website routes.
+- `web-backend/` is a Rust/Axum API serving validated tracker catalogue data, JSON 404 responses and a bounded per-client-IP sliding-window rate limit.
+- The default API limit is 120 requests per IP per 60 seconds. The in-memory limit is per process; it is not a distributed DDoS control. Reverse-proxy client IPs are trusted only when the proxy peer is explicitly listed in `PRIVACAGE_TRUSTED_PROXY_IPS` and overwrites `X-Real-IP`.
 - The web client does not invent device events or claim that a tracker was observed on a user's device. Live-device pairing and event ingestion are not yet connected.
+- The website remains Svelte 5. Next.js/TSX is a React framework and is not mixed into the existing Svelte component tree.
 - iOS work must stay within Apple's sandbox and approved NetworkExtension entitlements. An ordinary iOS app cannot scan other apps' executable binaries or override their permissions.
 
 ## Architecture and repository map
 
 ```text
 .
-├── android-core/                  # Kotlin/JVM DNS policy, packet engine and audit models
-├── android-app/                   # Android UI, VPN adapter, APK/permission audit
+├── apps/
+│   ├── android/
+│   │   ├── main/                  # Direct feature folders: API, audit, crypto, dns, interface, etc.
+│   │   └── test/                  # Matching direct feature test folders and benchmarks
+│   ├── ios/
+│   │   ├── main/                  # iOS capability and implementation boundary
+│   │   └── test/                  # iOS acceptance criteria; no test target yet
+│   ├── web/
+│   │   ├── main/                  # Direct API, audit and interface feature folders
+│   │   └── test/                  # Matching direct feature test folders
+│   └── windows/
+│       ├── main/                  # Go CLI, package unit tests and pinned Win11Debloat
+│       └── test/                  # Go black-box integration tests
 ├── shared/
 │   ├── tracker-db/                # canonical evidence-backed tracker catalogue
 │   ├── app-alternatives/          # reviewed alternative-app catalogue
 │   ├── go/pcage-tools/            # tracker and Android privacy validation tools
 │   ├── rust/pcage-crypto/         # portable encrypted profile implementation
 │   └── rust/pcage-sync/           # sync protocol components
-├── web/                           # Svelte 5 + TypeScript frontend
 ├── web-backend/                   # Rust/Axum tracker API
-├── windows/pcage-audit/           # Go auditor and reversible hardening CLI
-├── windows/Win11Debloat/          # pinned upstream optional customization tool
-├── docs/
-│   ├── architecture.md
-│   ├── security-boundaries.md
-│   ├── encrypted-profile-format.md
-│   ├── e2ee-sync-protocol.md
-│   └── research-notes/
-└── tests/                         # cross-module / workflow test material where present
+└── docs/                          # architecture, security, formats and research
 ```
 
 ## Development and validation
@@ -248,14 +270,12 @@ go -C shared/go/pcage-tools test ./...
 go -C shared/go/pcage-tools run . validate-tracker --max-age-days 180
 
 # Android policy/packet core and app tests (JDK 17 + Gradle required)
-cd android-app
-gradle :android-core:test
-gradle :app:testDebugUnitTest
-gradle assembleDebug
+gradle --project-dir apps/android testDebugUnitTest
+gradle --project-dir apps/android testDebugUnitTest
+gradle --project-dir apps/android assembleDebug
 
 # Windows Go CLI (run on Windows for platform-specific integration coverage)
-cd ../windows/pcage-audit
-go test ./...
+go -C apps/windows test ./...
 ```
 
 The app-alternative catalogue must also be parsed by the Android validator, with tests covering unknown fields, duplicate IDs, unapproved hosts, non-HTTPS URLs and oversized input. `app-alternatives-report` gates the catalogue-level `updated_at` date and identifies affected entries; schema v1 has no per-entry source-review date, so the report explicitly cannot claim that individual URLs or trade-offs were recently re-checked. The Android VPN requires a separate emulator/physical-device smoke test for IPv4 and IPv6 routing, network transitions, resolver timeouts, service stop/revoke, and normal app connectivity.
@@ -279,7 +299,7 @@ Useful starting points:
 - [Architecture](docs/architecture.md)
 - [Security boundaries](docs/security-boundaries.md)
 - [Permission matrix](docs/permission-matrix.md)
-- [Android DNS policy core](android-core/README.md)
+- [Android DNS policy engine](apps/android/DNS.md)
 - [Tracker database schema](shared/tracker-db/schema.md)
 - [Privacy-suite expansion research](docs/research-notes/privacy-suite-expansion-2026-10-25.md)
 - [Next 20 engineering milestones](docs/roadmap/next-20-engineering-milestones.md)
@@ -287,12 +307,14 @@ Useful starting points:
 - [Next 100 milestones (121–220)](docs/roadmap/next-100-milestones-121-220.md)
 - [Next 1,000 engineering milestones (221–1220)](docs/roadmap/next-1000/README.md)
 - [Privacy-rights workflow and legal limits](docs/rights-request-workflow.md)
-- [iOS companion capability boundary](ios/README.md)
+- [iOS companion capability boundary](apps/ios/README.md)
 - [Windows privacy hardening research](docs/research-notes/windows-privacy-hardening-2026-10-25.md)
+- [PrivacySentry integration assessment](docs/research/18-privacy-sentry-assessment.md)
+- [Web deployment, 404 and rate-limit configuration](docs/deployment/web-console.md)
 
 Contributions are welcome for new evidence-backed indicators, SDK signatures, documented OEM behaviors, regression tests, alternative-app reviews and platform validation results. Include authoritative evidence, the date checked, likely false positives, and the precise scope of the claim. New alternatives should include privacy trade-offs, not just a positive description; tracker indicators should not be activated solely because they appeared in an unreviewed feed.
 
-### Research library (25 October 2026)
+### Research library (baseline 25 October 2026; additional note reviewed 19 November 2026)
 
 The expanded research library documents privacy threats, evidence-backed platform boundaries, network observability, APK analysis, data-broker workflows, data minimization, safety considerations, and acceptance tests. Start with [`docs/research/README.md`](docs/research/README.md). The notes distinguish observed signals, static indicators, inference, and unavailable capabilities; they do not imply that planned features are already implemented.
 
