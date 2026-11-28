@@ -1,5 +1,6 @@
 package org.privacage.rights
 
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 enum class RightsJurisdiction(
@@ -50,15 +51,59 @@ data class RightsRequestDraft(
     val message: String
 )
 
+internal data class RightsResponsePlanningDates(
+    val standardResponseDueOn: LocalDate?,
+    val extendedResponseDueOn: LocalDate?
+)
+
 /**
  * Generates a local draft and deadline guidance. It never sends a request, verifies identity,
  * confirms that a controller received a request, or claims the controller deleted data.
  *
- * Deadline-rule source review: 27 October 2026. The consumer-facing California DROP entrypoint
+ * Deadline-rule source review: 28 November 2026. The consumer-facing California DROP entrypoint
  * was rechecked on 8 November 2026. Deadline calculations are planning aids; applicable law,
  * eligibility, identity checks, holidays, extensions and regulator guidance must be checked.
  */
 object PrivacyRightsRequestBuilder {
+    internal fun supportsIndividualReceiptDate(jurisdiction: RightsJurisdiction): Boolean =
+        jurisdiction != RightsJurisdiction.CALIFORNIA_DROP
+
+    internal fun calculatePlanningDates(
+        jurisdiction: RightsJurisdiction,
+        right: PrivacyRight,
+        receivedOn: LocalDate?,
+        extensionNoticeRecorded: Boolean
+    ): RightsResponsePlanningDates {
+        val standard = receivedOn?.let { received ->
+            when (jurisdiction) {
+                RightsJurisdiction.UK_GDPR -> received.plusMonths(1)
+                RightsJurisdiction.CALIFORNIA_CCPA ->
+                    if (right == PrivacyRight.OPT_OUT) received.plusBusinessDays(15) else received.plusDays(45)
+                RightsJurisdiction.CALIFORNIA_DROP -> null
+            }
+        }
+        val extended = if (!extensionNoticeRecorded || receivedOn == null) null else when (jurisdiction) {
+            RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
+            RightsJurisdiction.CALIFORNIA_CCPA ->
+                if (right == PrivacyRight.OPT_OUT) null else receivedOn.plusDays(90)
+            RightsJurisdiction.CALIFORNIA_DROP -> null
+        }
+        return RightsResponsePlanningDates(standard, extended)
+    }
+
+    private fun LocalDate.plusBusinessDays(days: Int): LocalDate {
+        require(days >= 0) { "Business-day count cannot be negative." }
+        var date = this
+        var remaining = days
+        while (remaining > 0) {
+            date = date.plusDays(1)
+            if (date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY) {
+                remaining -= 1
+            }
+        }
+        return date
+    }
+
     fun createDraft(
         jurisdiction: RightsJurisdiction,
         right: PrivacyRight,
@@ -82,21 +127,22 @@ object PrivacyRightsRequestBuilder {
             }
         }
 
-        val deadline = when (jurisdiction) {
-            RightsJurisdiction.UK_GDPR -> receivedOn?.plusMonths(1)
-            RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn?.plusDays(45)
-            RightsJurisdiction.CALIFORNIA_DROP -> null
-        }
-        val extended = if (!extensionNoticeRecorded || receivedOn == null) null else when (jurisdiction) {
-            RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
-            RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn.plusDays(90)
-            RightsJurisdiction.CALIFORNIA_DROP -> null
-        }
+        val planningDates = calculatePlanningDates(
+            jurisdiction = jurisdiction,
+            right = right,
+            receivedOn = receivedOn,
+            extensionNoticeRecorded = extensionNoticeRecorded
+        )
+        val deadline = planningDates.standardResponseDueOn
+        val extended = planningDates.extendedResponseDueOn
         val periodNote = when (jurisdiction) {
             RightsJurisdiction.UK_GDPR ->
                 "UK GDPR guidance generally uses one calendar month; a further two months may be permitted for complex or numerous requests with timely notice. Confirm identity-related timing and current ICO guidance. This is not a legal determination."
-            RightsJurisdiction.CALIFORNIA_CCPA ->
-                "The CPPA states a 45-calendar-day response period for covered requests, with up to another 45 days when necessary and after notice. Its FAQ also describes confirmation within 10 business days for specified request types. Verify eligibility, exceptions and current rules."
+            RightsJurisdiction.CALIFORNIA_CCPA -> if (right == PrivacyRight.OPT_OUT) {
+                "The CPPA says a business must honor a sale/sharing opt-out as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 45-day/90-day planning rule for delete, correct and know requests does not apply to this opt-out path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
+            } else {
+                "The CPPA states a 45-calendar-day response period for covered delete, correct and know requests, with up to another 45 days when necessary and after notice. Its FAQ describes confirmation within 10 business days for those specified request types. Verify eligibility, exceptions and current rules. This is not a legal determination."
+            }
             RightsJurisdiction.CALIFORNIA_DROP ->
                 "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
         }
