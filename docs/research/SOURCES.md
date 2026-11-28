@@ -1,6 +1,6 @@
 # Research Source Register
 
-**Research register baseline:** 25 October 2026. **Android monitoring-access, cellular-security and device-posture sources rechecked:** 7–8 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
+**Research register baseline:** 25 October 2026. **CCPA consumer request-timeframe sources rechecked:** 28 November 2026. **Android monitoring-access, cellular-security and device-posture sources rechecked:** 7–8 November 2026. Links point to official platform documentation, primary standards, regulators, law or established privacy-analysis projects. OS and legal sources should be reopened before implementation/release because APIs, store policy and regulations can change.
 
 ## Android platform
 
