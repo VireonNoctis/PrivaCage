@@ -20,6 +20,7 @@ internal data class StoredRightsRequest(
     val receivedOn: LocalDate?,
     val standardResponseDueOn: LocalDate?,
     val extendedResponseDueOn: LocalDate?,
+    val acknowledgementReminderOn: LocalDate?,
     val extensionNoticeRecorded: Boolean,
     val status: RightsRequestStatus,
     val officialGuidanceUrl: String
@@ -29,7 +30,8 @@ internal data class StoredRightsRequest(
         if (!controllerName.isNullOrBlank()) append(" — ").append(controllerName)
         append("\nStatus: ").append(status.name.replace('_', ' '))
         append(" · Prepared ").append(preparedOn)
-        standardResponseDueOn?.let { append(" · Planning date ").append(it) }
+        acknowledgementReminderOn?.let { append(" · Receipt-confirmation reminder ").append(it) }
+        standardResponseDueOn?.let { append(" · Response planning date ").append(it) }
     }
 }
 
@@ -116,6 +118,7 @@ internal object LocalRightsRequestStore {
             receivedOn = draft.receivedOn,
             standardResponseDueOn = draft.standardResponseDueOn,
             extendedResponseDueOn = draft.extendedResponseDueOn,
+            acknowledgementReminderOn = draft.acknowledgementReminderOn,
             extensionNoticeRecorded = draft.extendedResponseDueOn != null,
             status = RightsRequestStatus.DRAFT,
             officialGuidanceUrl = draft.officialGuidanceUrl
@@ -152,6 +155,7 @@ internal object LocalRightsRequestStore {
             receivedOn = receivedOn,
             standardResponseDueOn = deadlineGuidance.standardResponseDueOn,
             extendedResponseDueOn = deadlineGuidance.extendedResponseDueOn,
+            acknowledgementReminderOn = deadlineGuidance.acknowledgementReminderOn,
             extensionNoticeRecorded = extensionNoticeRecorded
         )
         save(context, current.toMutableList().apply { set(index, updated) })
@@ -222,6 +226,7 @@ internal object LocalRightsRequestStore {
                 .put("received_on", record.receivedOn?.toString() ?: JSONObject.NULL)
                 .put("standard_due_on", record.standardResponseDueOn?.toString() ?: JSONObject.NULL)
                 .put("extended_due_on", record.extendedResponseDueOn?.toString() ?: JSONObject.NULL)
+                .put("acknowledgement_due_on", record.acknowledgementReminderOn?.toString() ?: JSONObject.NULL)
                 .put("extension_notice_recorded", record.extensionNoticeRecorded)
                 .put("status", record.status.name)
                 .put("official_guidance_url", record.officialGuidanceUrl))
@@ -254,11 +259,11 @@ internal object LocalRightsRequestStore {
         return try {
             val expectedKeys = setOf(
                 "id", "jurisdiction", "right", "controller_name", "prepared_on", "received_on",
-                "standard_due_on", "extended_due_on", "extension_notice_recorded",
+                "standard_due_on", "extended_due_on", "acknowledgement_due_on", "extension_notice_recorded",
                 "status", "official_guidance_url"
             )
             val legacyNullableKeys = setOf(
-                "controller_name", "received_on", "standard_due_on", "extended_due_on"
+                "controller_name", "received_on", "standard_due_on", "extended_due_on", "acknowledgement_due_on"
             )
             val actualKeys = item.keys().asSequence().toSet()
             require(
@@ -303,6 +308,9 @@ internal object LocalRightsRequestStore {
 
             val jurisdiction = RightsJurisdiction.valueOf(requiredString("jurisdiction"))
             val right = PrivacyRight.valueOf(requiredString("right"))
+            require(right != PrivacyRight.LIMIT_SENSITIVE || jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA) {
+                "The right-to-limit tracker record must use the California CCPA/CPRA jurisdiction."
+            }
             val controller = optionalString("controller_name")
             require(controller == null || (
                 controller.isNotBlank() &&
@@ -319,6 +327,8 @@ internal object LocalRightsRequestStore {
             val receivedOn = optionalDate("received_on")
             val standardDueOn = optionalDate("standard_due_on")
             val extendedDueOn = optionalDate("extended_due_on")
+            val acknowledgementDueOn = optionalDate("acknowledgement_due_on")
+            val hasAcknowledgementDueField = item.has("acknowledgement_due_on")
             val extensionNoticeRecorded = item.opt("extension_notice_recorded") as? Boolean
                 ?: throw IllegalArgumentException("Local tracker extension flag must be a boolean.")
             val status = RightsRequestStatus.valueOf(requiredString("status"))
@@ -333,14 +343,18 @@ internal object LocalRightsRequestStore {
             val guidanceUrl = jurisdiction.officialGuidanceUrl
 
             if (receivedOn == null) {
-                require(standardDueOn == null && extendedDueOn == null && !extensionNoticeRecorded) {
+                require(
+                    standardDueOn == null && extendedDueOn == null &&
+                        acknowledgementDueOn == null && !extensionNoticeRecorded
+                ) {
                     "Local tracker deadlines require a recorded receipt date."
                 }
             }
             var normalizedStandardDueOn = standardDueOn
             var normalizedExtendedDueOn = extendedDueOn
+            var normalizedAcknowledgementDueOn = acknowledgementDueOn
             if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) {
-                require(standardDueOn == null && extendedDueOn == null) {
+                require(standardDueOn == null && extendedDueOn == null && acknowledgementDueOn == null) {
                     "The DROP checklist must not contain an individual response deadline."
                 }
             } else if (receivedOn != null) {
@@ -352,7 +366,12 @@ internal object LocalRightsRequestStore {
                 )
                 val matchesCurrentRules =
                     standardDueOn == expected.standardResponseDueOn &&
-                        extendedDueOn == expected.extendedResponseDueOn
+                        extendedDueOn == expected.extendedResponseDueOn &&
+                        acknowledgementDueOn == expected.acknowledgementReminderOn
+                val matchesLegacyMissingAcknowledgement = !hasAcknowledgementDueField &&
+                    expected.acknowledgementReminderOn != null &&
+                    standardDueOn == expected.standardResponseDueOn &&
+                    extendedDueOn == expected.extendedResponseDueOn
                 val legacyCcpaOptOut = if (
                     jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA && right == PrivacyRight.OPT_OUT
                 ) {
@@ -364,20 +383,26 @@ internal object LocalRightsRequestStore {
                     null
                 }
                 val matchesLegacyOptOutRules = legacyCcpaOptOut != null &&
+                    !hasAcknowledgementDueField &&
+                    acknowledgementDueOn == null &&
                     standardDueOn == legacyCcpaOptOut.standardResponseDueOn &&
                     extendedDueOn == legacyCcpaOptOut.extendedResponseDueOn
-                require(matchesCurrentRules || matchesLegacyOptOutRules) {
+                require(
+                    matchesCurrentRules || matchesLegacyMissingAcknowledgement || matchesLegacyOptOutRules
+                ) {
                     "The planning dates do not match the current jurisdiction/right calculation."
                 }
-                // Upgrade records created by the previous incorrect 45/90-day CCPA opt-out rule
-                // in memory; the corrected values are persisted on the next successful save.
+                // Upgrade older records that predate the acknowledgement reminder, and the previous
+                // incorrect 45/90-day CCPA opt-out calculation, in memory. The next successful save
+                // persists the current dates without discarding the user's status or receipt date.
                 normalizedStandardDueOn = expected.standardResponseDueOn
                 normalizedExtendedDueOn = expected.extendedResponseDueOn
+                normalizedAcknowledgementDueOn = expected.acknowledgementReminderOn
             }
 
             StoredRightsRequest(
                 id, jurisdiction, right, controller, preparedOn, receivedOn, normalizedStandardDueOn,
-                normalizedExtendedDueOn, extensionNoticeRecorded, status, guidanceUrl
+                normalizedExtendedDueOn, normalizedAcknowledgementDueOn, extensionNoticeRecorded, status, guidanceUrl
             )
         } catch (exception: Exception) {
             throw IllegalStateException("The local rights-request tracker contains a malformed record; existing data was not overwritten.", exception)
