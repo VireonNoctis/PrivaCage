@@ -36,15 +36,16 @@ The UK ICO's current guidance states the response period for an erasure request 
 
 ## 3. California CCPA/CPRA: scope, identity and response timelines
 
-The CPPA's current FAQ and the CCPA text effective 1 January 2026 distinguish request types. Covered delete, correct and know requests have a 45-calendar-day substantive response period, with up to another 45 calendar days when necessary and after notice; the FAQ describes confirmation within 10 business days for those request types. A sale/sharing opt-out must be honored as soon as feasibly possible and no later than 15 business days after receipt. The 45-day/90-day extension rule does not apply to that opt-out path ([S81](SOURCES.md#s81), [S82](SOURCES.md#s82)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
+The CPPA's 2026 regulations distinguish three timing paths. Under 11 CCR §7021(a), a business must confirm receipt of a delete, correct or know request no later than 10 business days after receipt (unless already granted or denied). Under §7021(b), the substantive response is due no later than 45 calendar days after receipt, with up to another 45 calendar days when necessary and after notice. Under §7026(f) and §7027(g), sale/sharing opt-outs and right-to-limit requests must be honored as soon as feasibly possible and no later than 15 business days after receipt; the 10-day acknowledgement and 45/90-day response rules do not apply to those paths ([S81](SOURCES.md#s81), [S82](SOURCES.md#s82), [S83](SOURCES.md#s83), [S84](SOURCES.md#s84)). The statute applies only when the business and processing fall within the law's scope and the consumer is eligible. Deletion has exceptions and verification rules.
 
 Engineering implications:
 
 - Keep the 45-calendar-day plus noticed 45-day extension calculation for covered delete, correct and know requests.
-- Use a separate 15-business-day planning rule for sale/sharing opt-out; do not apply the 45-day extension to it.
-- The current app calculation counts Monday-Friday only and does not model California state holidays or business closures; label it as a planning aid, not a legal determination.
-- The app does not calculate the separate 10-business-day acknowledgement target for delete/correct/know requests; it records acknowledgement only when the user reports it.
-- The current PrivacyRight model does not yet include the separate right to limit sensitive-personal-information use, which the CPPA also places in the 15-business-day category.
+- Use a separate 15-business-day planning rule for sale/sharing opt-out and the distinct right to limit sensitive-personal-information use; do not apply the 45-day extension to either path.
+- Calculate a separate 10-business-day receipt-confirmation reminder for delete/correct/know requests. Keep acknowledgement status user-reported; a calculated reminder is not proof of receipt.
+- Do not require a verifiable consumer request for sale/sharing opt-out or right-to-limit requests; request only information necessary to direct the request.
+- The app calculation counts Monday-Friday only and does not model California state holidays or business closures; label both business-day dates as planning reminders, not legal determinations.
+- Model the right to limit as its own LIMIT_SENSITIVE value; do not conflate it with sale/sharing opt-out. It applies only when the business uses or discloses sensitive personal information for non-exempt purposes.
 - Store the law/version and date last reviewed with every template.
 - Add identity verification as a separate workflow; don't equate a successful email delivery with verification.
 - Explain that a request can be denied or partially honored under applicable exceptions.
