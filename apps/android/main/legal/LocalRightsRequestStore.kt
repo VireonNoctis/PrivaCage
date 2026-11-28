@@ -372,6 +372,22 @@ internal object LocalRightsRequestStore {
                     expected.acknowledgementReminderOn != null &&
                     standardDueOn == expected.standardResponseDueOn &&
                     extendedDueOn == expected.extendedResponseDueOn
+                val legacyCcpaResponseDates = if (
+                    jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
+                    right in setOf(PrivacyRight.ACCESS, PrivacyRight.ERASURE, PrivacyRight.CORRECTION)
+                ) {
+                    RightsResponsePlanningDates(
+                        standardResponseDueOn = receivedOn.plusDays(45),
+                        extendedResponseDueOn = if (extensionNoticeRecorded) receivedOn.plusDays(90) else null
+                    )
+                } else {
+                    null
+                }
+                val matchesLegacyResponseDates = legacyCcpaResponseDates != null &&
+                    !hasAcknowledgementDueField &&
+                    acknowledgementDueOn == null &&
+                    standardDueOn == legacyCcpaResponseDates.standardResponseDueOn &&
+                    extendedDueOn == legacyCcpaResponseDates.extendedResponseDueOn
                 val legacyCcpaOptOut = if (
                     jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA && right == PrivacyRight.OPT_OUT
                 ) {
@@ -388,12 +404,13 @@ internal object LocalRightsRequestStore {
                     standardDueOn == legacyCcpaOptOut.standardResponseDueOn &&
                     extendedDueOn == legacyCcpaOptOut.extendedResponseDueOn
                 require(
-                    matchesCurrentRules || matchesLegacyMissingAcknowledgement || matchesLegacyOptOutRules
+                    matchesCurrentRules || matchesLegacyMissingAcknowledgement ||
+                        matchesLegacyResponseDates || matchesLegacyOptOutRules
                 ) {
                     "The planning dates do not match the current jurisdiction/right calculation."
                 }
-                // Upgrade older records that predate the acknowledgement reminder, and the previous
-                // incorrect 45/90-day CCPA opt-out calculation, in memory. The next successful save
+                // Upgrade older records that predate the acknowledgement planning date and the previous
+                // 45/90-day CCPA response/opt-out calculations in memory. The next successful save
                 // persists the current dates without discarding the user's status or receipt date.
                 normalizedStandardDueOn = expected.standardResponseDueOn
                 normalizedExtendedDueOn = expected.extendedResponseDueOn
