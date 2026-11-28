@@ -22,10 +22,14 @@ enum class RightsJurisdiction(
 }
 
 enum class PrivacyRight(val label: String, val requestPhrase: String) {
-    ACCESS("Access my data", "request access to the personal information you process about me"),
+    ACCESS("Know / access my data", "request access to the personal information you process about me"),
     ERASURE("Delete my data", "request erasure or deletion of personal information about me"),
     CORRECTION("Correct my data", "request correction of inaccurate personal information about me"),
-    OPT_OUT("Opt out of sale or sharing", "request to opt out of the sale or sharing of my personal information")
+    OPT_OUT("Opt out of sale or sharing", "opt out of the sale or sharing of my personal information"),
+    LIMIT_SENSITIVE(
+        "Limit use/disclosure of sensitive personal information",
+        "limit the use and disclosure of my sensitive personal information"
+    )
 }
 
 enum class RightsRequestStatus {
@@ -46,6 +50,7 @@ data class RightsRequestDraft(
     val receivedOn: LocalDate?,
     val standardResponseDueOn: LocalDate?,
     val extendedResponseDueOn: LocalDate?,
+    val acknowledgementReminderOn: LocalDate?,
     val responsePeriodNote: String,
     val officialGuidanceUrl: String,
     val message: String
@@ -53,7 +58,8 @@ data class RightsRequestDraft(
 
 internal data class RightsResponsePlanningDates(
     val standardResponseDueOn: LocalDate?,
-    val extendedResponseDueOn: LocalDate?
+    val extendedResponseDueOn: LocalDate?,
+    val acknowledgementReminderOn: LocalDate? = null
 )
 
 /**
@@ -75,21 +81,30 @@ object PrivacyRightsRequestBuilder {
         receivedOn: LocalDate?,
         extensionNoticeRecorded: Boolean
     ): RightsResponsePlanningDates {
+        val acknowledgementReminder = receivedOn?.takeIf {
+            jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
+                right in setOf(PrivacyRight.ACCESS, PrivacyRight.ERASURE, PrivacyRight.CORRECTION)
+        }?.plusBusinessDays(10)
         val standard = receivedOn?.let { received ->
             when (jurisdiction) {
                 RightsJurisdiction.UK_GDPR -> received.plusMonths(1)
                 RightsJurisdiction.CALIFORNIA_CCPA ->
-                    if (right == PrivacyRight.OPT_OUT) received.plusBusinessDays(15) else received.plusDays(45)
+                    if (right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)) {
+                        received.plusBusinessDays(15)
+                    } else {
+                        received.plusDays(45)
+                    }
                 RightsJurisdiction.CALIFORNIA_DROP -> null
             }
         }
         val extended = if (!extensionNoticeRecorded || receivedOn == null) null else when (jurisdiction) {
             RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
             RightsJurisdiction.CALIFORNIA_CCPA ->
-                if (right == PrivacyRight.OPT_OUT) null else receivedOn.plusDays(90)
+                if (right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)) null
+                else receivedOn.plusDays(90)
             RightsJurisdiction.CALIFORNIA_DROP -> null
         }
-        return RightsResponsePlanningDates(standard, extended)
+        return RightsResponsePlanningDates(standard, extended, acknowledgementReminder)
     }
 
     private fun LocalDate.plusBusinessDays(days: Int): LocalDate {
@@ -117,6 +132,9 @@ object PrivacyRightsRequestBuilder {
         val normalizedController = controllerName.trim().takeIf(String::isNotEmpty)
         val scope = scopeDescription.trim().take(2_000)
         require(scopeDescription.length <= 8_000) { "The request scope is too long." }
+        require(right != PrivacyRight.LIMIT_SENSITIVE || jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA) {
+            "The separate right to limit sensitive personal information is modeled only for California CCPA/CPRA."
+        }
         if (jurisdiction != RightsJurisdiction.CALIFORNIA_DROP) {
             require(!normalizedController.isNullOrBlank()) {
                 "Enter the controller's name and verify its official privacy contact before sending."
@@ -139,10 +157,13 @@ object PrivacyRightsRequestBuilder {
         val periodNote = when (jurisdiction) {
             RightsJurisdiction.UK_GDPR ->
                 "UK GDPR guidance generally uses one calendar month; a further two months may be permitted for complex or numerous requests with timely notice. Confirm identity-related timing and current ICO guidance. This is not a legal determination."
-            RightsJurisdiction.CALIFORNIA_CCPA -> if (right == PrivacyRight.OPT_OUT) {
-                "The CPPA says a business must honor a sale/sharing opt-out as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 45-day/90-day planning rule for delete, correct and know requests does not apply to this opt-out path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
-            } else {
-                "The CPPA states a 45-calendar-day response period for covered delete, correct and know requests, with up to another 45 days when necessary and after notice. Its FAQ describes confirmation within 10 business days for those specified request types; this tracker does not calculate a separate acknowledgement reminder. Verify eligibility, exceptions and current rules. This is not a legal determination."
+            RightsJurisdiction.CALIFORNIA_CCPA -> when (right) {
+                PrivacyRight.OPT_OUT ->
+                    "The CPPA requires a business to honor a sale/sharing opt-out as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 10-business-day receipt-confirmation and 45-day/90-day response rules for delete, correct and know requests do not apply to this opt-out path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
+                PrivacyRight.LIMIT_SENSITIVE ->
+                    "The CCPA right to limit applies when a covered business uses or discloses sensitive personal information for purposes outside the regulatory exceptions. The business must comply as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 10-business-day receipt-confirmation and 45-day/90-day response rules for delete, correct and know requests do not apply to this path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
+                else ->
+                    "For covered delete, correct and know requests, the CPPA requires confirmation of receipt no later than 10 business days after receipt and a substantive response no later than 45 calendar days after receipt. A further 45 calendar days may be used when necessary and after notice. The acknowledgement and extension dates are user-facing planning reminders, not proof of receipt or a legal determination. Business-day reminders count Monday-Friday only and do not account for California state holidays or business closures. Verify eligibility, exceptions and current rules."
             }
             RightsJurisdiction.CALIFORNIA_DROP ->
                 "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
@@ -165,8 +186,11 @@ object PrivacyRightsRequestBuilder {
                 append("Hello,\n\nIf this business and my request are within the scope of the CCPA as amended by the CPRA, ")
                 append("I would like to ").append(right.requestPhrase).append(".\n\n")
                 if (scope.isNotBlank()) append("Scope / context: ").append(scope).append("\n\n")
-                append("Please provide the verification steps required for this request and explain any exception or ")
-                append("partial denial that you rely on. I will review any request for identity documents before sharing them.\n\n")
+                if (right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)) {
+                    append("Please request only information necessary to direct this request. A verifiable consumer request is not required for this right under the CCPA regulations; if you need additional information, explain why it is necessary.\n\n")
+                } else {
+                    append("Please explain the verification steps for this request and any exception or partial denial that you rely on. I will review any request for identity documents before sharing them.\n\n")
+                }
                 append("I have not attached identity documents to this draft.\n\nRegards,\n[Your name]\n[Contact method]")
             }
             RightsJurisdiction.CALIFORNIA_DROP -> buildString {
@@ -190,6 +214,7 @@ object PrivacyRightsRequestBuilder {
             receivedOn = receivedOn,
             standardResponseDueOn = deadline,
             extendedResponseDueOn = extended,
+            acknowledgementReminderOn = planningDates.acknowledgementReminderOn,
             responsePeriodNote = periodNote,
             officialGuidanceUrl = jurisdiction.officialGuidanceUrl,
             message = message
