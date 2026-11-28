@@ -43,6 +43,7 @@ Engineering implications:
 - Keep the 45-calendar-day plus noticed 45-day extension calculation for covered delete, correct and know requests.
 - Use a separate 15-business-day planning rule for sale/sharing opt-out; do not apply the 45-day extension to it.
 - The current app calculation counts Monday-Friday only and does not model California state holidays or business closures; label it as a planning aid, not a legal determination.
+- The app does not calculate the separate 10-business-day acknowledgement target for delete/correct/know requests; it records acknowledgement only when the user reports it.
 - The current PrivacyRight model does not yet include the separate right to limit sensitive-personal-information use, which the CPPA also places in the 15-business-day category.
 - Store the law/version and date last reviewed with every template.
 - Add identity verification as a separate workflow; don't equate a successful email delivery with verification.
