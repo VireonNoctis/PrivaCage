@@ -13,6 +13,7 @@ class LocalRightsRequestStoreTest {
     private fun record(
         id: String = validId,
         jurisdiction: String = "UK_GDPR",
+        right: String = "ERASURE",
         controller: String = "\"Example Controller\"",
         guidanceUrl: String = "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/",
         receivedOn: String? = null,
@@ -20,7 +21,7 @@ class LocalRightsRequestStoreTest {
         extendedDueOn: String? = null,
         extensionNoticeRecorded: Boolean = false,
         extra: String = ""
-    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"ERASURE","controller_name":$controller,"prepared_on":"2026-10-27","received_on":${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
+    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"$right","controller_name":$controller,"prepared_on":"2026-10-27","received_on":${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
 
     @Test
     fun readsCanonicalLocalDraftMetadata() {
@@ -188,6 +189,36 @@ class LocalRightsRequestStoreTest {
     }
 
     @Test
+    fun californiaOptOutPlanningDatesAreCorrectedAndLegacyRecordsRemainReadable() {
+        val current = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            right = "OPT_OUT",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-30",
+            standardDueOn = "2026-11-20",
+            extensionNoticeRecorded = true
+        )
+        val decoded = LocalRightsRequestStore.decodeRecords("[$current]").single()
+        assertEquals("2026-11-20", decoded.standardResponseDueOn.toString())
+        assertEquals(null, decoded.extendedResponseDueOn)
+        assertTrue(decoded.extensionNoticeRecorded)
+
+        val legacy = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            right = "OPT_OUT",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-30",
+            standardDueOn = "2026-12-14",
+            extendedDueOn = "2027-01-28",
+            extensionNoticeRecorded = true
+        )
+        val migrated = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
+        assertEquals("2026-11-20", migrated.standardResponseDueOn.toString())
+        assertEquals(null, migrated.extendedResponseDueOn)
+        assertTrue(migrated.extensionNoticeRecorded)
+    }
+
+    @Test
     fun rejectsPlanningDatesThatDoNotMatchTheConfiguredCalculation() {
         val incorrectStandard = record(
             receivedOn = "2026-10-27",
@@ -205,8 +236,16 @@ class LocalRightsRequestStoreTest {
             receivedOn = "2026-10-27",
             standardDueOn = "2026-12-10"
         )
+        val incorrectOptOut = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            right = "OPT_OUT",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-30",
+            standardDueOn = "2026-11-21",
+            extensionNoticeRecorded = true
+        )
 
-        listOf(incorrectStandard, incorrectExtension, incorrectCalifornia).forEach { raw ->
+        listOf(incorrectStandard, incorrectExtension, incorrectCalifornia, incorrectOptOut).forEach { raw ->
             assertThrows(IllegalStateException::class.java) {
                 LocalRightsRequestStore.decodeRecords("[$raw]")
             }
