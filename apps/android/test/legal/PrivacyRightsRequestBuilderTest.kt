@@ -52,6 +52,7 @@ class PrivacyRightsRequestBuilderTest {
         assertNull(normal.extendedResponseDueOn)
         assertEquals(LocalDate.parse("2026-12-30"), extended.extendedResponseDueOn)
         assertTrue(normal.responsePeriodNote.contains("45-calendar-day"))
+        assertTrue(normal.responsePeriodNote.contains("does not calculate a separate acknowledgement reminder"))
     }
 
     @Test
