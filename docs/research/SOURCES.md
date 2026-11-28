@@ -656,7 +656,7 @@ Civil Code section 1798.135(f)(1) requires a business to cease sale/sharing as s
 
 https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
 
-Section 7021(a) requires confirmation of receipt for delete, correct and know requests no later than 10 business days after receipt, unless the request has already been granted or denied. Section 7021(b) sets a 45-calendar-day substantive response period, with up to another 45 calendar days when necessary and after notice. Checked 28 November 2026.
+Section 7021(a) requires confirmation of receipt for delete, correct and know requests no later than 10 business days after receipt, unless the request has already been granted or denied. Section 7021(b) sets a 45-calendar-day substantive response period and expressly says that period begins on the day the business receives the request; up to another 45 calendar days may be used when necessary and after notice. The app therefore counts the receipt date as day one for its 45/90-calendar-day planning dates. Checked 28 November 2026.
 
 <a id="s84"></a>
 ### S84 — California Privacy Protection Agency: CCPA Regulations effective 1 January 2026, §§7026–7027
