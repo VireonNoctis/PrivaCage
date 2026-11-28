@@ -1,6 +1,6 @@
 # Privacy-rights request assistant: behavior and legal boundaries
 
-**DROP consumer-source review:** 8 November 2026. **UK GDPR/CCPA deadline-source review:** 27 October 2026.  
+**DROP consumer-source review:** 8 November 2026. **UK GDPR/CCPA deadline-source review:** 28 November 2026.  
 **Status:** local draft/tracker implementation; not legal advice or a submission service.
 
 ## What the Android workflow does
@@ -26,11 +26,13 @@ Official source: [ICO — Right to erasure](https://ico.org.uk/for-organisations
 
 ### California CCPA/CPRA — 2026 regulations
 
-The CPPA's CCPA text effective 1 January 2026 provides a 45-calendar-day response period for covered deletion, correction, know and specified access requests. Where necessary, a covered business may take up to a further 45 calendar days with notice and an explanation, up to 90 calendar days total. Eligibility, verification, exceptions, request type and applicable rules matter. The draft workflow uses a 45-day planning date from the date the user records as receipt; the optional extension date is only added after the user confirms a notice. It is not a legal determination.
+The CPPA's current FAQ separates the timelines by right. Covered delete, correct and know requests have a 45-calendar-day substantive response period, with up to another 45 calendar days when necessary and after notice; the FAQ also describes confirmation within 10 business days for those request types. A sale/sharing opt-out must be honored as soon as feasibly possible and no later than 15 business days after receipt. The 45-day/90-day extension rule does not apply to that opt-out path. The app calculates a weekday-only 15-business-day planning date for OPT_OUT; it does not model California state holidays or business closures. Eligibility, exceptions and request type still matter, and this is not a legal determination.
 
 Official sources:
 - [CPPA — CCPA statute effective 1 January 2026 (PDF)](https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf)
-- [CPPA — Frequently asked questions](https://cppa.ca.gov/faq).
+- [CPPA — Frequently asked questions](https://cppa.ca.gov/faq.html).
+
+The current PrivacyRight model includes sale/sharing opt-out but does not yet model the separate right to limit sensitive-personal-information use. The CPPA gives that right the same 15-business-day maximum; it must not be inferred from the current OPT_OUT option.
 
 ### California DROP — user-guided only
 
@@ -42,7 +44,7 @@ Official sources: [CalPrivacy — DROP landing page](https://privacy.ca.gov/drop
 
 ## Local tracker integrity
 
-The local JSON reader requires the exact stored-record schema and strict field types. It accepts only canonical UUIDs and ISO calendar dates, unique record IDs, trimmed controller names without control characters, and the exact official guidance URL configured for the selected jurisdiction. Existing California DROP records using the previous broker-facing URL are normalized to the consumer entrypoint when read and rewritten on the next successful tracker save; no record or status is discarded. For direct UK GDPR and California CCPA/CPRA requests, the reader recomputes the configured calendar-month or 45/90-day planning dates from the user-reported receipt date and rejects mismatches; California DROP records never carry an individual response deadline. Every write passes through the same strict reader before the preferences commit, with 100-record and 512 KiB limits enforced. The reader continues to accept legacy records in which the previous Android JSON writer omitted nullable keys, then writes those values in explicit-null form on the next successful save. It rejects oversized, over-count, duplicate-key, malformed or inconsistent data and preserves the stored value rather than treating it as an empty tracker.
+The local JSON reader requires the exact stored-record schema and strict field types. It accepts only canonical UUIDs and ISO calendar dates, unique record IDs, trimmed controller names without control characters, and the exact official guidance URL configured for the selected jurisdiction. Existing California DROP records using the previous broker-facing URL are normalized to the consumer entrypoint when read and rewritten on the next successful tracker save; no record or status is discarded. For direct UK GDPR and California CCPA/CPRA requests, the reader recomputes the configured calendar-month, 45/90-day, or 15-weekday planning dates from the user-reported receipt date and rejects mismatches. Legacy CCPA sale/sharing opt-out records containing the previous 45/90-day calculation are normalized in memory to the 15-business-day planning date and rewritten on the next successful tracker save. California DROP records never carry an individual response deadline, and the UI does not offer an individual controller receipt-date field for DROP. Every write passes through the same strict reader before the preferences commit, with 100-record and 512 KiB limits enforced. The reader continues to accept legacy records in which the previous Android JSON writer omitted nullable keys, then writes those values in explicit-null form on the next successful save. It rejects oversized, over-count, duplicate-key, malformed or inconsistent data and preserves the stored value rather than treating it as an empty tracker.
 
 These checks protect against malformed or unexpectedly edited local records and prevent a stored guidance link from redirecting the user to an unrelated HTTPS host. They are not cryptographic tamper evidence and do not protect against a compromised operating system or a process with access to the app's private data.
 
@@ -53,6 +55,6 @@ These checks protect against malformed or unexpectedly edited local records and 
 - Explain potential account/service consequences and exceptions before a user sends a deletion request.
 - Don't call a company response “verified deletion.” A controller's claim, a submission receipt and an independent technical verification are different evidence.
 - The tracker keeps only metadata. If the user wants to retain sensitive correspondence, that requires a separate explicit design with encryption, field-level minimization, retention controls and delete/export behavior.
-- Dates remain planning aids and don't model public holidays, all identity verification timing, controller-specific extensions, jurisdiction/eligibility, or every exception.
+- Dates remain planning aids. The CCPA opt-out calculation counts Monday-Friday only and does not model California state holidays or business closures; no calculation models every identity-verification timing, controller-specific circumstance, jurisdiction/eligibility rule, or exception.
 
 **Release blocker:** the copy and rules need review by a qualified privacy-law reviewer before being presented as jurisdiction-specific legal advice. Recheck official source text on every release; do not assume current deadlines will remain unchanged.
