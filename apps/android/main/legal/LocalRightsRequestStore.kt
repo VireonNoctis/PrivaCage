@@ -30,7 +30,7 @@ internal data class StoredRightsRequest(
         if (!controllerName.isNullOrBlank()) append(" — ").append(controllerName)
         append("\nStatus: ").append(status.name.replace('_', ' '))
         append(" · Prepared ").append(preparedOn)
-        acknowledgementReminderOn?.let { append(" · Receipt-confirmation reminder ").append(it) }
+        acknowledgementReminderOn?.let { append(" · Receipt-confirmation planning date ").append(it) }
         standardResponseDueOn?.let { append(" · Response planning date ").append(it) }
     }
 }
