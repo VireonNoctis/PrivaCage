@@ -650,3 +650,17 @@ The CPPA distinguishes delete/correct/know requests (10-business-day receipt con
 https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
 
 Civil Code section 1798.135(f)(1) requires a business to cease sale/sharing as soon as feasibly possible and no later than 15 business days after receiving an opt-out request. The statute's example emphasizes that a business must act sooner when feasible. Checked 28 November 2026.
+
+<a id="s83"></a>
+### S83 — California Privacy Protection Agency: CCPA Regulations effective 1 January 2026, §7021
+
+https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
+
+Section 7021(a) requires confirmation of receipt for delete, correct and know requests no later than 10 business days after receipt, unless the request has already been granted or denied. Section 7021(b) sets a 45-calendar-day substantive response period, with up to another 45 calendar days when necessary and after notice. Checked 28 November 2026.
+
+<a id="s84"></a>
+### S84 — California Privacy Protection Agency: CCPA Regulations effective 1 January 2026, §§7026–7027
+
+https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
+
+Sections 7026(f) and 7027(g) require sale/sharing opt-out and right-to-limit requests to be honored as soon as feasibly possible and no later than 15 business days after receipt. Sections 7026(d) and 7027(e) state that a verifiable consumer request is not required for these request types; a business may request information necessary to direct the request. Checked 28 November 2026.
