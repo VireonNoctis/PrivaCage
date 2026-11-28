@@ -3345,7 +3345,7 @@ class MainActivity : Activity() {
         val due = buildString {
             append("\n\nTiming guidance: ").append(draft.responsePeriodNote)
             draft.acknowledgementReminderOn?.let {
-                append("\nReceipt-confirmation reminder (based on reported receipt): ").append(it)
+                append("\nReceipt-confirmation planning date (based on reported receipt): ").append(it)
             }
             draft.standardResponseDueOn?.let { append("\nResponse planning date (based on reported receipt): ").append(it) }
             draft.extendedResponseDueOn?.let { append("\nPotential extended planning date (notice recorded by user): ").append(it) }
