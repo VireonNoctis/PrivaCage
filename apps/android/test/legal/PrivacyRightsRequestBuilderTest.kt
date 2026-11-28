@@ -49,12 +49,13 @@ class PrivacyRightsRequestBuilderTest {
         )
 
         assertEquals(LocalDate.parse("2026-10-15"), normal.acknowledgementReminderOn)
-        assertEquals(LocalDate.parse("2026-11-15"), normal.standardResponseDueOn)
+        assertEquals(LocalDate.parse("2026-11-14"), normal.standardResponseDueOn)
         assertNull(normal.extendedResponseDueOn)
         assertEquals(LocalDate.parse("2026-10-15"), extended.acknowledgementReminderOn)
-        assertEquals(LocalDate.parse("2026-12-30"), extended.extendedResponseDueOn)
+        assertEquals(LocalDate.parse("2026-12-29"), extended.extendedResponseDueOn)
         assertTrue(normal.responsePeriodNote.contains("10-business-day"))
         assertTrue(normal.responsePeriodNote.contains("45-calendar-day"))
+        assertTrue(normal.responsePeriodNote.contains("receipt date as day one"))
     }
 
     @Test
