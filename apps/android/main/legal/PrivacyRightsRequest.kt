@@ -92,7 +92,7 @@ object PrivacyRightsRequestBuilder {
                     if (right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)) {
                         received.plusBusinessDays(15)
                     } else {
-                        received.plusDays(45)
+                        received.plusDays(44)
                     }
                 RightsJurisdiction.CALIFORNIA_DROP -> null
             }
@@ -101,7 +101,7 @@ object PrivacyRightsRequestBuilder {
             RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
             RightsJurisdiction.CALIFORNIA_CCPA ->
                 if (right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)) null
-                else receivedOn.plusDays(90)
+                else receivedOn.plusDays(89)
             RightsJurisdiction.CALIFORNIA_DROP -> null
         }
         return RightsResponsePlanningDates(standard, extended, acknowledgementReminder)
@@ -163,7 +163,7 @@ object PrivacyRightsRequestBuilder {
                 PrivacyRight.LIMIT_SENSITIVE ->
                     "The CCPA right to limit applies when a covered business uses or discloses sensitive personal information for purposes outside the regulatory exceptions. The business must comply as soon as feasibly possible and no later than 15 business days after receipt. The planning date counts Monday-Friday only and does not account for California state holidays or business closures. The 10-business-day receipt-confirmation and 45-day/90-day response rules for delete, correct and know requests do not apply to this path; a recorded notice does not extend this date. Verify eligibility, exceptions and current rules. This is not a legal determination."
                 else ->
-                    "For covered delete, correct and know requests, the CPPA requires confirmation of receipt no later than 10 business days after receipt and a substantive response no later than 45 calendar days after receipt. A further 45 calendar days may be used when necessary and after notice. The acknowledgement and extension dates are user-facing planning reminders, not proof of receipt or a legal determination. Business-day reminders count Monday-Friday only and do not account for California state holidays or business closures. Verify eligibility, exceptions and current rules."
+                    "For covered delete, correct and know requests, the CPPA requires confirmation of receipt no later than 10 business days after receipt and a substantive response within a 45-calendar-day period that begins on the receipt date. This planning date counts the receipt date as day one. A further 45 calendar days may be used when necessary and after notice, for a maximum 90-calendar-day period that also begins on the receipt date. The acknowledgement and extension dates are user-facing planning dates, not proof of receipt or a legal determination. Business-day dates count Monday-Friday only and do not account for California state holidays or business closures. Verify eligibility, exceptions and current rules."
             }
             RightsJurisdiction.CALIFORNIA_DROP ->
                 "This is a user-guided route through California's official DROP mechanism, not a direct submission by PrivaCage. CalPrivacy says brokers must access DROP at least once every 45 days; after initial processing they must re-check and delete newly matching data at least every 45 days. Status updates may take up to 90 days and vary by broker. These are broker processing/status windows, not an individual response deadline or a guarantee; check your official DROP profile."
