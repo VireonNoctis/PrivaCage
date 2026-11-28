@@ -3418,14 +3418,15 @@ class MainActivity : Activity() {
         val transitions = RightsRequestStatus.values().filter {
             PrivacyRightsRequestBuilder.canTransition(record.status, it)
         }
-        val canRecordReceipt = record.status in setOf(
-            RightsRequestStatus.SUBMITTED,
-            RightsRequestStatus.ACKNOWLEDGED,
-            RightsRequestStatus.RESPONSE_RECEIVED,
-            RightsRequestStatus.OUTCOME_REPORTED
-        )
+        val canRecordReceipt = PrivacyRightsRequestBuilder.supportsIndividualReceiptDate(record.jurisdiction) &&
+            record.status in setOf(
+                RightsRequestStatus.SUBMITTED,
+                RightsRequestStatus.ACKNOWLEDGED,
+                RightsRequestStatus.RESPONSE_RECEIVED,
+                RightsRequestStatus.OUTCOME_REPORTED
+            )
         val actions = transitions.map { "Mark ${it.name.replace('_', ' ')} (user-reported)" } +
-            (if (canRecordReceipt) listOf("Record confirmed receipt date / extension notice") else emptyList()) +
+            (if (canRecordReceipt) listOf("Record user-reported receipt date / notice") else emptyList()) +
             "Delete this tracker entry"
         val receiptIndex = transitions.size
         val deleteIndex = transitions.size + if (canRecordReceipt) 1 else 0
@@ -3477,9 +3478,17 @@ class MainActivity : Activity() {
             this,
             { _, year, month, day ->
                 val receivedDate = LocalDate.of(year, month + 1, day)
+                val extensionPrompt = if (
+                    record.jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
+                    record.right == PrivacyRight.OPT_OUT
+                ) {
+                    "Did the business separately tell you that it is extending the response period? This is a user report only. The CPPA sets a maximum of 15 business days for a sale/sharing opt-out; recording a notice does not extend this planning date."
+                } else {
+                    "Did the controller separately tell you that it is extending the response period? Select Yes only if you received that notice. This is a user report, not an independently verified event."
+                }
                 AlertDialog.Builder(this)
                     .setTitle("Extension notice")
-                    .setMessage("Did the controller separately tell you that it is extending the response period? Select Yes only if you received that notice. This is a user report, not an independently verified event.")
+                    .setMessage(extensionPrompt)
                     .setPositiveButton("Yes, notice received") { _, _ ->
                         saveRightsReceiptDate(record, trackerView, receivedDate, true)
                     }
@@ -3513,6 +3522,13 @@ class MainActivity : Activity() {
                 append("Receipt date saved as user-reported: ").append(receivedOn).append('.')
                 updated.standardResponseDueOn?.let { append(" Planning date: ").append(it).append('.') }
                 updated.extendedResponseDueOn?.let { append(" Potential extended planning date: ").append(it).append('.') }
+                if (
+                    updated.jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
+                    updated.right == PrivacyRight.OPT_OUT &&
+                    extensionNoticeRecorded
+                ) {
+                    append(" The recorded notice does not extend the 15-business-day opt-out planning date.")
+                }
                 append(" These are reminders, not legal conclusions or proof of controller compliance.")
             }
         } catch (exception: Exception) {
