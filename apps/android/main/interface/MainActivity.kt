@@ -3292,18 +3292,19 @@ class MainActivity : Activity() {
         scopeDescription: String,
         trackerView: TextView
     ) {
-        val rights = arrayOf(
-            PrivacyRight.ACCESS.label,
-            PrivacyRight.ERASURE.label,
-            PrivacyRight.CORRECTION.label,
-            PrivacyRight.OPT_OUT.label
+        val rights = listOf(
+            PrivacyRight.ACCESS,
+            PrivacyRight.ERASURE,
+            PrivacyRight.CORRECTION,
+            PrivacyRight.OPT_OUT,
+            PrivacyRight.LIMIT_SENSITIVE
         )
         AlertDialog.Builder(this)
             .setTitle("Choose the right to request")
-            .setItems(rights) { _, index ->
+            .setItems(rights.map { it.label }.toTypedArray()) { _, index ->
                 createLocalRightsDraft(
                     jurisdiction,
-                    PrivacyRight.values()[index],
+                    rights[index],
                     controllerName,
                     scopeDescription,
                     trackerView
@@ -3343,7 +3344,10 @@ class MainActivity : Activity() {
         }
         val due = buildString {
             append("\n\nTiming guidance: ").append(draft.responsePeriodNote)
-            draft.standardResponseDueOn?.let { append("\nPlanning date (based on reported receipt): ").append(it) }
+            draft.acknowledgementReminderOn?.let {
+                append("\nReceipt-confirmation reminder (based on reported receipt): ").append(it)
+            }
+            draft.standardResponseDueOn?.let { append("\nResponse planning date (based on reported receipt): ").append(it) }
             draft.extendedResponseDueOn?.let { append("\nPotential extended planning date (notice recorded by user): ").append(it) }
             append("\n\nPrepared on: ").append(draft.preparedOn)
             append("\nNo request was sent. Confirm eligibility and the destination using the official source.")
@@ -3478,25 +3482,26 @@ class MainActivity : Activity() {
             this,
             { _, year, month, day ->
                 val receivedDate = LocalDate.of(year, month + 1, day)
-                val extensionPrompt = if (
-                    record.jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
-                    record.right == PrivacyRight.OPT_OUT
-                ) {
-                    "Did the business separately tell you that it is extending the response period? This is a user report only. The CPPA sets a maximum of 15 business days for a sale/sharing opt-out; recording a notice does not extend this planning date."
+                val noExtensionPath = record.jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
+                    record.right in setOf(PrivacyRight.OPT_OUT, PrivacyRight.LIMIT_SENSITIVE)
+                if (noExtensionPath) {
+                    saveRightsReceiptDate(record, trackerView, receivedDate, false)
                 } else {
-                    "Did the controller separately tell you that it is extending the response period? Select Yes only if you received that notice. This is a user report, not an independently verified event."
+                    val extensionPrompt =
+                        "Did the controller separately tell you that it is extending the response period? " +
+                            "Select Yes only if you received that notice. This is a user report, not an independently verified event."
+                    AlertDialog.Builder(this)
+                        .setTitle("Extension notice")
+                        .setMessage(extensionPrompt)
+                        .setPositiveButton("Yes, notice received") { _, _ ->
+                            saveRightsReceiptDate(record, trackerView, receivedDate, true)
+                        }
+                        .setNegativeButton("No extension notice") { _, _ ->
+                            saveRightsReceiptDate(record, trackerView, receivedDate, false)
+                        }
+                        .setNeutralButton("Cancel", null)
+                        .show()
                 }
-                AlertDialog.Builder(this)
-                    .setTitle("Extension notice")
-                    .setMessage(extensionPrompt)
-                    .setPositiveButton("Yes, notice received") { _, _ ->
-                        saveRightsReceiptDate(record, trackerView, receivedDate, true)
-                    }
-                    .setNegativeButton("No extension notice") { _, _ ->
-                        saveRightsReceiptDate(record, trackerView, receivedDate, false)
-                    }
-                    .setNeutralButton("Cancel", null)
-                    .show()
             },
             initial.year,
             initial.monthValue - 1,
@@ -3520,15 +3525,11 @@ class MainActivity : Activity() {
             refreshRightsTrackerText(trackerView)
             statusText.text = buildString {
                 append("Receipt date saved as user-reported: ").append(receivedOn).append('.')
-                updated.standardResponseDueOn?.let { append(" Planning date: ").append(it).append('.') }
-                updated.extendedResponseDueOn?.let { append(" Potential extended planning date: ").append(it).append('.') }
-                if (
-                    updated.jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA &&
-                    updated.right == PrivacyRight.OPT_OUT &&
-                    extensionNoticeRecorded
-                ) {
-                    append(" The recorded notice does not extend the 15-business-day opt-out planning date.")
+                updated.acknowledgementReminderOn?.let {
+                    append(" Receipt-confirmation planning date: ").append(it).append('.')
                 }
+                updated.standardResponseDueOn?.let { append(" Response planning date: ").append(it).append('.') }
+                updated.extendedResponseDueOn?.let { append(" Potential extended planning date: ").append(it).append('.') }
                 append(" These are reminders, not legal conclusions or proof of controller compliance.")
             }
         } catch (exception: Exception) {
