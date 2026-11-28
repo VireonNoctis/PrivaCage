@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.privacage.rights.PrivacyRight
 import org.privacage.rights.RightsJurisdiction
+import org.privacage.rights.RightsResponsePlanningDates
 import org.privacage.rights.RightsRequestStatus
 import org.privacage.rights.PrivacyRightsRequestBuilder
 import java.time.LocalDate
@@ -135,6 +136,9 @@ internal object LocalRightsRequestStore {
         val existing = current[index]
         require(existing.status != RightsRequestStatus.DRAFT && existing.status != RightsRequestStatus.REVIEWED) {
             "Record a receipt date only after you have manually submitted the request."
+        }
+        require(PrivacyRightsRequestBuilder.supportsIndividualReceiptDate(existing.jurisdiction)) {
+            "California DROP is a broker-wide mechanism, not an individual controller receipt; record only its user-reported workflow status."
         }
         val deadlineGuidance = org.privacage.rights.PrivacyRightsRequestBuilder.createDraft(
             jurisdiction = existing.jurisdiction,
@@ -333,36 +337,47 @@ internal object LocalRightsRequestStore {
                     "Local tracker deadlines require a recorded receipt date."
                 }
             }
+            var normalizedStandardDueOn = standardDueOn
+            var normalizedExtendedDueOn = extendedDueOn
             if (jurisdiction == RightsJurisdiction.CALIFORNIA_DROP) {
                 require(standardDueOn == null && extendedDueOn == null) {
                     "The DROP checklist must not contain an individual response deadline."
                 }
             } else if (receivedOn != null) {
-                val expectedStandardDueOn = when (jurisdiction) {
-                    RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(1)
-                    RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn.plusDays(45)
-                    RightsJurisdiction.CALIFORNIA_DROP -> null
-                }
-                val expectedExtendedDueOn = if (!extensionNoticeRecorded) {
-                    null
+                val expected = PrivacyRightsRequestBuilder.calculatePlanningDates(
+                    jurisdiction = jurisdiction,
+                    right = right,
+                    receivedOn = receivedOn,
+                    extensionNoticeRecorded = extensionNoticeRecorded
+                )
+                val matchesCurrentRules =
+                    standardDueOn == expected.standardResponseDueOn &&
+                        extendedDueOn == expected.extendedResponseDueOn
+                val legacyCcpaOptOut = if (
+                    jurisdiction == RightsJurisdiction.CALIFORNIA_CCPA && right == PrivacyRight.OPT_OUT
+                ) {
+                    RightsResponsePlanningDates(
+                        standardResponseDueOn = receivedOn.plusDays(45),
+                        extendedResponseDueOn = if (extensionNoticeRecorded) receivedOn.plusDays(90) else null
+                    )
                 } else {
-                    when (jurisdiction) {
-                        RightsJurisdiction.UK_GDPR -> receivedOn.plusMonths(3)
-                        RightsJurisdiction.CALIFORNIA_CCPA -> receivedOn.plusDays(90)
-                        RightsJurisdiction.CALIFORNIA_DROP -> null
-                    }
+                    null
                 }
-                require(standardDueOn == expectedStandardDueOn) {
-                    "The standard planning date does not match the configured jurisdiction calculation."
+                val matchesLegacyOptOutRules = legacyCcpaOptOut != null &&
+                    standardDueOn == legacyCcpaOptOut.standardResponseDueOn &&
+                    extendedDueOn == legacyCcpaOptOut.extendedResponseDueOn
+                require(matchesCurrentRules || matchesLegacyOptOutRules) {
+                    "The planning dates do not match the current jurisdiction/right calculation."
                 }
-                require(extendedDueOn == expectedExtendedDueOn) {
-                    "The extended planning date does not match the recorded extension notice and jurisdiction calculation."
-                }
+                // Upgrade records created by the previous incorrect 45/90-day CCPA opt-out rule
+                // in memory; the corrected values are persisted on the next successful save.
+                normalizedStandardDueOn = expected.standardResponseDueOn
+                normalizedExtendedDueOn = expected.extendedResponseDueOn
             }
 
             StoredRightsRequest(
-                id, jurisdiction, right, controller, preparedOn, receivedOn, standardDueOn,
-                extendedDueOn, extensionNoticeRecorded, status, guidanceUrl
+                id, jurisdiction, right, controller, preparedOn, receivedOn, normalizedStandardDueOn,
+                normalizedExtendedDueOn, extensionNoticeRecorded, status, guidanceUrl
             )
         } catch (exception: Exception) {
             throw IllegalStateException("The local rights-request tracker contains a malformed record; existing data was not overwritten.", exception)
