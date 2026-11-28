@@ -638,3 +638,15 @@ Added in API level 26. Requests that an input method not update personalized dat
 https://developer.android.com/reference/android/view/View#IMPORTANT_FOR_CONTENT_CAPTURE_NO
 
 Added in API level 29. `IMPORTANT_FOR_CONTENT_CAPTURE_NO` marks the view as not important for Content Capture, while child views may still be traversed. The password EditText is a leaf view. This is not a guarantee against IME buffers, other system services, or a compromised OS. Checked 27 November 2026.
+
+<a id="s81"></a>
+### S81 — California Privacy Protection Agency: Frequently Asked Questions (consumer request timeframes)
+https://cppa.ca.gov/faq.html
+
+The CPPA distinguishes delete/correct/know requests (10-business-day receipt confirmation and 45-calendar-day substantive response, with a possible noticed 45-calendar-day extension) from sale/sharing opt-outs and requests to limit sensitive-personal-information use (as soon as feasibly possible, no later than 15 business days). Checked 28 November 2026.
+
+<a id="s82"></a>
+### S82 — California Privacy Protection Agency: CCPA statute effective 1 January 2026
+https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
+
+Civil Code section 1798.135(f)(1) requires a business to cease sale/sharing as soon as feasibly possible and no later than 15 business days after receiving an opt-out request. The statute's example emphasizes that a business must act sooner when feasible. Checked 28 November 2026.
