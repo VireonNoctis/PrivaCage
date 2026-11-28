@@ -186,14 +186,14 @@ class LocalRightsRequestStoreTest {
                 jurisdiction = "CALIFORNIA_CCPA",
                 guidanceUrl = "https://cppa.ca.gov/faq/",
                 receivedOn = "2026-10-27",
-                standardDueOn = "2026-12-11",
-                extendedDueOn = "2027-01-25",
+                standardDueOn = "2026-12-10",
+                extendedDueOn = "2027-01-24",
                 acknowledgementDueOn = "2026-11-10",
                 extensionNoticeRecorded = true
             )}]"
         ).single()
-        assertEquals("2026-12-11", california.standardResponseDueOn.toString())
-        assertEquals("2027-01-25", california.extendedResponseDueOn.toString())
+        assertEquals("2026-12-10", california.standardResponseDueOn.toString())
+        assertEquals("2027-01-24", california.extendedResponseDueOn.toString())
     }
 
     @Test
@@ -232,12 +232,17 @@ class LocalRightsRequestStoreTest {
             jurisdiction = "CALIFORNIA_CCPA",
             guidanceUrl = "https://cppa.ca.gov/faq/",
             receivedOn = "2026-10-27",
-            standardDueOn = "2026-12-11"
+            standardDueOn = "2026-12-11",
+            extendedDueOn = "2027-01-25",
+            extensionNoticeRecorded = true
         ).replace(",\"acknowledgement_due_on\":null", "")
 
         val decoded = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
 
         assertEquals("2026-11-10", decoded.acknowledgementReminderOn.toString())
+        assertEquals("2026-12-10", decoded.standardResponseDueOn.toString())
+        assertEquals("2027-01-24", decoded.extendedResponseDueOn.toString())
+        assertTrue(decoded.extensionNoticeRecorded)
         val roundTrip = LocalRightsRequestStore.decodeRecords(
             LocalRightsRequestStore.encodeRecords(listOf(decoded))
         ).single()
@@ -289,21 +294,21 @@ class LocalRightsRequestStoreTest {
             jurisdiction = "CALIFORNIA_CCPA",
             guidanceUrl = "https://cppa.ca.gov/faq/",
             receivedOn = "2026-10-27",
-            standardDueOn = "2026-12-10",
+            standardDueOn = "2026-12-11",
             acknowledgementDueOn = "2026-11-10"
         )
         val incorrectAcknowledgement = record(
             jurisdiction = "CALIFORNIA_CCPA",
             guidanceUrl = "https://cppa.ca.gov/faq/",
             receivedOn = "2026-10-27",
-            standardDueOn = "2026-12-11",
+            standardDueOn = "2026-12-10",
             acknowledgementDueOn = "2026-11-09"
         )
         val missingAcknowledgement = record(
             jurisdiction = "CALIFORNIA_CCPA",
             guidanceUrl = "https://cppa.ca.gov/faq/",
             receivedOn = "2026-10-27",
-            standardDueOn = "2026-12-11"
+            standardDueOn = "2026-12-10"
         )
         val incorrectOptOut = record(
             jurisdiction = "CALIFORNIA_CCPA",
