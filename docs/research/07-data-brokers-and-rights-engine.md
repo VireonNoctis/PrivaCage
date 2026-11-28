@@ -42,7 +42,7 @@ Engineering implications:
 
 - Keep the 45-calendar-day plus noticed 45-day extension calculation for covered delete, correct and know requests.
 - Use a separate 15-business-day planning rule for sale/sharing opt-out and the distinct right to limit sensitive-personal-information use; do not apply the 45-day extension to either path.
-- Calculate a separate 10-business-day receipt-confirmation reminder for delete/correct/know requests. Keep acknowledgement status user-reported; a calculated reminder is not proof of receipt.
+- Calculate a separate 10-business-day receipt-confirmation planning date for delete/correct/know requests. Keep acknowledgement status user-reported; a calculated reminder is not proof of receipt.
 - Do not require a verifiable consumer request for sale/sharing opt-out or right-to-limit requests; request only information necessary to direct the request.
 - The app calculation counts Monday-Friday only and does not model California state holidays or business closures; label both business-day dates as planning reminders, not legal determinations.
 - Model the right to limit as its own LIMIT_SENSITIVE value; do not conflate it with sale/sharing opt-out. It applies only when the business uses or discloses sensitive personal information for non-exempt purposes.
