@@ -48,11 +48,13 @@ class PrivacyRightsRequestBuilderTest {
             extensionNoticeRecorded = true
         )
 
+        assertEquals(LocalDate.parse("2026-10-15"), normal.acknowledgementReminderOn)
         assertEquals(LocalDate.parse("2026-11-15"), normal.standardResponseDueOn)
         assertNull(normal.extendedResponseDueOn)
+        assertEquals(LocalDate.parse("2026-10-15"), extended.acknowledgementReminderOn)
         assertEquals(LocalDate.parse("2026-12-30"), extended.extendedResponseDueOn)
+        assertTrue(normal.responsePeriodNote.contains("10-business-day"))
         assertTrue(normal.responsePeriodNote.contains("45-calendar-day"))
-        assertTrue(normal.responsePeriodNote.contains("does not calculate a separate acknowledgement reminder"))
     }
 
     @Test
@@ -66,11 +68,59 @@ class PrivacyRightsRequestBuilderTest {
             extensionNoticeRecorded = true
         )
 
+        assertNull(draft.acknowledgementReminderOn)
         assertEquals(LocalDate.parse("2026-11-20"), draft.standardResponseDueOn)
         assertNull(draft.extendedResponseDueOn)
         assertTrue(draft.responsePeriodNote.contains("15 business days"))
         assertTrue(draft.responsePeriodNote.contains("does not account for California state holidays"))
         assertTrue(draft.responsePeriodNote.contains("does not extend this date"))
+    }
+
+    @Test
+    fun californiaRightToLimitUsesDistinctFifteenBusinessDayPath() {
+        val draft = PrivacyRightsRequestBuilder.createDraft(
+            jurisdiction = RightsJurisdiction.CALIFORNIA_CCPA,
+            right = PrivacyRight.LIMIT_SENSITIVE,
+            controllerName = "Example Business",
+            preparedOn = preparedOn,
+            receivedOn = LocalDate.parse("2026-10-30"),
+            extensionNoticeRecorded = true
+        )
+
+        assertEquals("LIMIT_SENSITIVE", draft.right.name)
+        assertNull(draft.acknowledgementReminderOn)
+        assertEquals(LocalDate.parse("2026-11-20"), draft.standardResponseDueOn)
+        assertNull(draft.extendedResponseDueOn)
+        assertTrue(draft.message.contains("limit the use and disclosure"))
+        assertTrue(draft.message.contains("verifiable consumer request is not required"))
+        assertTrue(draft.responsePeriodNote.contains("sensitive personal information"))
+        assertTrue(draft.responsePeriodNote.contains("15 business days"))
+        assertTrue(draft.responsePeriodNote.contains("does not account for California state holidays"))
+    }
+
+    @Test
+    fun rejectsRightToLimitOutsideCaliforniaCcpa() {
+        assertFailsWith<IllegalArgumentException> {
+            PrivacyRightsRequestBuilder.createDraft(
+                jurisdiction = RightsJurisdiction.UK_GDPR,
+                right = PrivacyRight.LIMIT_SENSITIVE,
+                controllerName = "Example Controller",
+                preparedOn = preparedOn
+            )
+        }
+    }
+
+    @Test
+    fun californiaAcknowledgementReminderCountsTenWeekdaysAfterReceipt() {
+        val draft = PrivacyRightsRequestBuilder.createDraft(
+            jurisdiction = RightsJurisdiction.CALIFORNIA_CCPA,
+            right = PrivacyRight.CORRECTION,
+            controllerName = "Example Business",
+            preparedOn = preparedOn,
+            receivedOn = LocalDate.parse("2026-11-27")
+        )
+
+        assertEquals(LocalDate.parse("2026-12-11"), draft.acknowledgementReminderOn)
     }
 
     @Test
@@ -105,6 +155,7 @@ class PrivacyRightsRequestBuilderTest {
         assertNull(draft.controllerName)
         assertNull(draft.standardResponseDueOn)
         assertNull(draft.extendedResponseDueOn)
+        assertNull(draft.acknowledgementReminderOn)
         assertTrue(draft.message.contains("PrivaCage does not collect or submit it"))
         assertTrue(draft.message.contains("California residency eligibility"))
         assertTrue(draft.message.contains("Keep your DROP ID private"))
