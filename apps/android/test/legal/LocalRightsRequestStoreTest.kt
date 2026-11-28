@@ -19,9 +19,10 @@ class LocalRightsRequestStoreTest {
         receivedOn: String? = null,
         standardDueOn: String? = null,
         extendedDueOn: String? = null,
+        acknowledgementDueOn: String? = null,
         extensionNoticeRecorded: Boolean = false,
         extra: String = ""
-    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"$right","controller_name":$controller,"prepared_on":"2026-10-27","received_on":${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":${extendedDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
+    ): String = """{"id":"$id","jurisdiction":"$jurisdiction","right":"$right","controller_name":$controller,"prepared_on":"2026-10-27","received_on":${receivedOn?.let { "\"$it\"" } ?: "null"},"standard_due_on":${standardDueOn?.let { "\"$it\"" } ?: "null"},"extended_due_on":${extendedDueOn?.let { "\"$it\"" } ?: "null"},"acknowledgement_due_on":${acknowledgementDueOn?.let { "\"$it\"" } ?: "null"},"extension_notice_recorded":$extensionNoticeRecorded,"status":"DRAFT","official_guidance_url":"$guidanceUrl"$extra}"""
 
     @Test
     fun readsCanonicalLocalDraftMetadata() {
@@ -40,12 +41,14 @@ class LocalRightsRequestStoreTest {
             .replace(",\"received_on\":null", "")
             .replace(",\"standard_due_on\":null", "")
             .replace(",\"extended_due_on\":null", "")
+            .replace(",\"acknowledgement_due_on\":null", "")
 
         val decoded = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
 
         assertEquals(null, decoded.receivedOn)
         assertEquals(null, decoded.standardResponseDueOn)
         assertEquals(null, decoded.extendedResponseDueOn)
+        assertEquals(null, decoded.acknowledgementReminderOn)
         assertEquals("Example Controller", decoded.controllerName)
         // Re-encoding upgrades old omitted-null fields to the canonical explicit-null form.
         val roundTrip = LocalRightsRequestStore.decodeRecords(
@@ -67,17 +70,20 @@ class LocalRightsRequestStoreTest {
         assertEquals(null, decoded.controllerName)
         assertEquals(null, decoded.standardResponseDueOn)
         assertEquals(null, decoded.extendedResponseDueOn)
+        assertEquals(null, decoded.acknowledgementReminderOn)
 
         val legacyDropRecord = dropRecord
             .replace("\"controller_name\":null,", "")
             .replace(",\"received_on\":null", "")
             .replace(",\"standard_due_on\":null", "")
             .replace(",\"extended_due_on\":null", "")
+            .replace(",\"acknowledgement_due_on\":null", "")
         val legacyDrop = LocalRightsRequestStore.decodeRecords("[$legacyDropRecord]").single()
         assertEquals(null, legacyDrop.controllerName)
         assertEquals(null, legacyDrop.receivedOn)
         assertEquals(null, legacyDrop.standardResponseDueOn)
         assertEquals(null, legacyDrop.extendedResponseDueOn)
+        assertEquals(null, legacyDrop.acknowledgementReminderOn)
 
         val roundTrip = LocalRightsRequestStore.decodeRecords(
             LocalRightsRequestStore.encodeRecords(listOf(decoded))
@@ -147,12 +153,12 @@ class LocalRightsRequestStoreTest {
 
     @Test
     fun rejectsDeadlinesWithoutReceiptAndDropDeadlines() {
-        val noReceiptDeadline = record().replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
+        val noReceiptDeadline = record().replace("\"acknowledgement_due_on\":null", "\"acknowledgement_due_on\":\"2026-11-27\"")
         val dropDeadline = record(
             jurisdiction = "CALIFORNIA_DROP",
             controller = "null",
             guidanceUrl = "https://privacy.ca.gov/drop/"
-        ).replace("\"standard_due_on\":null", "\"standard_due_on\":\"2026-11-27\"")
+        ).replace("\"acknowledgement_due_on\":null", "\"acknowledgement_due_on\":\"2026-11-27\"")
 
         assertThrows(IllegalStateException::class.java) {
             LocalRightsRequestStore.decodeRecords("[$noReceiptDeadline]")
@@ -181,6 +187,7 @@ class LocalRightsRequestStoreTest {
                 receivedOn = "2026-10-27",
                 standardDueOn = "2026-12-11",
                 extendedDueOn = "2027-01-25",
+                acknowledgementDueOn = "2026-11-10",
                 extensionNoticeRecorded = true
             )}]"
         ).single()
@@ -211,11 +218,58 @@ class LocalRightsRequestStoreTest {
             standardDueOn = "2026-12-14",
             extendedDueOn = "2027-01-28",
             extensionNoticeRecorded = true
-        )
+        ).replace(",\"acknowledgement_due_on\":null", "")
         val migrated = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
         assertEquals("2026-11-20", migrated.standardResponseDueOn.toString())
         assertEquals(null, migrated.extendedResponseDueOn)
         assertTrue(migrated.extensionNoticeRecorded)
+    }
+
+    @Test
+    fun normalizesLegacyCaliforniaRecordsWithoutAcknowledgementReminderField() {
+        val legacy = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-12-11"
+        ).replace(",\"acknowledgement_due_on\":null", "")
+
+        val decoded = LocalRightsRequestStore.decodeRecords("[$legacy]").single()
+
+        assertEquals("2026-11-10", decoded.acknowledgementReminderOn.toString())
+        val roundTrip = LocalRightsRequestStore.decodeRecords(
+            LocalRightsRequestStore.encodeRecords(listOf(decoded))
+        ).single()
+        assertEquals(decoded, roundTrip)
+    }
+
+    @Test
+    fun acceptsDistinctCaliforniaRightToLimitPlanningRecord() {
+        val raw = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            right = "LIMIT_SENSITIVE",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-30",
+            standardDueOn = "2026-11-20"
+        )
+
+        val decoded = LocalRightsRequestStore.decodeRecords("[$raw]").single()
+
+        assertEquals(PrivacyRight.LIMIT_SENSITIVE, decoded.right)
+        assertEquals(null, decoded.acknowledgementReminderOn)
+        assertEquals("2026-11-20", decoded.standardResponseDueOn.toString())
+        assertEquals(null, decoded.extendedResponseDueOn)
+    }
+
+    @Test
+    fun rejectsRightToLimitRecordOutsideCaliforniaCcpa() {
+        val raw = record(
+            jurisdiction = "UK_GDPR",
+            right = "LIMIT_SENSITIVE"
+        )
+        assertThrows(IllegalStateException::class.java) {
+            LocalRightsRequestStore.decodeRecords("[$raw]")
+        }
     }
 
     @Test
@@ -234,7 +288,21 @@ class LocalRightsRequestStoreTest {
             jurisdiction = "CALIFORNIA_CCPA",
             guidanceUrl = "https://cppa.ca.gov/faq/",
             receivedOn = "2026-10-27",
-            standardDueOn = "2026-12-10"
+            standardDueOn = "2026-12-10",
+            acknowledgementDueOn = "2026-11-10"
+        )
+        val incorrectAcknowledgement = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-12-11",
+            acknowledgementDueOn = "2026-11-09"
+        )
+        val missingAcknowledgement = record(
+            jurisdiction = "CALIFORNIA_CCPA",
+            guidanceUrl = "https://cppa.ca.gov/faq/",
+            receivedOn = "2026-10-27",
+            standardDueOn = "2026-12-11"
         )
         val incorrectOptOut = record(
             jurisdiction = "CALIFORNIA_CCPA",
@@ -245,7 +313,10 @@ class LocalRightsRequestStoreTest {
             extensionNoticeRecorded = true
         )
 
-        listOf(incorrectStandard, incorrectExtension, incorrectCalifornia, incorrectOptOut).forEach { raw ->
+        listOf(
+            incorrectStandard, incorrectExtension, incorrectCalifornia, incorrectAcknowledgement,
+            missingAcknowledgement, incorrectOptOut
+        ).forEach { raw ->
             assertThrows(IllegalStateException::class.java) {
                 LocalRightsRequestStore.decodeRecords("[$raw]")
             }
